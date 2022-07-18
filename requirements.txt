@@ -1,0 +1,4 @@
+discord.py  # >= 2.0.0
+ruamel.yaml
+aiohttp~=3.8.1
+colorlog
