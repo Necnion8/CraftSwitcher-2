@@ -270,10 +270,11 @@ class DNCore(object):
                  "\033[90m{lineno:4} {log_color}| " \
                  "\033[90m{logname} {log_color}"
 
+        orig_sys_stderr = sys.stderr  # by colorama
         sys.stdout = RedirectStream(sys.stdout, logging.getLogger("dncore.stdout-redirect").info)
         sys.stderr = RedirectStream(sys.stderr, logging.getLogger("dncore.stderr-redirect").error)
 
-        sh = AppStreamLoggerHandler(stream=sys.__stderr__)
+        sh = AppStreamLoggerHandler(stream=orig_sys_stderr)
         sh.addFilter(PackageNameInserter())
         # noinspection PyTypeChecker
         sh.setFormatter(colorlog.LevelFormatter(
