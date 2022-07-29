@@ -726,11 +726,13 @@ class PluginManager(object):
         _checks = list(selected)
         while _checks:
             target = _checks.pop(0)
-            if target.depends and _selected:
-                priority_index = min(
-                    selected.index(_selected[depend_name])
-                    for depend_name in target.depends if depend_name in _selected
-                )
+            if target.depends:
+                _p_entries = [selected.index(_selected[depend_name])
+                              for depend_name in target.depends if depend_name in _selected]
+                if not _p_entries:
+                    continue
+
+                priority_index = min(_p_entries)
                 if selected.index(target) < priority_index + 1:
                     selected.remove(target)
                     selected.insert(priority_index + 1, target)

@@ -29,7 +29,7 @@ from dncore.util.instance import call_event
 from dncore.util.logger import DaysRotatingFileHandler, PackageNameInserter, RedirectStream, get_caller_logger
 
 __version__ = "6.0.1b"
-__date__ = "2022/07/16"
+__date__ = "2022/07/19"
 version_info = Version.parse(__version__ + "/" + __date__[2:].replace("/", ""))
 __all__ = ["DNCore", "__version__", "__date__", "version_info", "DNCoreAPI"]
 log = logging.getLogger(__name__)
