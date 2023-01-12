@@ -255,7 +255,7 @@ class DiscordClient(discord.Client):
 
     async def find_owner(self, *, force=False):
         if self.config.owner_id:
-            if not self.owner:
+            if not self.owner or force:
                 try:
                     self.owner = await self.fetch_user(self.config.owner_id, force=force)
                 except discord.HTTPException:
