@@ -119,7 +119,7 @@ class CommandHandler:
             title=f":paperclip: 使用法: **{self.name}** :paperclip:",
             description="\n".join(description_text) if description_text else None,
         )
-        [embed.add_field(name=i[0], value="\n".join(i[1]), inline=False) for i in arguments]
+        [embed.add_field(name=i[0] or "　", value="\n".join(i[1]) or "　", inline=False) for i in arguments]
         return embed
 
     def is_handler(self, func):
