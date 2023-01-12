@@ -329,6 +329,8 @@ class DiscordClient(discord.Client):
     def allowed(self, command: str | CommandHandler, author: discord.User, guild: discord.Guild | None):
         if not isinstance(command, CommandHandler):
             command = self.commands.get_command(command)
+        if not command:
+            return False
 
         # check roles and permissions
         roles = list(reversed(author.roles)) if hasattr(author, "roles") else []

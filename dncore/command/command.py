@@ -221,6 +221,11 @@ class CommandManager(object):
         return self._custom_usage.get(command)
 
     def allowed(self, command: str | CommandHandler, user_id: int | None, role_id: int | list[int] = None):
+        """
+        指定されたコマンドが指定ユーザーIDまたは役職IDで許可されているかテストします
+
+        実際にユーザーの権限をテストするには :class:`dncore.discord.DiscordClient`.allowed() を使ってください。
+        """
         if isinstance(command, CommandHandler):
             name = command.name.lower()
         else:
@@ -238,11 +243,22 @@ class CommandManager(object):
 
     def allowed_in_group(self, command: str | CommandHandler, group_name: str):
         name = (command.name if isinstance(command, CommandHandler) else command).lower()
-        return name in self._whitelists_of_group[group_name.lower()]
+        group_name = group_name.lower()
+        return group_name in self._whitelists_of_group and name in self._whitelists_of_group[group_name]
 
     def get_commands(self, channel_type: type = None, user_id: int = None, role_id: int | list[int] = None):
+        """
+        登録されている全コマンドの名前リストを返します (カテゴリ順)
+
+        各制限を除いて、コマンドの権限をチェックしません。
+        権限をテストするには :class:`dncore.discord.DiscordClient`.allowed() を使ってください。
+
+        :param channel_type: 制限するチャンネルタイプ
+        :param user_id: 制限するユーザーID
+        :param role_id: 制限する役職ID、またはそのリスト
+        """
         # sorted name list
-        names = []
+        names: list[str] = []
         for category in self.config.categories.values():
             names.extend(category.commands.keys())
 
