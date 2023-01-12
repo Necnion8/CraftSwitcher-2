@@ -170,7 +170,7 @@ class EventManager(object):
                 await safe_call(handler)
 
         if monitors:
-            self.loop.create_task(asyncio.gather(*monitors, loop=self.loop))
+            self.loop.create_task(asyncio.wait(monitors))
 
         return event
 
