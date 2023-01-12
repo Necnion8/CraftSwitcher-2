@@ -254,11 +254,12 @@ class DiscordClient(discord.Client):
             log.debug(f"コマンドエラー通知を送信できませんでした: {str(e)}")
 
     async def find_owner(self, *, force=False):
-        if self.config.owner_id and not self.owner:
-            try:
-                self.owner = await self.fetch_user(self.config.owner_id, force=force)
-            except discord.HTTPException:
-                self.owner = None
+        if self.config.owner_id:
+            if not self.owner:
+                try:
+                    self.owner = await self.fetch_user(self.config.owner_id, force=force)
+                except discord.HTTPException:
+                    self.owner = None
         else:
             self.owner = None
 
