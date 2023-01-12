@@ -27,7 +27,7 @@ class CommandManager(object):
         self._handlers_of_parent = defaultdict(list)  # type: dict[Any, list[CommandHandler]]
         # self._parents_of_handler = {}  # type: dict[CommandHandler, Any]
         self._handlers = {}  # type: dict[str, CommandHandler]  # hid : hdlr
-        self._commands = {}  # type: dict[str, str]  # name : hid
+        self._commands = {}  # type: dict[str, str | None]  # name : hid
         self._aliases = {}  # type: dict[str, str]  # alias : name
         self._custom_usage = {}  # type dict[str, str]  # name : usage
         self._whitelists_of_role = defaultdict(set)  # type: dict[int, set[str] | bool]  # roleId : commands
