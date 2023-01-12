@@ -100,10 +100,8 @@ class DNCoreCommands(EventListener):
             return await get_core().client.send_command_usage(ctx, name, None)
 
         # list
-        if get_core().config.discord.owner_id == ctx.author.id:
-            commands = cmd.get_commands(type(ctx.channel))
-        else:
-            commands = cmd.get_commands(type(ctx.channel), ctx.author.id, [r.id for r in ctx.author.roles])
+        commands = [name for name in cmd.get_commands(type(ctx.channel))
+                    if get_core().client.allowed(name, ctx.author, ctx.guild)]
 
         lines = []
         for category_name, category in cmd.config.categories.items():
