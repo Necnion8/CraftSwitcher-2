@@ -266,7 +266,6 @@ class DiscordClient(discord.Client):
         return self.owner
 
     async def _error_command_handling(self, context, execute_name, error, message, __locals):
-        context.clean_auto(error=True)
         if context.self_message:
             run_coroutine(context.self_message.clear_reactions(), (discord.HTTPException,))
 
@@ -310,9 +309,14 @@ class DiscordClient(discord.Client):
 
         if isinstance(reaction, Embed):
             reaction = Embed.error(reaction.format(__locals))
-            run_coroutine(context.send_error(reaction), (discord.HTTPException,))
+            try:
+                await context.send_error(reaction)
+            except discord.HTTPException:
+                pass
         elif isinstance(reaction, Emoji):
             run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
+
+        context.clean_auto(error=True)
 
         if report:
             try:
