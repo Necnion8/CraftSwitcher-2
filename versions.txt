@@ -13,3 +13,16 @@
 - 同一プラグインの複数ファイルがあった場合の優先処理の変更
 - CommandContext自動メッセージ削除で、削除処理がrequestsとresponseで入れ違ってたミスの修正
 - シャットダウン処理中にフリーズした場合に強制的に終了させる処理の追加
+
+6.0.1b/220719
+- プラグインロードの順番処理に例外が発生するバグの修正
+
+6.0.2/230114
+- CommandManager._commands の型修正
+- fetch_owner()がownerキャッシュを消してしまうバグの修正
+- イベントをmonitorでリスナー登録すると例外が発生するバグの修正
+- find_owner(force=True) の場合は取得を強制する
+- CommandHandler.format_usage() で Embed.fields.* の name と value を空にしないようにする
+- コマンド許可に関する細かな修正
+- help でコマンドを一覧する処理を修正
+- エラーメッセージが自動削除されないバグの修正
