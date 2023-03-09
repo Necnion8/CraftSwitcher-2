@@ -739,9 +739,16 @@ class PluginManager(object):
 
         return selected
 
-    def load_plugins(self):
+    def load_plugins(self, *, ignore_names: list[str] = None):
         self.plugins.clear()
+        _ignore_names = [n.lower() for n in ignore_names] if ignore_names else []
+        ignored = []  # type: list[PluginInfo]
+
         for info in self._load_plugins():
+            if info.name.lower() in _ignore_names:
+                ignored.append(info)
+                continue
+
             self.plugins[info.name.lower()] = info
             try:
                 info.load()
@@ -752,7 +759,7 @@ class PluginManager(object):
                 log.exception(f"プラグイン {info.name} を初期化できません。")
                 info.load_exception = e
 
-        log.debug("Loaded %s plugins", len(self.plugins))
+        log.debug("Loaded %s plugins (%s disabled)", len(self.plugins), len(ignored))
 
     async def enable_plugins(self):
         results = ([], [])

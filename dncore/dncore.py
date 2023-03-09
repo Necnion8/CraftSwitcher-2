@@ -166,7 +166,7 @@ class DNCore(object):
         self.commands.register_class(self, self.default_commands, "__dncore__")
         self.events.register_listener(self, self.default_commands)
 
-        self.plugins.load_plugins()
+        self.plugins.load_plugins(ignore_names=self.config.plugin.disabled_plugins)
         await self.plugins.enable_plugins()
 
         actives, aliases = self.commands.remap()

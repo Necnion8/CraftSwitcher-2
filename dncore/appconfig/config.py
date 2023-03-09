@@ -54,6 +54,11 @@ class DiscordSection(ConfigValues):
     debug_channels: list[int]
 
 
+class PluginSection(ConfigValues):
+    # 起動時にロードしないプラグインの名前のリスト
+    disabled_plugins: list[str]
+
+
 class DebugSection(ConfigValues):
     # これが有効のとき、起動してもDiscordに接続しません
     no_connect = False
@@ -111,5 +116,6 @@ class Messages(ConfigValues):
 class AppConfig(FileConfigValues):
     logging: LoggingSection
     discord: DiscordSection
+    plugin: PluginSection
     debug: DebugSection
     messages: Messages
