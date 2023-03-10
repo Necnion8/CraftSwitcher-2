@@ -383,7 +383,7 @@ class CommandManager(object):
             for user_id in group.users:
                 if group.allowed_all():
                     self._whitelists_of_user[user_id] = True
-                else:
+                elif self._whitelists_of_user.get(user_id) is not True:
                     self._whitelists_of_user[user_id].update(map(str.lower, group.commands))
 
         if self._changed_flag or force_save:
