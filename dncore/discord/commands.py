@@ -159,11 +159,14 @@ class DNCoreCommands(EventListener):
                 count = len(msgs)
 
             except (discord.Forbidden, RuntimeError):
-                perms = channel.permissions_for(channel.me)
-                if not perms.read_message_history:
-                    return Embed.error(self.lang.clean.no_perm_read_history)
+                if isinstance(channel, discord.abc.GuildChannel):
+                    perms = channel.permissions_for(channel.guild.me)
+                    if not perms.read_message_history:
+                        return Embed.error(self.lang.clean.no_perm_read_history)
+                    delete_users = perms.manage_messages
+                else:
+                    delete_users = False
 
-                delete_users = perms.manage_messages
                 fs = []
 
                 async with channel.typing():
