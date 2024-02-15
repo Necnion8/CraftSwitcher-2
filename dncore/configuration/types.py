@@ -111,7 +111,7 @@ class ListType(ObjectType[list[T]]):
         self.arg_type = ObjectType.from_value(arg_type, serializers=serializers)
 
     def __repr__(self):
-        return "<{} vType={} >".format(type(self).__name__, self.arg_type.__name__)
+        return "<{} vType={} >".format(type(self).__name__, type(self.arg_type).__name__)
 
     def serialize(self, obj: list[T] | None):
         if obj is None:
@@ -144,7 +144,7 @@ class DictType(ObjectType[dict[str, T]]):
         self.arg_type = ObjectType.from_value(args_type[1], serializers=serializers)
 
     def __repr__(self):
-        return "<{} vType={} >".format(type(self).__name__, self.arg_type.__name__)
+        return "<{} vType={} >".format(type(self).__name__, type(self.arg_type).__name__)
 
     def serialize(self, obj: dict[T] | None):
         if obj is None:
