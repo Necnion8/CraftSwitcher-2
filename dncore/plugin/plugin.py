@@ -180,7 +180,7 @@ class Plugin(EventListener):
     reloadable = True
 
     def __repr__(self):
-        return f"<Plugin name={self.info.name!r} enabled={self.enabled!r} version={self.info.version!r} >"
+        return f"<Plugin name={self.info.name!r} enabled={self.enabled!r} version={str(self.info.version)!r} >"
 
     @property
     def loop(self):
