@@ -9,7 +9,7 @@ import discord
 from dncore.abc import ObjectSerializer, ObjectSerializable, Cloneable, IGNORE_FRAME
 
 __all__ = ["serializers", "DatetimeSerializer", "DatetimeDateSerializer", "DatetimeTimeSerializer", "EmbedType",
-           "GuildId", "ChannelId", "MessageId", "Color", "Embed", "Emoji", "Reaction", "ActivitySetting"]
+           "GuildId", "ChannelId", "MessageId", "RoleId", "Color", "Embed", "Emoji", "Reaction", "ActivitySetting"]
 
 EmbedType = Literal['rich', 'image', 'video', 'gifv', 'article', 'link']
 
@@ -140,6 +140,44 @@ class MessageId(ObjectSerializable, Cloneable):
 
     async def get(self):
         if self.id is None or self.channel_id is None:
+            return None
+        try:
+            return await self.fetch()
+        except discord.HTTPException:
+            pass
+
+
+class RoleId(ObjectSerializable, Cloneable):
+    def __init__(self, role_id: int = None, guild_id: int = None):
+        self.id = role_id
+        self.guild_id = guild_id
+
+    def serialize(self):
+        return dict(rid=self.id, gid=self.guild_id)
+
+    @classmethod
+    def deserialize(cls, value):
+        return cls(value.get("rid"), value.get("gid")) if isinstance(value, dict) else None
+
+    def clone(self):
+        return RoleId(self.id, self.guild_id)
+
+    async def fetch(self):
+        if self.id is None or self.guild_id is None:
+            raise ValueError("id is not set")
+        from dncore.util.instance import get_core
+        client = get_core().connected_client
+        if client is None:
+            raise RuntimeError("Client is not unavailable")
+        guild = await client.fetch_guild(self.guild_id)
+        role = guild.get_role(self.id)
+        if role is None:
+            await guild.fetch_roles()
+            role = guild.get_role(self.id)
+        return role
+
+    async def get(self):
+        if self.id is None or self.guild_id is None:
             return None
         try:
             return await self.fetch()
