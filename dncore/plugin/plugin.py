@@ -381,7 +381,7 @@ class PluginModuleLoader(PluginLoader):
             module_dir = self.module_directory
             info_path = None
             for child in all_iter(module_dir, check=lambda p: not p.is_dir() or p.name != "__pycache__"):
-                if child.name == "plugin.yml":
+                if module_dir / "plugin.yml" == child:
                     info_path = child
                     continue
                 files.append(child)
