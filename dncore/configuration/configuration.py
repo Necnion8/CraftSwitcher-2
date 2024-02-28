@@ -193,7 +193,8 @@ class ConfigValues(ObjectSerializable):
 
             return v_typ, opt
 
-        value_annotations = dict(cls.__annotations__)  # type: dict[str, type]
+        value_annotations = {k: v for k, v in cls.__annotations__.items()
+                             if not k.startswith("_")}  # type: dict[str, type]
         value_defaults = {n: getattr(cls, n)
                           for n in dir(cls)
                           if _v_check(n, getattr(cls, n))}
