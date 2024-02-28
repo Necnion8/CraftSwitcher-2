@@ -380,10 +380,13 @@ class PluginModuleLoader(PluginLoader):
             files = []  # type: list[Path]
             module_dir = self.module_directory
             info_path = None
+            found_init_file = False
             for child in all_iter(module_dir, check=lambda p: not p.is_dir() or p.name != "__pycache__"):
                 if module_dir / "plugin.yml" == child:
                     info_path = child
                     continue
+                elif module_dir / "__init__.py" == child:
+                    found_init_file = True
                 files.append(child)
 
             # search target resources
@@ -410,6 +413,10 @@ class PluginModuleLoader(PluginLoader):
                 else:
                     log.info("- %s", info_path)
                     arc.write(info_path, arcname="plugin.yml")
+
+                if not found_init_file:
+                    log.warning("__init__.py file not exists. writing...")
+                    arc.writestr("__init__.py", b"")
 
             log.info("Pack completed!")
             return plugins_dir / out_name
