@@ -31,7 +31,7 @@ class Argument(SafeList[str]):
                 raise
             return default
 
-        m = re.match(r"^(\d{18})$", num) or re.match(r"^<#(\d{18})>$", num)
+        m = re.match(r"^(\d{18,})$", num) or re.match(r"^<#(\d{18,})>$", num)
         if m is None:
             if default is ...:
                 raise ValueError("not channel mention")
@@ -46,7 +46,7 @@ class Argument(SafeList[str]):
                 raise
             return default
 
-        m = re.match(r"^(\d{18})$", num) or re.match(r"^<@(\d{18})>$", num)
+        m = re.match(r"^(\d{18,})$", num) or re.match(r"^<@(\d{18,})>$", num)
         if m is None:
             if default is ...:
                 raise ValueError("not channel mention")
@@ -61,7 +61,7 @@ class Argument(SafeList[str]):
                 raise
             return default
 
-        m = re.match(r"^(\d{18})$", num) or re.match(r"^<@&(\d{18})>$", num)
+        m = re.match(r"^(\d{18,})$", num) or re.match(r"^<@&(\d{18,})>$", num)
         if m is None:
             if default is ...:
                 raise ValueError("not channel mention")
