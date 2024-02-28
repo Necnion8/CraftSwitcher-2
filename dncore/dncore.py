@@ -335,6 +335,14 @@ class DNCore(object):
         for handler in filter(lambda h: isinstance(h, AppFileLoggerHandler), logger.handlers):
             handler.setLevel(file_level)
 
+        for mod_name, level_name in self.config.logging.modules_level.items():
+            if level_name:
+                level = logging.getLevelName(level_name.upper())
+                if isinstance(level, str):
+                    log.warning(f"Unknown logging level: {level!r} (name: {mod_name})")
+                else:
+                    logging.getLogger(mod_name).setLevel(level)
+
     def register_activities(self):
         self.activity_manager.unregister_activity(owner=self)
         self.conn_act = None

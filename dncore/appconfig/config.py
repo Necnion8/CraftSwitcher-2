@@ -6,6 +6,9 @@ from dncore.configuration.files import FileConfigValues
 class LoggingSection(ConfigValues):
     print_level = "info"
     file_level = "info"
+    # モジュールのログレベル
+    # dnCoreプラグインは dncore.extensions.(pluginId) で指定できます
+    modules_level: dict[str, str]
 
 
 class ActivitySection(ConfigValues):
