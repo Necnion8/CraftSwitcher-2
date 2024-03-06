@@ -13,6 +13,7 @@ from dncore.command import DEFAULT_OWNER_GROUP, CommandContext, oncommand, Comma
 from dncore.command.errors import CommandUsageError
 from dncore.discord.events import *
 from dncore.event import EventListener, onevent
+from dncore.events import PreShutdownEvent
 from dncore.plugin import PluginZipFileLoader, PluginModuleLoader, PluginManager, PluginInfo, sorted_plugins
 from dncore.plugin.errors import PluginException, PluginOperationError
 from dncore.util import safe_format
@@ -291,6 +292,9 @@ class DNCoreCommands(EventListener):
         {command}
         ボットを停止します
         """
+        if not await self._ask_confirm_shutdown(ctx):
+            return
+
         m = await ctx.send_warn(self.lang.shutdown.shutdown)
         await ctx.delete_requests()
 
@@ -307,6 +311,9 @@ class DNCoreCommands(EventListener):
         {command}
         ボットを再起動します
         """
+        if not await self._ask_confirm_shutdown(ctx):
+            return
+
         m = await ctx.send_warn(self.lang.shutdown.restarting)
         await ctx.delete_requests()
 
@@ -757,6 +764,51 @@ class DNCoreCommands(EventListener):
 
         ctx = event.context
         await ctx.send_info(event.command.format_usage(s, ctx.prefix))
+
+    async def _ask_confirm_shutdown(self, ctx: CommandContext, *, timeout=10):
+        """
+        PreShutdownEventを実行し、シャットダウンを確認する必要があるプラグインをチェックします。
+
+        タスクがないか、timeoutで指定された時間が経過するまでに実行者の yes が確認されると True を返します。
+        """
+        pre_event = PreShutdownEvent()
+        await call_event(pre_event)
+        if pre_event.messages:
+            ctx.interactive = True
+            ctx.delete_response = False
+
+            tasks = self.lang.shutdown.task_pending_format_split.join(
+                self.lang.shutdown.task_pending_format.format(plugin=owner.info.name, message=message)
+                for owner, message in pre_event.messages.items()
+            )
+            await ctx.send_warn(self.lang.shutdown.task_pending, args=dict(
+                count=len(pre_event.messages),
+                tasks=tasks,
+                timeout=timeout,
+            ))
+
+            def check(_m: discord.Message):
+                return _m.author == ctx.author and _m.channel == ctx.channel
+
+            try:
+                msg = await ctx.client.wait_for("message", check=check, timeout=timeout)
+            except asyncio.TimeoutError:
+                ctx.delete()
+                ctx.delete_requests()
+                return False
+
+            if msg.content.lower() in (
+                    "y", "yes", "confirm", "ok",
+                    "n", "no", "cancel",
+            ):
+                run_coroutine(msg.delete(), (discord.HTTPException,))
+
+            if msg.content.lower() not in ("y", "yes", "confirm", "ok"):
+                ctx.delete()
+                ctx.delete_requests()
+                return False
+
+        return True
 
     # guild setting
 

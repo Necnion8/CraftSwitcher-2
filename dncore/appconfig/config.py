@@ -100,6 +100,11 @@ class ShutdownCommandSection(ConfigValues):
     shutdown = Embed(":zzz: ボットを停止します")
     restarting = Embed(":recycle: 再起動しています･･･")
     restarted = Embed(":+1: 再起動が完了しました！")
+    task_pending = Embed(":warning: 以下のタスクが実行中です\n\n"
+                         "{tasks}\n\n"
+                         "続行するには **`Y`** を送信してください。")
+    task_pending_format = "- {plugin} ･･･ {message}"
+    task_pending_format_split = "\n"
 
 
 class Messages(ConfigValues):
