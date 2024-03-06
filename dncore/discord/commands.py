@@ -13,7 +13,7 @@ from dncore.command import DEFAULT_OWNER_GROUP, CommandContext, oncommand, Comma
 from dncore.command.errors import CommandUsageError
 from dncore.discord.events import *
 from dncore.event import EventListener, onevent
-from dncore.plugin import PluginZipFileLoader, PluginModuleLoader, PluginManager
+from dncore.plugin import PluginZipFileLoader, PluginModuleLoader, PluginManager, PluginInfo, sorted_plugins
 from dncore.plugin.errors import PluginException, PluginOperationError
 from dncore.util import safe_format
 from dncore.util.instance import get_core, call_event, run_coroutine
@@ -579,7 +579,7 @@ class DNCoreCommands(EventListener):
                     return Embed.error(":grey_exclamation: プラグイン情報をロードできませんでした。")
 
             else:  # name search
-                info = loader = None
+                _search_info = []  # type: list[PluginInfo]
                 for child in plmgr.plugins_directory.iterdir():
                     if not child.is_file() or not child.name.endswith(".dcp"):
                         continue
@@ -590,18 +590,19 @@ class DNCoreCommands(EventListener):
                         continue
 
                     if _filename.lower() == _info.name.lower():
-                        info = _info
-                        break
+                        _search_info.append(_info)
 
-                if not info or not loader:
+                if not _search_info:
                     return Embed.error(":grey_exclamation: プラグインファイルが見つかりません。")
+
+                info = sorted_plugins(_search_info)[0]
 
             if info.name.lower() in plmgr.plugins:
                 return Embed.warn(f":grey_exclamation: {info.name}プラグインは既にロードされています。")
 
             try:
                 async with ctx.typing():
-                    info = await plmgr.load_plugin(loader, info)
+                    info = await plmgr.load_plugin(info.loader, info)
                     if not info:
                         raise PluginOperationError("Failed to load info")
                     res = await plmgr.enable_plugin(info)
