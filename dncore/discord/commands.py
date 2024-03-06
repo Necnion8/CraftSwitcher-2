@@ -499,7 +499,7 @@ class DNCoreCommands(EventListener):
 
             if res:
                 cmdmgr.remap()
-                return Embed.info(f":jigsaw: {plugin.name} を有効化しました。")
+                return Embed.info(f":jigsaw: {plugin.name} v{plugin.version} を有効化しました。")
             else:
                 return Embed.error(f":exclamation: {plugin.name} の処理中にエラーが発生しました。")
 
@@ -522,7 +522,7 @@ class DNCoreCommands(EventListener):
                 return Embed.error(f":exclamation: エラー: {e}")
 
             if res:
-                return Embed.info(f":jigsaw: {plugin.name} を無効化しました。")
+                return Embed.info(f":jigsaw: {plugin.name} v{plugin.version} を無効化しました。")
             else:
                 return Embed.error(f":exclamation: {plugin.name} の処理中にエラーが発生しました。")
 
@@ -543,14 +543,14 @@ class DNCoreCommands(EventListener):
                 return Embed.error(f":exclamation: エラー: {e}")
 
             if not info:
-                return Embed.error(f":exclamation: {plugin.name} を再ロードできませんでした。")
+                return Embed.error(f":exclamation: {plugin.name} v{plugin.version} を再ロードできませんでした。")
 
             elif not info.enabled:
-                return Embed.error(f":exclamation: {plugin.name} を再有効化できませんでした。")
+                return Embed.error(f":exclamation: {plugin.name} v{plugin.version} を再有効化できませんでした。")
 
             else:
                 cmdmgr.remap()
-                return Embed.info(f":jigsaw: {plugin.name} を再有効化しました。")
+                return Embed.info(f":jigsaw: {plugin.name} v{plugin.version} を再有効化しました。")
 
         elif mode in ("pml", "pmload"):
             args = ctx.arguments
@@ -618,7 +618,7 @@ class DNCoreCommands(EventListener):
                 return Embed.error(f":exclamation: エラー: {e}")
 
             if res:
-                return Embed.info(f":jigsaw: {info.name} をロードし、有効化しました。")
+                return Embed.info(f":jigsaw: {info.name} v{info.version} をロードし、有効化しました。")
             else:
                 return Embed.error(f":exclamation: {info.name} を有効化できませんでした。")
 
@@ -641,7 +641,7 @@ class DNCoreCommands(EventListener):
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
 
-            return Embed.info(f":jigsaw: {plugin.name} をアンロードしました。")
+            return Embed.info(f":jigsaw: {plugin.name} v{plugin.version} をアンロードしました。")
 
         elif mode == "pm2p":
             try:
