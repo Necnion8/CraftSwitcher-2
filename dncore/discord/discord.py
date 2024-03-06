@@ -115,9 +115,16 @@ class DiscordClient(discord.Client):
             e = await call_event(CommandEmptyNameMessageEvent(message, prefix))
             if not e.cancelled:
                 reaction = self.m.command_empty_name.reaction
+                config = get_core().config.discord.auto_clean  # type: CleanSection
+                if config.delete_request and 0 < config.auto_clean_delay_with_unknown_command:
+                    self.clean_auto(message, config.auto_clean_delay_with_unknown_command)
+
                 if isinstance(reaction, Embed):
                     reaction = Embed.error(reaction.format(None))
-                    run_coroutine(message.channel.send(embed=reaction), (discord.HTTPException,))
+                    delete_after = None
+                    if config.delete_response and 0 < config.auto_clean_delay_with_unknown_command:
+                        delete_after = config.auto_clean_delay_with_unknown_command
+                    run_coroutine(message.channel.send(embed=reaction, delete_after=delete_after), (discord.HTTPException,))
                 elif isinstance(reaction, Emoji):
                     run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
             return
@@ -134,9 +141,16 @@ class DiscordClient(discord.Client):
             e = await call_event(CommandUnknownMessageEvent(message, prefix, execute_name, args))
             if not e.cancelled:
                 reaction = self.m.command_unknown_error.reaction
+                config = get_core().config.discord.auto_clean  # type: CleanSection
+                if config.delete_request and 0 < config.auto_clean_delay_with_unknown_command:
+                    self.clean_auto(message, config.auto_clean_delay_with_unknown_command)
+
                 if isinstance(reaction, Embed):
                     reaction = Embed.error(reaction.format(None))
-                    run_coroutine(message.channel.send(embed=reaction), (discord.HTTPException,))
+                    delete_after = None
+                    if config.delete_response and 0 < config.auto_clean_delay_with_unknown_command:
+                        delete_after = config.auto_clean_delay_with_unknown_command
+                    run_coroutine(message.channel.send(embed=reaction, delete_after=delete_after), (discord.HTTPException,))
                 elif isinstance(reaction, Emoji):
                     run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
             return

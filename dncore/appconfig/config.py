@@ -29,6 +29,8 @@ class CleanSection(ConfigValues):
     auto_clean_delay: int | None = 120
     # 実行メッセージを自動的に削除するまでの時間 (秒) (実行エラー時)
     auto_clean_delay_with_error: int | None = 30
+    # 実行メッセージを自動的に削除するまでの時間 (秒) (不明なコマンド)
+    auto_clean_delay_with_unknown_command: int | None = 30
     # 実行した送信者メッセージを自動削除する
     delete_request = True
     # コマンドメッセージを自動削除する
