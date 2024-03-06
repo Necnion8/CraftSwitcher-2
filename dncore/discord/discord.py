@@ -391,6 +391,8 @@ class DiscordClient(discord.Client):
         if not usage:
             return await context.send_warn(m.no_usage)
 
+        aliases = sorted(alias for alias, name in self.commands.aliases.items() if command.name == name)
+
         if m.enable_usage_format:
             embed = m.usage_format.format(dict(
                 name=command.name,
@@ -399,6 +401,9 @@ class DiscordClient(discord.Client):
             ))
         else:
             embed = command.format_usage(usage_text=usage, command_prefix=context.prefix)
+
+        if aliases:
+            embed.add_field(name="別名:", value="`" + "`, `".join(aliases) + "`", inline=False)
 
         return await context.send_info(embed)
 
