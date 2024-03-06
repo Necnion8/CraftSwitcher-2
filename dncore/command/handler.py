@@ -138,6 +138,7 @@ class CommandContext(MessageSender):
         self.client = client
         self.me = client.user  # type: discord.abc.ClientUser
         self.content = message.content  # type: str
+        self.args_content = self.content[len(self.prefix + self.execute_name) + 1:]
         self.command = command  # type: CommandHandler
         self.message = message  # type: discord.Message
         self.channel = message.channel  # type: MessageableChannel

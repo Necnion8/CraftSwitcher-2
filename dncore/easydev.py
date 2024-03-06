@@ -50,8 +50,7 @@ class ExamplePlugin(Plugin):
             await ctx.channel.send(content="こんにちは！")
 
         else:
-            content = ctx.content[len(ctx.prefix + ctx.execute_name)+1:]
-            await ctx.channel.send(content=content)
+            await ctx.channel.send(content=ctx.args_content)
 
 #
 #
