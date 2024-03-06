@@ -5,7 +5,7 @@ import discord.abc
 from aiohttp import ClientResponse
 
 from dncore.abc.serializables import Embed, Emoji
-from dncore.appconfig.config import DiscordSection
+from dncore.appconfig.config import DiscordSection, CleanSection
 from dncore.command import CommandContext, CommandHandler, DEFAULT_GUILD_OWNER_GROUP, DEFAULT_DEFAULT_GROUP
 from dncore.command.argument import Argument
 from dncore.command.errors import *
@@ -384,6 +384,20 @@ class DiscordClient(discord.Client):
             embed = command.format_usage(usage_text=usage, command_prefix=context.prefix)
 
         return await context.send_info(embed)
+
+    def clean_auto(self, message: discord.Message, delay: float = None, *, is_error=False):
+        """
+        指定された message をdnCoreの自動削除設定に従い削除します。
+
+        delay を指定すると、dnCoreの設定に関わらず指定時間後に削除します。
+        """
+        config = get_core().config.discord.auto_clean  # type: CleanSection
+
+        config_auto_clean_delay = config.auto_clean_delay_with_error if is_error else config.auto_clean_delay
+        delay = config_auto_clean_delay if delay is None else delay
+        delay = max(0, delay)
+
+        return run_coroutine(message.delete(delay=delay), ignores=(discord.HTTPException,))
 
     # overrides
 
