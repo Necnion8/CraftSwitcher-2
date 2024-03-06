@@ -11,6 +11,7 @@ from dncore.command.argument import Argument
 from dncore.command.errors import *
 from dncore.command.events import *
 from dncore.discord.events import EVENTS, DiscordGenericEvent, HelpCommandPreExecuteEvent
+from dncore.discord.overrides import replace_overrides
 from dncore.util import traceback_simple_format, safe_format
 from dncore.util.discord import get_intent_names
 from dncore.util.instance import get_core, call_event, run_coroutine
@@ -22,6 +23,8 @@ CHANNEL_TYPES = discord.abc.GuildChannel | discord.abc.PrivateChannel | discord.
 # noinspection PyMethodMayBeStatic
 class DiscordClient(discord.Client):
     def __init__(self, loop: AbstractEventLoop, config: DiscordSection, **options):
+        replace_overrides()
+
         self.loop = loop
         self.config = config
 
