@@ -40,6 +40,7 @@ class CommandExceptionEvent(Event, Cancellable, CommandEvent):
     def __init__(self, context: CommandContext, error: CommandError, exception: Exception | None):
         self.context = context
         self.error = error
+        self.command = context.command
         self.exception = exception
 
 
