@@ -165,10 +165,10 @@ class CommandContext(MessageSender):
     def args(self):
         return Argument(self.orig_args)
 
-    def clean_auto(self, *, error=False):
+    def clean_auto(self, *, error=False, force=False):
         config = get_core().config.discord.auto_clean
 
-        if self.clean_message:
+        if force or self.clean_message:
             config_auto_clean_delay = config.auto_clean_delay_with_error if error else config.auto_clean_delay
             delay = config_auto_clean_delay if self.delete_delay is None else self.delete_delay
             delay = max(0, delay)

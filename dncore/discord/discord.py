@@ -333,7 +333,7 @@ class DiscordClient(discord.Client):
         elif isinstance(reaction, Emoji):
             run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
 
-        context.clean_auto(error=True)
+        context.clean_auto(error=True, force=True)
 
         if report:
             try:
