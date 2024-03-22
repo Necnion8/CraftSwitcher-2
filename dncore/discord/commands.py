@@ -826,13 +826,26 @@ class DNCoreCommands(EventListener):
         channel_list_mode = "禁止チャンネル" if blacklist_mode else "許可チャンネル"
         channel_names = " ".join(f"<#{ch_id}>" for ch_id in channel_ids)
 
+        icon = SettingInfoCommandPreExecuteEvent.LINE_ICON
         description_lines = [
-            f":white_small_square: カスタムプレフィックス: {prefix_text}",
-            f":white_small_square: {channel_list_mode}: {channel_names}",
+            f"{icon} カスタムプレフィックス: {prefix_text}",
+            f"{icon} {channel_list_mode}: {channel_names}",
         ]
 
         embed = discord.Embed(title=f":wrench: ギルド設定 :wrench:",
                               description="\n".join(description_lines))
+
+        pre_event = SettingInfoCommandPreExecuteEvent(ctx, embed)
+        await call_event(pre_event)
+
+        if pre_event.override_embed is not None:
+            embed = pre_event.override_embed
+
+        elif pre_event.extra:
+            for lines in pre_event.extra.values():
+                description_lines.extend(lines)
+            embed.description = "\n".join(description_lines)
+
         return Embed.info(embed)
 
     async def _set_prefix(self, ctx: CommandContext):

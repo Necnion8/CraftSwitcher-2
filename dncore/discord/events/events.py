@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 __all__ = ["DiscordInitializeEvent", "DiscordClosingEvent",
            "DebugCommandPreExecuteEvent", "HelpCommandPreExecuteEvent",
-           "PreShutdownEvent",
+           "PreShutdownEvent", "SettingInfoCommandPreExecuteEvent",
            ]
 
 
@@ -63,3 +63,51 @@ class PreShutdownEvent(Event):
     @property
     def messages(self):
         return self._worker_messages
+
+
+class SettingInfoCommandPreExecuteEvent(Event):
+    LINE_TITLE_ICON = ":small_orange_diamond:"
+    LINE_ICON = ":white_small_square:"
+
+    def __init__(self, ctx: CommandContext, embed: discord.Embed):
+        self.context = ctx
+        self.__embed = embed
+        self.extra = {}  # type: dict[Plugin, list[str]]
+        self._override_embed = None  # type: discord.Embed | None
+
+    @property
+    def embed(self):
+        return self.__embed
+
+    @property
+    def override_embed(self):
+        return self._override_embed
+
+    @override_embed.setter
+    def override_embed(self, embed: discord.Embed):
+        """
+        最終的な :class:`discord.Embed` を上書きします
+        """
+        self._override_embed = embed
+
+    def add_line(self, owner: "Plugin", line: str):
+        try:
+            lines = self.extra[owner]
+        except KeyError:
+            lines = self.extra[owner] = list()
+
+        lines.append(line)
+
+    def add_lines(self, owner: "Plugin", lines: list[str]):
+        try:
+            _lines = self.extra[owner]
+        except KeyError:
+            _lines = self.extra[owner] = list()
+
+        _lines.extend(lines)
+
+    def get_lines(self, owner: "Plugin") -> list[str] | None:
+        try:
+            return self.extra[owner]
+        except KeyError:
+            return None
