@@ -249,9 +249,7 @@ class Plugin(EventListener):
         try:
             await self.on_disable()
         finally:
-            if isinstance(self, EventListener):
-                # noinspection PyUnresolvedReferences
-                self.unregister_listener(self)
+            self.unregister_listener(listener=None)
             self.unregister_commands()
             self.unregister_activity(None)
 
