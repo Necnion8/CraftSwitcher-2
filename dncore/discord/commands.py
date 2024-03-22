@@ -13,7 +13,6 @@ from dncore.command import DEFAULT_OWNER_GROUP, CommandContext, oncommand, Comma
 from dncore.command.errors import CommandUsageError
 from dncore.discord.events import *
 from dncore.event import EventListener, onevent
-from dncore.events import PreShutdownEvent
 from dncore.plugin import PluginZipFileLoader, PluginModuleLoader, PluginManager, PluginInfo, sorted_plugins
 from dncore.plugin.errors import PluginException, PluginOperationError
 from dncore.util import safe_format

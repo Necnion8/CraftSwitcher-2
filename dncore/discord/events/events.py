@@ -8,9 +8,11 @@ from dncore.event import Event, Cancellable
 
 if TYPE_CHECKING:
     from dncore.discord import DiscordClient
+    from dncore.plugin import Plugin
 
 __all__ = ["DiscordInitializeEvent", "DiscordClosingEvent",
            "DebugCommandPreExecuteEvent", "HelpCommandPreExecuteEvent",
+           "PreShutdownEvent",
            ]
 
 
@@ -46,3 +48,18 @@ class HelpCommandPreExecuteEvent(Event, Cancellable):
         self.command = command
         self.name = name
         self.args = args
+
+
+class PreShutdownEvent(Event):
+    def __init__(self):
+        self._worker_messages = {}  # type: dict[Plugin, str]
+
+    def set_message(self, owner: "Plugin", message: str):
+        self._worker_messages[owner] = message
+
+    def clear_message(self, owner: "Plugin"):
+        self._worker_messages.pop(owner, None)
+
+    @property
+    def messages(self):
+        return self._worker_messages
