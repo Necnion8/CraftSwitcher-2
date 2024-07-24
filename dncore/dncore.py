@@ -28,8 +28,8 @@ from dncore.plugin import PluginManager, Plugin, PluginInfo
 from dncore.util.instance import call_event
 from dncore.util.logger import DaysRotatingFileHandler, PackageNameInserter, RedirectStream, get_caller_logger
 
-__version__ = "6.0.2"
-__date__ = "2023/01/14"
+__version__ = "6.1.0"
+__date__ = "2024/07/24"
 version_info = Version.parse(__version__ + "/" + __date__[2:].replace("/", ""))
 __all__ = ["DNCore", "__version__", "__date__", "version_info", "DNCoreAPI"]
 log = logging.getLogger(__name__)
