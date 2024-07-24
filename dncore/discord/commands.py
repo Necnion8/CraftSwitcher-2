@@ -612,6 +612,8 @@ class DNCoreCommands(EventListener):
                     if not info:
                         raise PluginOperationError("Failed to load info")
                     res = await plmgr.enable_plugin(info)
+                    if res:
+                        cmdmgr.remap()
 
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
