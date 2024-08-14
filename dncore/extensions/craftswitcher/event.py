@@ -1,6 +1,10 @@
+from typing import TYPE_CHECKING
+
 from dncore.event import Event, Cancellable
 from dncore.extensions.craftswitcher.abc import ServerState
-from dncore.extensions.craftswitcher.serverprocess import ServerProcess
+
+if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher.serverprocess import ServerProcess
 
 __all__ = [
     "ServerEvent",
@@ -11,12 +15,12 @@ __all__ = [
 
 
 class ServerEvent:
-    def __init__(self, server: ServerProcess):
+    def __init__(self, server: "ServerProcess"):
         self.server = server
 
 
 class ServerChangeStateEvent(Event, ServerEvent):
-    def __init__(self, server: ServerProcess, old_state: ServerState):
+    def __init__(self, server: "ServerProcess", old_state: ServerState):
         super().__init__(server=server)
         self.old_state = old_state
 
@@ -35,7 +39,7 @@ class ServerPreStartEvent(Event, ServerEvent, Cancellable):
 
 
 class ServerLaunchOptionBuildEvent(Event, ServerEvent):
-    def __init__(self, server: ServerProcess, args: list[str], *, is_generated: bool):
+    def __init__(self, server: "ServerProcess", args: list[str], *, is_generated: bool):
         super().__init__(server=server)
         self.args = list(args)
         self.__orig_args = args

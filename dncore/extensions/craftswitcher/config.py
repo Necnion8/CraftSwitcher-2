@@ -7,7 +7,7 @@ from dncore.extensions.craftswitcher.abc import ServerType
 
 class LaunchOption(ConfigValues):
     # Javaコマンド、もしくはパス
-    java_executable: str
+    java_executable: str | None
     # Java オプション
     java_options: str | None
     # Jarファイルパス
@@ -28,7 +28,7 @@ class ServerConfig(FileConfigValues):
     name: str | None
 
     # サーバーの種類
-    type: ServerType
+    type: ServerType = ServerType.UNKNOWN
 
     # # 作業ディレクトリ
     # directory: str
@@ -54,7 +54,7 @@ class ServerConfig(FileConfigValues):
 
 class LaunchGlobalOption(ConfigValues):
     # Javaコマンド、もしくはパス
-    java_executable: str | None
+    java_executable = "java"
     # Java オプション
     java_options = "-Dfile.encoding=UTF-8"
     # サーバーオプション
@@ -91,7 +91,7 @@ class SwitcherConfig(FileConfigValues):
     java_executables: list[JavaExecutable]
 
     # Javaを自動検出するディレクトリ
-    java_auto_detect_locations = [
+    java_auto_detect_locations: list[str] = [
         "/usr/lib/jvm",
         "C:\\Program Files\\Java",
     ]

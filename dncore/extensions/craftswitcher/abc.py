@@ -49,6 +49,10 @@ class ServerType(Enum):
     def _missing_(cls, value):
         return cls.UNKNOWN
 
+    @classmethod
+    def defaults(cls):
+        return cls.UNKNOWN
+
 
 class SystemMemoryInfo(NamedTuple):
     total_bytes: int

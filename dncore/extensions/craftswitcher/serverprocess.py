@@ -24,7 +24,10 @@ class ServerProcess(object):
 
             @property
             def java_executable(self):
-                return self._config.java_executable
+                return [
+                    self._config.java_executable,
+                    self._global_config.java_executable,
+                ][self._config.java_executable is None]
 
             @property
             def java_options(self):
@@ -147,7 +150,10 @@ class ServerProcess(object):
 
     @property
     def state(self):
-        if not self._is_running:
+        if self._is_running:
+            if self._state is ServerState.STOPPED:
+                self.log.warning("Process is running but is marked as stopped. (bug?)")
+        else:
             return ServerState.STOPPED
         return self._state
 
@@ -156,9 +162,10 @@ class ServerProcess(object):
         if not self._is_running and value.is_running:
             raise ValueError(f"Invalid state ({value.name}): process is not running")
 
-        self._state = value
         if value is self.state:
+            self._state = value
             return
+        self._state = value
         self.log.info(f"Change state to {value} ({self.id})")
         call_event(ServerChangeStateEvent(self, value))
 
@@ -173,8 +180,8 @@ class ServerProcess(object):
         jar_max = self.config.launch_option.max_heap_memory
 
         mem = system_memory()
-        mem_available = mem.available / (1024 ** 2)
-        mem_total = mem.total / (1024 ** 2)
+        mem_available = mem.available_bytes / (1024 ** 2)
+        mem_total = mem.total_bytes / (1024 ** 2)
         required = jar_max * 1.25 + mem_total * 0.125
         self.log.debug(f"Memory check -> Available:{round(mem_available, 1):,}MB, Require:{round(required, 1):,}MB")
         return mem_available > required
@@ -182,7 +189,7 @@ class ServerProcess(object):
     async def _process_read_loop(self, process: subprocess.Process, reader: asyncio.StreamReader):
         try:
             while line := await reader.readline():
-                line = line.lstrip()
+                line = line.rstrip()
                 self.log.info(f"[OUTPUT] %s", line.decode("utf-8"))
         finally:
             await process.wait()
@@ -234,7 +241,6 @@ class ServerProcess(object):
 
             p = self._process = await subprocess.create_subprocess_exec(
                 args.pop(0), *args,
-                loop=self.loop,
                 cwd=self.directory,
                 start_new_session=True,
                 stdin=subprocess.PIPE,
@@ -268,7 +274,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Sending command to {self.id} server: {command}")
-        self._process.stdin.write(command.encode("utf-8"))
+        self._process.stdin.write(command.encode("utf-8") + b"\n")
         await self._process.stdin.drain()
 
     async def stop(self):
