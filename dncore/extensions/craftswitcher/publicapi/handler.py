@@ -85,3 +85,24 @@ class APIHandler(object):
                 raise HTTPException(status_code=400, detail="Server is processing")
 
             return model.OperationResult(result=True)
+
+        @api.post(
+            "/server/{server_id}/restart",
+            tags=tags,
+            summary="サーバーを再起動",
+            description="サーバーを再起動します",
+        )
+        async def _restart(server_id: str) -> model.OperationResult:
+            try:
+                server = servers[server_id.lower()]
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Server not found")
+
+            try:
+                await server.restart()
+            except errors.NotRunningError:
+                raise HTTPException(status_code=400, detail="Not running")
+            except errors.ServerProcessingError:
+                raise HTTPException(status_code=400, detail="Server is processing")
+
+            return model.OperationResult(result=True)

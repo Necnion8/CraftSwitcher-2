@@ -19,10 +19,14 @@ class CraftSwitcherPlugin(Plugin):
         return self.switcher.servers
 
     async def on_enable(self):
+        self.register_listener(self.switcher)
         await self.switcher.init()
 
     async def on_disable(self):
-        await self.switcher.shutdown()
+        try:
+            await self.switcher.shutdown()
+        finally:
+            self.unregister_listener(self.switcher)
 
     @onevent()
     async def on_debug(self, event: DebugCommandPreExecuteEvent):

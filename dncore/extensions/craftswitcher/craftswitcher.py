@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 
+from dncore.event import EventListener, onevent
+from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
+from .event import ServerChangeStateEvent
 from .serverprocess import ServerProcessList, ServerProcess
 from .publicapi import UvicornServer, APIHandler
 
@@ -16,7 +19,7 @@ log = getLogger(__name__)
 __version__ = "2.0.0"
 
 
-class CraftSwitcher(object):
+class CraftSwitcher(EventListener):
     _inst: "CraftSwitcher"
     SERVER_CONFIG_FILE_NAME = "swi.server.yml"
 
@@ -157,6 +160,20 @@ class CraftSwitcher(object):
 
         finally:
             self.unload_servers()
+
+    # events
+
+    @onevent(monitor=True)
+    async def on_change_state(self, event: ServerChangeStateEvent):
+        server = event.server
+
+        # restart flag
+        if server.shutdown_to_restart and server.state is ServerState.STOPPED:
+            delay = 1
+            log.info("Restart %s server after %s seconds", server.id, delay)
+            await asyncio.sleep(delay)
+            server.shutdown_to_restart = False
+            await server.start()
 
 
 def getinst() -> "CraftSwitcher":

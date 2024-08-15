@@ -139,6 +139,8 @@ class ServerProcess(object):
         self._process = None  # type: subprocess.Process | None
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
         self._process_read_loop_task = None  # type: asyncio.Task | None
+        #
+        self.shutdown_to_restart = False
 
     @property
     def process(self):
@@ -310,6 +312,10 @@ class ServerProcess(object):
 
             if timeout and (time.time() - start_at) > timeout:
                 raise asyncio.TimeoutError
+
+    async def restart(self):
+        await self.stop()
+        self.shutdown_to_restart = True
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):
