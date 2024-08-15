@@ -164,8 +164,7 @@ class ServerProcess(object):
         if not self._is_running and value.is_running:
             raise ValueError(f"Invalid state ({value.name}): process is not running")
 
-        if value is self.state:
-            self._state = value
+        if value is self._state:
             return
         self._state = value
         self.log.info(f"Change state to {value} ({self.id})")
