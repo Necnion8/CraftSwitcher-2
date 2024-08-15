@@ -27,7 +27,7 @@ class CraftSwitcher(object):
         # api
         api = FastAPI(
             title="CraftSwitcher",
-            version=plugin_info.version.numbers if plugin_info else __version__,
+            version=str(plugin_info.version.numbers) if plugin_info else __version__,
         )
 
         @api.on_event("startup")

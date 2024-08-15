@@ -8,7 +8,7 @@ class CraftSwitcherPlugin(Plugin):
     def __init__(self):
         # config_path = DNCoreAPI.core().config_dir / "switcher.yml"
         config_path = self.data_dir / "config.yml"
-        self.switcher = CraftSwitcher(self.loop, config_path)
+        self.switcher = CraftSwitcher(self.loop, config_path, plugin_info=self.info)
 
     @property
     def config(self):
