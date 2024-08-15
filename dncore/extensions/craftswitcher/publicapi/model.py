@@ -34,3 +34,7 @@ class Server(BaseModel):
             directory=directory,
             is_loaded=False,
         )
+
+
+class OperationResult(BaseModel):
+    result: bool
