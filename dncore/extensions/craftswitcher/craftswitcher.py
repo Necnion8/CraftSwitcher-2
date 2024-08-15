@@ -103,13 +103,13 @@ class CraftSwitcher(EventListener):
 
         if self.servers:
             log.info("Shutdown server all!")
-            await asyncio.wait([_shutdown(s) for s in self.servers.values()])
+            await asyncio.wait([_shutdown(s) for s in self.servers.values() if s])
 
     def unload_servers(self):
         if not self.servers:
             return
 
-        if any(s.state.is_running for s in self.servers.values()):
+        if any(s.state.is_running for s in self.servers.values() if s):
             raise ValueError("Contains not stopped server")
 
         self.servers.clear()
