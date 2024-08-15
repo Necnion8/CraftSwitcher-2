@@ -1,11 +1,14 @@
 import asyncio
 import platform
-from typing import TypeVar
+from typing import TypeVar, TYPE_CHECKING
 
 import psutil
 
 from dncore import DNCoreAPI
 from dncore.extensions.craftswitcher.abc import SystemMemoryInfo, ProcessInfo
+
+if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher import CraftSwitcher
 
 T = TypeVar("T")
 IS_WINDOWS = platform.system() == "Windows"
@@ -13,6 +16,7 @@ __all__ = [
     "call_event",
     "system_memory",
     "ProcessPerformanceMonitor",
+    "getinst",
 ]
 
 
@@ -40,3 +44,11 @@ class ProcessPerformanceMonitor(object):
             memory_used_size=mem.rss,
             memory_used_total_size=mem.vms,
         )
+
+
+def getinst() -> "CraftSwitcher":
+    from dncore.extensions.craftswitcher import CraftSwitcher
+    try:
+        return CraftSwitcher._inst
+    except AttributeError:
+        raise RuntimeError("CraftSwitcher is not instanced")

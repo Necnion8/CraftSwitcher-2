@@ -80,6 +80,11 @@ class JavaExecutable(ConfigValues):
     executable: str
 
 
+class PublicApiServer(ConfigValues):
+    bind_host = "0.0.0.0"
+    bind_port = 8080
+
+
 class SwitcherConfig(FileConfigValues):
     # サーバーリスト (key: サーバーID、val: サーバー場所)
     servers: dict[str, str]
@@ -99,3 +104,5 @@ class SwitcherConfig(FileConfigValues):
     # コンソールログをメモリに保持する行数 (サーバーごと)
     max_console_lines_in_memory = 10_000
 
+    # APIサーバー
+    api_server: PublicApiServer

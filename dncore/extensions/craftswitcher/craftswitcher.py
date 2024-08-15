@@ -1,21 +1,45 @@
 import asyncio
 from logging import getLogger
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from dncore.extensions.craftswitcher.config import SwitcherConfig, ServerConfig
-from dncore.extensions.craftswitcher.serverprocess import ServerProcessList, ServerProcess
+from fastapi import FastAPI
+
+from .config import SwitcherConfig, ServerConfig
+from .serverprocess import ServerProcessList, ServerProcess
+from .publicapi import UvicornServer, APIHandler
+
+if TYPE_CHECKING:
+    from dncore.plugin import PluginInfo
 
 log = getLogger(__name__)
+__version__ = "2.0.0"
 
 
 class CraftSwitcher(object):
     _inst: "CraftSwitcher"
     SERVER_CONFIG_FILE_NAME = "swi.server.yml"
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path):
+    def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *, plugin_info: "PluginInfo" = None):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
         self.servers = ServerProcessList()
+        # api
+        api = FastAPI(
+            title="CraftSwitcher",
+            version=plugin_info.version.numbers if plugin_info else __version__,
+        )
+
+        @api.on_event("startup")
+        async def _startup():
+            for log_name in ("uvicorn", "uvicorn.access"):
+                _log = getLogger(log_name)
+                _log.handlers.clear()
+                for handler in getLogger("dncore").handlers:
+                    _log.addHandler(handler)
+
+        self.api_server = UvicornServer()
+        self.api_handler = APIHandler(self, api)
         #
         self._initialized = False
 
@@ -87,6 +111,24 @@ class CraftSwitcher(object):
 
         self.servers.clear()
 
+    # public api
+
+    async def start_api_server(self):
+        config = self.config.api_server
+        try:
+            await self.api_server.start(
+                self.api_handler.router,
+                host=config.bind_host,
+                port=config.bind_port,
+            )
+        except RuntimeError as e:
+            log.warning(f"Failed to start api server: {e}")
+
+    async def close_api_server(self):
+        await self.api_server.shutdown()
+
+    #
+
     async def init(self):
         if self._initialized:
             raise RuntimeError("Already initialized")
@@ -97,6 +139,7 @@ class CraftSwitcher(object):
 
         self.load_config()
         self.load_servers()
+        await self.start_api_server()
 
     async def shutdown(self):
         if not self._initialized:
@@ -108,8 +151,12 @@ class CraftSwitcher(object):
             pass
         self._initialized = False
 
-        await self.shutdown_all_servers()
-        self.unload_servers()
+        try:
+            await self.shutdown_all_servers()
+            await self.close_api_server()
+
+        finally:
+            self.unload_servers()
 
 
 def getinst() -> "CraftSwitcher":

@@ -328,7 +328,7 @@ class ServerProcessList(dict[str, ServerProcess | None]):
         else:
             return self.pop(server, None)
 
-    def get(self, name: str) -> ServerProcess | None:
-        if name is None:
+    def get(self, server_id: str) -> ServerProcess | None:
+        if server_id is None:
             return None
-        return dict.get(self, name.lower())
+        return dict.get(self, server_id.lower())
