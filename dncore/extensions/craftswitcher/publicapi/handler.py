@@ -106,3 +106,22 @@ class APIHandler(object):
                 raise HTTPException(status_code=400, detail="Server is processing")
 
             return model.OperationResult(result=True)
+
+        @api.post(
+            "/server/{server_id}/kill",
+            tags=tags,
+            summary="サーバーを強制終了",
+            description="サーバーを強制終了します",
+        )
+        async def _kill(server_id: str) -> model.OperationResult:
+            try:
+                server = servers[server_id.lower()]
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Server not found")
+
+            try:
+                await server.kill()
+            except errors.NotRunningError:
+                raise HTTPException(status_code=400, detail="Not running")
+
+            return model.OperationResult(result=True)
