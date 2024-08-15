@@ -290,6 +290,7 @@ class ServerProcess(object):
         command = self.config.stop_command or self.config.type.value.stop_command or "stop"
 
         await self.send_command(command)
+        self.shutdown_to_restart = False
         self.state = ServerState.STOPPING
 
     async def kill(self):
