@@ -9,12 +9,12 @@ __all__ = [
 
 
 class ServerState(Enum):
-    STOPPED = 0
-    STARTED = 1
-    STARTING = 2
-    STOPPING = 3
-    RUNNING = 4
-    UNKNOWN = -1
+    UNKNOWN = "unknown"
+    STOPPED = "stopped"
+    STARTED = "started"
+    STARTING = "starting"
+    STOPPING = "stopping"
+    RUNNING = "running"
 
     @classmethod
     def _missing_(cls, value):
@@ -22,7 +22,7 @@ class ServerState(Enum):
 
     @property
     def is_running(self):
-        return 1 <= self.value
+        return self not in (ServerState.STOPPED, ServerState.UNKNOWN, )
 
 
 class ServerType(Enum):
