@@ -25,13 +25,13 @@ class APIHandler(object):
             summary="登録サーバーの一覧",
             description="登録されているサーバーを返します",
         )
-        async def _list() -> list[model.Server]:
+        async def _list(only_loaded: bool = False) -> list[model.Server]:
             ls = []  # type: list[model.Server]
 
             for server_id, server in servers.items():
                 if server:
                     ls.append(model.Server.create(server))
-                else:
+                elif not only_loaded:
                     try:
                         server_dir = self.inst.config.servers[server_id]
                     except KeyError:
