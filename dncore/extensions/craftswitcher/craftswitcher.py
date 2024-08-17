@@ -48,6 +48,37 @@ class CraftSwitcher(EventListener):
         #
         self._initialized = False
 
+    # api
+
+    async def init(self):
+        if self._initialized:
+            raise RuntimeError("Already initialized")
+
+        log.info("Initializing CraftSwitcher")
+        self._initialized = True
+        CraftSwitcher._inst = self
+
+        self.load_config()
+        self.load_servers()
+        await self.start_api_server()
+
+    async def shutdown(self):
+        if not self._initialized:
+            return
+        log.info("Shutdown CraftSwitcher")
+        try:
+            del CraftSwitcher._inst
+        except AttributeError:
+            pass
+        self._initialized = False
+
+        try:
+            await self.shutdown_all_servers()
+            await self.close_api_server()
+
+        finally:
+            self.unload_servers()
+
     def load_config(self):
         log.debug("Loading config")
         self.config.load()
@@ -116,17 +147,17 @@ class CraftSwitcher(EventListener):
 
         self.servers.clear()
 
-    #
+    # server api
 
-    # noinspection PyMethodMayBeStatic
-    def create_server_config(self, server_directory: str, jar_file=""):
+    @staticmethod
+    def create_server_config(server_directory: str, jar_file=""):
         config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
         config.launch_option.jar_file = jar_file
         return config
 
-    # noinspection PyMethodMayBeStatic
-    def import_server_config(self, server_directory: str):
+    @staticmethod
+    def import_server_config(server_directory: str):
         config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
         if not config_path.is_file():
             raise FileNotFoundError(str(config_path))
@@ -185,37 +216,6 @@ class CraftSwitcher(EventListener):
 
     async def close_api_server(self):
         await self.api_server.shutdown()
-
-    #
-
-    async def init(self):
-        if self._initialized:
-            raise RuntimeError("Already initialized")
-
-        log.info("Initializing CraftSwitcher")
-        self._initialized = True
-        CraftSwitcher._inst = self
-
-        self.load_config()
-        self.load_servers()
-        await self.start_api_server()
-
-    async def shutdown(self):
-        if not self._initialized:
-            return
-        log.info("Shutdown CraftSwitcher")
-        try:
-            del CraftSwitcher._inst
-        except AttributeError:
-            pass
-        self._initialized = False
-
-        try:
-            await self.shutdown_all_servers()
-            await self.close_api_server()
-
-        finally:
-            self.unload_servers()
 
     # events
 
