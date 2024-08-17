@@ -129,7 +129,29 @@ class APIHandler(object):
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
-            "/server/{server_id}/create",
+            "/server/{server_id}/import",
+            tags=tags,
+            summary="構成済みのサーバーを追加",
+            description="構成済みのサーバーを登録します",
+        )
+        async def _add(server_id: str, param: model.AddServerParam) -> model.ServerOperationResult:
+            server_id = server_id.lower()
+            if server_id in servers:
+                raise HTTPException(status_code=400, detail="Already exists server id")
+
+            if not Path(param.directory).is_dir():
+                raise HTTPException(status_code=400, detail="Not exists directory")
+
+            try:
+                config = inst.import_server_config(param.directory)
+            except FileNotFoundError:
+                raise HTTPException(status_code=400, detail="Not exists server config")
+
+            server = inst.create_server(server_id, param.directory, config, set_creation_date=False)
+            return model.ServerOperationResult.success(server.id)
+
+        @api.post(
+            "/server/{server_id}",
             tags=tags,
             summary="サーバーを作成",
             description="サーバーを作成します",
@@ -159,26 +181,4 @@ class APIHandler(object):
             config.shutdown_timeout = param.shutdown_timeout
 
             server = inst.create_server(server_id, param.directory, config)
-            return model.ServerOperationResult.success(server.id)
-
-        @api.post(
-            "/server/{server_id}/add",
-            tags=tags,
-            summary="構成済みのサーバーを追加",
-            description="構成済みのサーバーを登録します",
-        )
-        async def _add(server_id: str, param: model.AddServerParam) -> model.ServerOperationResult:
-            server_id = server_id.lower()
-            if server_id in servers:
-                raise HTTPException(status_code=400, detail="Already exists server id")
-
-            if not Path(param.directory).is_dir():
-                raise HTTPException(status_code=400, detail="Not exists directory")
-
-            try:
-                config = inst.import_server_config(param.directory)
-            except FileNotFoundError:
-                raise HTTPException(status_code=400, detail="Not exists server config")
-
-            server = inst.create_server(server_id, param.directory, config, set_creation_date=False)
             return model.ServerOperationResult.success(server.id)
