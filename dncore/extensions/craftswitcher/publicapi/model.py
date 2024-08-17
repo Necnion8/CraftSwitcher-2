@@ -36,5 +36,36 @@ class Server(BaseModel):
         )
 
 
-class OperationResult(BaseModel):
+class ServerOperationResult(BaseModel):
     result: bool
+    server_id: str
+
+    @classmethod
+    def success(cls, server: "str | ServerProcess"):
+        return cls(result=True, server_id=server if isinstance(server, str) else server.id)
+
+
+class CreateServerParam(BaseModel):
+    class LaunchOption(BaseModel):
+        java_executable: str | None
+        java_options: str | None
+        jar_file: str
+        server_options: str | None
+        max_heap_memory: int | None
+        min_heap_memory: int | None
+        enable_free_memory_check: bool | None
+        enable_reporter_agent: bool | None
+
+    name: str | None
+    directory: str
+    type: abc.ServerType
+    launch_option: LaunchOption
+    enable_launch_command: bool = False
+    launch_command: str = ""
+    stop_command: str | None
+    shutdown_timeout: int | None
+
+
+class AddServerParam(BaseModel):
+    directory: str
+

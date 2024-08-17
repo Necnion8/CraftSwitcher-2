@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -113,6 +114,43 @@ class CraftSwitcher(EventListener):
             raise ValueError("Contains not stopped server")
 
         self.servers.clear()
+
+    #
+
+    # noinspection PyMethodMayBeStatic
+    def create_server_config(self, server_directory: str, jar_file=""):
+        config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+        config = ServerConfig(config_path)
+        config.launch_option.jar_file = jar_file
+        return config
+
+    # noinspection PyMethodMayBeStatic
+    def import_server_config(self, server_directory: str):
+        config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+        if not config_path.is_file():
+            raise FileNotFoundError(str(config_path))
+        config = ServerConfig(config_path)
+        config.load(save_defaults=False)
+        return config
+
+    def create_server(self, server_id: str, directory: str, config: ServerConfig, *, set_creation_date=True):
+        server_id = server_id.lower()
+        if server_id in self.servers:
+            raise ValueError("Already exists server id")
+
+        directory = Path(directory)
+        if not directory.is_dir():
+            raise NotADirectoryError(str(directory))
+        server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
+
+        if set_creation_date:
+            config.created_at = datetime.datetime.today()
+
+        config.save(force=True)
+        self.servers.append(server)
+        self.config.servers[server_id] = str(directory)
+        self.config.save()
+        return server
 
     # public api
 

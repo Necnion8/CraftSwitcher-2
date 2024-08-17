@@ -287,7 +287,7 @@ class ServerProcess(object):
 
         self.log.info(f"Stopping {self.id} server")
 
-        command = self.config.stop_command or self.config.type.value.stop_command or "stop"
+        command = self.config.stop_command or self.config.type.spec.stop_command or "stop"
 
         await self.send_command(command)
         self.shutdown_to_restart = False

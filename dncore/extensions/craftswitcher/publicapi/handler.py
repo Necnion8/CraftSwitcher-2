@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
@@ -17,6 +18,7 @@ class APIHandler(object):
 
     def _server(self, api: FastAPI):
         tags = ["Server"]
+        inst = self.inst  # type: CraftSwitcher
         servers = self.inst.servers
 
         @api.get(
@@ -46,7 +48,7 @@ class APIHandler(object):
             summary="サーバーを起動",
             description="サーバーを起動します",
         )
-        async def _start(server_id: str) -> model.OperationResult:
+        async def _start(server_id: str) -> model.ServerOperationResult:
             try:
                 server = servers[server_id.lower()]
             except KeyError:
@@ -63,7 +65,7 @@ class APIHandler(object):
             except errors.OperationCancelledError as e:
                 raise HTTPException(status_code=400, detail=f"Operation cancelled: {e}")
 
-            return model.OperationResult(result=True)
+            return model.ServerOperationResult(result=True)
 
         @api.post(
             "/server/{server_id}/stop",
@@ -71,7 +73,7 @@ class APIHandler(object):
             summary="サーバーを停止",
             description="サーバーを停止します",
         )
-        async def _stop(server_id: str) -> model.OperationResult:
+        async def _stop(server_id: str) -> model.ServerOperationResult:
             try:
                 server = servers[server_id.lower()]
             except KeyError:
@@ -84,7 +86,7 @@ class APIHandler(object):
             except errors.ServerProcessingError:
                 raise HTTPException(status_code=400, detail="Server is processing")
 
-            return model.OperationResult(result=True)
+            return model.ServerOperationResult.success(server.id)
 
         @api.post(
             "/server/{server_id}/restart",
@@ -92,7 +94,7 @@ class APIHandler(object):
             summary="サーバーを再起動",
             description="サーバーを再起動します",
         )
-        async def _restart(server_id: str) -> model.OperationResult:
+        async def _restart(server_id: str) -> model.ServerOperationResult:
             try:
                 server = servers[server_id.lower()]
             except KeyError:
@@ -105,7 +107,7 @@ class APIHandler(object):
             except errors.ServerProcessingError:
                 raise HTTPException(status_code=400, detail="Server is processing")
 
-            return model.OperationResult(result=True)
+            return model.ServerOperationResult.success(server.id)
 
         @api.post(
             "/server/{server_id}/kill",
@@ -113,7 +115,7 @@ class APIHandler(object):
             summary="サーバーを強制終了",
             description="サーバーを強制終了します",
         )
-        async def _kill(server_id: str) -> model.OperationResult:
+        async def _kill(server_id: str) -> model.ServerOperationResult:
             try:
                 server = servers[server_id.lower()]
             except KeyError:
@@ -124,4 +126,59 @@ class APIHandler(object):
             except errors.NotRunningError:
                 raise HTTPException(status_code=400, detail="Not running")
 
-            return model.OperationResult(result=True)
+            return model.ServerOperationResult.success(server.id)
+
+        @api.post(
+            "/server/{server_id}/create",
+            tags=tags,
+            summary="サーバーを作成",
+            description="サーバーを作成します",
+        )
+        async def _create(server_id: str, param: model.CreateServerParam) -> model.ServerOperationResult:
+            server_id = server_id.lower()
+            if server_id in servers:
+                raise HTTPException(status_code=400, detail="Already exists server id")
+
+            if not Path(param.directory).is_dir():
+                raise HTTPException(status_code=400, detail="Not exists directory")
+
+            config = inst.create_server_config(param.directory)
+            config.name = param.name
+            config.type = param.type
+            config.launch_option.java_executable = param.launch_option.java_executable
+            config.launch_option.java_options = param.launch_option.java_options
+            config.launch_option.jar_file = param.launch_option.jar_file
+            config.launch_option.server_options = param.launch_option.server_options
+            config.launch_option.max_heap_memory = param.launch_option.max_heap_memory
+            config.launch_option.min_heap_memory = param.launch_option.min_heap_memory
+            config.launch_option.enable_free_memory_check = param.launch_option.enable_free_memory_check
+            config.launch_option.enable_reporter_agent = param.launch_option.enable_reporter_agent
+            config.enable_launch_command = param.enable_launch_command
+            config.launch_command = param.launch_command
+            config.stop_command = param.stop_command
+            config.shutdown_timeout = param.shutdown_timeout
+
+            server = inst.create_server(server_id, param.directory, config)
+            return model.ServerOperationResult.success(server.id)
+
+        @api.post(
+            "/server/{server_id}/add",
+            tags=tags,
+            summary="構成済みのサーバーを追加",
+            description="構成済みのサーバーを登録します",
+        )
+        async def _add(server_id: str, param: model.AddServerParam) -> model.ServerOperationResult:
+            server_id = server_id.lower()
+            if server_id in servers:
+                raise HTTPException(status_code=400, detail="Already exists server id")
+
+            if not Path(param.directory).is_dir():
+                raise HTTPException(status_code=400, detail="Not exists directory")
+
+            try:
+                config = inst.import_server_config(param.directory)
+            except FileNotFoundError:
+                raise HTTPException(status_code=400, detail="Not exists server config")
+
+            server = inst.create_server(server_id, param.directory, config, set_creation_date=False)
+            return model.ServerOperationResult.success(server.id)
