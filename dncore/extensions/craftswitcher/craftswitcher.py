@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -151,6 +152,23 @@ class CraftSwitcher(EventListener):
         self.config.servers[server_id] = str(directory)
         self.config.save()
         return server
+
+    def delete_server(self, server: ServerProcess, *, delete_server_config=False):
+        if server.state.is_running:
+            raise RuntimeError("Server is running")
+
+        self.servers.pop(server.id, None)
+        self.config.servers.pop(server.id, None)
+
+        if delete_server_config:
+            config_path = server.directory / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+            if config_path.is_file():
+                try:
+                    os.remove(config_path)
+                except OSError as e:
+                    log.warning("Failed to delete server_config: %s: %s", str(e), str(config_path))
+
+        self.config.save()
 
     # public api
 

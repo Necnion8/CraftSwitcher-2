@@ -182,3 +182,21 @@ class APIHandler(object):
 
             server = inst.create_server(server_id, param.directory, config)
             return model.ServerOperationResult.success(server.id)
+
+        @api.delete(
+            "/server/{server_id}",
+            tags=tags,
+            summary="サーバーを削除",
+            description="サーバーを削除します",
+        )
+        async def _delete(server_id: str, delete_config_file: bool = False) -> model.ServerOperationResult:
+            try:
+                server = servers[server_id.lower()]
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Server not found")
+
+            if server.state.is_running:
+                raise HTTPException(status_code=400, detail="Already running")
+
+            inst.delete_server(server, delete_server_config=delete_config_file)
+            return model.ServerOperationResult.success(server.id)
