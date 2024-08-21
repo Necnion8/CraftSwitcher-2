@@ -212,11 +212,11 @@ class APIHandler(object):
                 for key, entry in conf.get_values().items():
                     if isinstance(entry.value, ConfigValues):
                         ls.update(toflat([*keys, key], entry.value))
-                    ls[".".join([*keys, key])] = entry.value
+                    else:
+                        ls[".".join([*keys, key])] = entry.value
                 return ls
 
-            out = toflat([], server._config)
-            return model.ServerConfig(**out)
+            return model.ServerConfig(**toflat([], server._config))
 
         @api.put(
             "/server/{server_id}/config",
