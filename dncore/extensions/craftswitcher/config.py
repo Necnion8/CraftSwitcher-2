@@ -30,8 +30,6 @@ class ServerConfig(FileConfigValues):
     # サーバーの種類
     type: ServerType = ServerType.UNKNOWN
 
-    # # 作業ディレクトリ
-    # directory: str
     # 起動オプション
     launch_option: LaunchOption
     # 起動オプションを使わず、カスタムコマンドで起動する
