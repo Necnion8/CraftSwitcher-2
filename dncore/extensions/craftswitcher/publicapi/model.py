@@ -1,7 +1,7 @@
 import datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
 
@@ -10,12 +10,12 @@ if TYPE_CHECKING:
 
 
 class Server(BaseModel):
-    id: str
-    name: str | None
-    type: abc.ServerType
-    state: abc.ServerState
-    directory: str
-    is_loaded: bool
+    id: str = Field(description="サーバーID 小文字のみ")
+    name: str | None = Field(description="表示名")
+    type: abc.ServerType = Field(description="サーバータイプ")
+    state: abc.ServerState = Field(description="状態")
+    directory: str = Field(description="場所")
+    is_loaded: bool = Field(description="サーバー設定がロードされているか")
 
     @classmethod
     def create(cls, server: "ServerProcess"):
@@ -75,23 +75,23 @@ class AddServerParam(BaseModel):
 
 
 class ServerConfig(BaseModel):
-    name: str | None = None
-    type: abc.ServerType | None = None
-    launch_option__java_executable: str | None = None
-    launch_option__java_options: str | None = None
-    launch_option__jar_file: str | None = None
-    launch_option__server_options: str | None = None
-    launch_option__max_heap_memory: int | None = None
-    launch_option__min_heap_memory: int | None = None
-    launch_option__enable_free_memory_check: bool | None = None
-    launch_option__enable_reporter_agent: bool | None = None
-    enable_launch_command: bool | None = None
-    launch_command: str | None = None
-    stop_command: str | None = None
-    shutdown_timeout: int | None = None
-    created_at: datetime.datetime | None = None
-    last_launch_at: datetime.datetime | None = None
-    last_backup_at: datetime.datetime | None = None
+    name: str | None = Field(None, description="表示名")
+    type: abc.ServerType = Field(None, description="サーバーの種類")
+    launch_option__java_executable: str | None = Field(None, description="Javaコマンド、もしくはパス")
+    launch_option__java_options: str | None = Field(None, description="Java オプション")
+    launch_option__jar_file: str = Field(None, description="Jarファイルパス")
+    launch_option__server_options: str | None = Field(None, description="サーバーオプション")
+    launch_option__max_heap_memory: int | None = Field(None, description="メモリ割り当て量 (単位: MB)")
+    launch_option__min_heap_memory: int | None = Field(None, description="メモリ割り当て量 (単位: MB)")
+    launch_option__enable_free_memory_check: bool | None = Field(None, description="起動時に空きメモリを確認する")
+    launch_option__enable_reporter_agent: bool | None = Field(None, description="サーバーと連携するエージェントを使う")
+    enable_launch_command: bool | None = Field(None, description="起動オプションを使わず、カスタムコマンドで起動する")
+    launch_command: str = None
+    stop_command: str | None = Field(None, description="停止コマンド")
+    shutdown_timeout: int | None = Field(None, description="停止処理の最大待ち時間 (単位: 秒)")
+    created_at: datetime.datetime | None = Field(None, description="作成された日付")
+    last_launch_at: datetime.datetime | None = Field(None, description="最後に起動した日付")
+    last_backup_at: datetime.datetime | None = Field(None, description="最後にバックアップした日付")
 
     class Config:
         @staticmethod
@@ -100,14 +100,14 @@ class ServerConfig(BaseModel):
 
 
 class ServerGlobalConfig(BaseModel):
-    launch_option__java_executable: str = "java"
-    launch_option__java_options: str = "-Dfile.encoding=UTF-8"
-    launch_option__server_options: str = "--nogui"
-    launch_option__max_heap_memory: int = 2048
-    launch_option__min_heap_memory: int = 2048
-    launch_option__enable_free_memory_check: bool = True
-    launch_option__enable_reporter_agent: bool = True
-    shutdown_timeout: int = 30
+    launch_option__java_executable: str = Field("java", description="Javaコマンド、もしくはパス")
+    launch_option__java_options: str = Field("-Dfile.encoding=UTF-8", description="Java オプション")
+    launch_option__server_options: str = Field("--nogui", description="サーバーオプション")
+    launch_option__max_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")
+    launch_option__min_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")
+    launch_option__enable_free_memory_check: bool = Field(True, description="起動時に空きメモリを確認する")
+    launch_option__enable_reporter_agent: bool = Field(True, description="サーバーと連携するエージェントを使う")
+    shutdown_timeout: int = Field(30, description="停止処理の最大待ち時間 (単位: 秒)")
 
     class Config:
         @staticmethod
