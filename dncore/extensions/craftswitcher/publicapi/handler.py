@@ -16,7 +16,50 @@ class APIHandler(object):
     def __init__(self, inst: "CraftSwitcher", api: FastAPI):
         self.inst = inst
         self.router = api
+        self._app(api)
         self._server(api)
+
+    def _app(self, api: FastAPI):
+        tags = ["App"]
+        inst = self.inst  # type: CraftSwitcher
+
+        @api.get(
+            "/config/server_global",
+            tags=tags,
+            summary="",
+            description="",
+        )
+        async def _get_config_server_global() -> model.ServerGlobalConfig:
+            def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
+                ls = {}
+                for key, entry in conf.get_values().items():
+                    if isinstance(entry.value, ConfigValues):
+                        ls.update(toflat([*keys, key], entry.value))
+                    else:
+                        ls[".".join([*keys, key])] = entry.value
+                return ls
+
+            return model.ServerGlobalConfig(**toflat([], inst.config.server_defaults))
+
+        @api.put(
+            "/config/server_global",
+            tags=tags,
+            summary="",
+            description="",
+        )
+        async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
+            config = inst.config.server_defaults
+
+            for key, value in param.model_dump(exclude_unset=True).items():
+                conf = config
+
+                key = key.split("__")
+                while 2 <= len(key):
+                    conf = getattr(conf, key.pop(0))
+                setattr(conf, key[0], value)
+
+            inst.config.save(force=True)
+            return await _get_config_server_global()
 
     def _server(self, api: FastAPI):
         tags = ["Server"]

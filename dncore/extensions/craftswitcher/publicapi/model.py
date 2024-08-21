@@ -97,3 +97,19 @@ class ServerConfig(BaseModel):
         @staticmethod
         def alias_generator(key: str):
             return key.replace("__", ".")
+
+
+class ServerGlobalConfig(BaseModel):
+    launch_option__java_executable: str = "java"
+    launch_option__java_options: str = "-Dfile.encoding=UTF-8"
+    launch_option__server_options: str = "--nogui"
+    launch_option__max_heap_memory: int = 2048
+    launch_option__min_heap_memory: int = 2048
+    launch_option__enable_free_memory_check: bool = True
+    launch_option__enable_reporter_agent: bool = True
+    shutdown_timeout: int = 30
+
+    class Config:
+        @staticmethod
+        def alias_generator(key: str):
+            return key.replace("__", ".")
