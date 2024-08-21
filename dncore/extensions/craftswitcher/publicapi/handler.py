@@ -1,13 +1,15 @@
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
 
+from dncore.configuration.configuration import ConfigValueEntry, ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.publicapi import model
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher
+    from dncore.extensions.craftswitcher.config import ServerConfig
 
 
 class APIHandler(object):
@@ -20,6 +22,16 @@ class APIHandler(object):
         tags = ["Server"]
         inst = self.inst  # type: CraftSwitcher
         servers = self.inst.servers
+        
+        def getserver(server_id: str):
+            try:
+                server = servers[server_id.lower()]
+            except KeyError:
+                raise HTTPException(status_code=404, detail="Server not found")
+
+            if server is None:
+                raise HTTPException(status_code=404, detail="Server config not loaded")
+            return server
 
         @api.get(
             "/servers",
@@ -49,10 +61,7 @@ class APIHandler(object):
             description="サーバーを起動します",
         )
         async def _start(server_id: str) -> model.ServerOperationResult:
-            try:
-                server = servers[server_id.lower()]
-            except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+            server = getserver(server_id)
 
             try:
                 await server.start()
@@ -74,10 +83,7 @@ class APIHandler(object):
             description="サーバーを停止します",
         )
         async def _stop(server_id: str) -> model.ServerOperationResult:
-            try:
-                server = servers[server_id.lower()]
-            except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+            server = getserver(server_id)
 
             try:
                 await server.stop()
@@ -95,10 +101,7 @@ class APIHandler(object):
             description="サーバーを再起動します",
         )
         async def _restart(server_id: str) -> model.ServerOperationResult:
-            try:
-                server = servers[server_id.lower()]
-            except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+            server = getserver(server_id)
 
             try:
                 await server.restart()
@@ -116,10 +119,7 @@ class APIHandler(object):
             description="サーバーを強制終了します",
         )
         async def _kill(server_id: str) -> model.ServerOperationResult:
-            try:
-                server = servers[server_id.lower()]
-            except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+            server = getserver(server_id)
 
             try:
                 await server.kill()
@@ -190,13 +190,51 @@ class APIHandler(object):
             description="サーバーを削除します",
         )
         async def _delete(server_id: str, delete_config_file: bool = False) -> model.ServerOperationResult:
-            try:
-                server = servers[server_id.lower()]
-            except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+            server = getserver(server_id)
 
             if server.state.is_running:
                 raise HTTPException(status_code=400, detail="Already running")
 
             inst.delete_server(server, delete_server_config=delete_config_file)
             return model.ServerOperationResult.success(server.id)
+
+        @api.get(
+            "/server/{server_id}/config",
+            tags=tags,
+            summary="サーバー設定の取得",
+            description="サーバーの設定を返します",
+        )
+        async def _get_config(server_id: str) -> model.ServerConfig:
+            server = getserver(server_id)
+
+            def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
+                ls = {}
+                for key, entry in conf.get_values().items():
+                    if isinstance(entry.value, ConfigValues):
+                        ls.update(toflat([*keys, key], entry.value))
+                    ls[".".join([*keys, key])] = entry.value
+                return ls
+
+            out = toflat([], server._config)
+            return model.ServerConfig(**out)
+
+        @api.put(
+            "/server/{server_id}/config",
+            tags=tags,
+            summary="サーバー設定の更新",
+            description="サーバーの設定を変更します",
+        )
+        async def _put_config(server_id: str, param: model.ServerConfig) -> model.ServerConfig:
+            server = getserver(server_id)
+
+            config = server._config  # type: ServerConfig
+            for key, value in param.model_dump(exclude_unset=True).items():
+                conf = config
+
+                key = key.split("__")
+                while 2 <= len(key):
+                    conf = getattr(conf, key.pop(0))
+                setattr(conf, key[0], value)
+
+            server._config.save(force=True)
+            return await _get_config(server_id)
