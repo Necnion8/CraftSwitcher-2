@@ -1,6 +1,8 @@
 # CraftSwitcher v2
 Minecraft Java サーバー 管理システム |
 [DNC6](https://github.com/Necnion8/dnCoreV6)プラグイン実装
+<br>
+本体コードは [dncore/extensions/craftswitcher](dncore%2Fextensions%2Fcraftswitcher) にあります
 
 ---
 ## 開発中
@@ -41,3 +43,17 @@ Minecraft Java サーバー 管理システム |
 - NeoForge
 - Fabric
 
+
+## 導入と起動
+```bash
+# Install
+python3 -m pip install -r requirements.txt
+
+# Launch
+python3 -m dncore
+```
+初回の起動時に以下のファイルが生成されます。
+- `./config/config.yml`
+- `./plugins`
+
+Discord機能を利用しない場合は[無効にする方法](https://github.com/Necnion8/dnCoreV6/wiki/No-Connect-Discord)を参照ください。 
