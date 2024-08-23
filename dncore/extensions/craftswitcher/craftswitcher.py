@@ -12,8 +12,8 @@ from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
 from .event import ServerChangeStateEvent
 from .files import FileManager
-from .serverprocess import ServerProcessList, ServerProcess
 from .publicapi import UvicornServer, APIHandler
+from .serverprocess import ServerProcessList, ServerProcess
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo

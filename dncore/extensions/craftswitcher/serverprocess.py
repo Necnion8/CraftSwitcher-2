@@ -1,10 +1,10 @@
 import asyncio
+import asyncio.subprocess as subprocess
 import logging
 import shlex
 import signal
 import time
 from pathlib import Path
-import asyncio.subprocess as subprocess
 
 from . import errors
 from .abc import ServerState
