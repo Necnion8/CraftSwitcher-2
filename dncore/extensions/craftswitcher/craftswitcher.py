@@ -11,6 +11,7 @@ from dncore.event import EventListener, onevent
 from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
 from .event import ServerChangeStateEvent
+from .files import FileManager
 from .serverprocess import ServerProcessList, ServerProcess
 from .publicapi import UvicornServer, APIHandler
 
@@ -29,6 +30,7 @@ class CraftSwitcher(EventListener):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
         self.servers = ServerProcessList()
+        self.files = FileManager(loop)
         # api
         api = FastAPI(
             title="CraftSwitcher",
@@ -149,16 +151,14 @@ class CraftSwitcher(EventListener):
 
     # server api
 
-    @staticmethod
-    def create_server_config(server_directory: str, jar_file=""):
-        config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+    def create_server_config(self, server_directory: str, jar_file=""):
+        config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
         config.launch_option.jar_file = jar_file
         return config
 
-    @staticmethod
-    def import_server_config(server_directory: str):
-        config_path = Path(server_directory) / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+    def import_server_config(self, server_directory: str):
+        config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         if not config_path.is_file():
             raise FileNotFoundError(str(config_path))
         config = ServerConfig(config_path)
@@ -192,7 +192,7 @@ class CraftSwitcher(EventListener):
         self.config.servers.pop(server.id, None)
 
         if delete_server_config:
-            config_path = server.directory / CraftSwitcher.SERVER_CONFIG_FILE_NAME
+            config_path = server.directory / self.SERVER_CONFIG_FILE_NAME
             if config_path.is_file():
                 try:
                     os.remove(config_path)
