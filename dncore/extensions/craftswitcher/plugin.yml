@@ -10,3 +10,5 @@ authors:
 libraries:
   - psutil
   - fastapi
+  - uvicorn
+  - python-multipart
