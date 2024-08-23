@@ -1,4 +1,5 @@
 import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -113,3 +114,42 @@ class ServerGlobalConfig(BaseModel):
         @staticmethod
         def alias_generator(key: str):
             return key.replace("__", ".")
+
+
+class FileInfo(BaseModel):
+    name: str = Field(description="拡張子を含むファイル名")
+    path: str = Field(description="ディレクトリパス")
+    is_dir: bool = Field(description="ディレクトリ？")
+    size: int = Field(description="ファイルサイズ。ディレクトリなら -1")
+    modify_time: int = Field(description="変更日時")
+    create_time: int = Field(description="作成日時")
+    is_server_dir: bool = Field(description="サーバーディレクトリ？")
+    registered_server_id: str | None = Field(description="登録されているサーバーID")
+
+    @classmethod
+    def make_file_info(cls, path: Path, parent_path: str, is_server_dir: bool, registered_server_id: str | None):
+        stats = path.stat()
+        return cls(
+            name=path.name,
+            path=parent_path,
+            is_dir=path.is_dir(),
+            size=stats.st_size if path.is_file() else -1,
+            modify_time=int(stats.st_mtime),
+            create_time=int(stats.st_ctime),
+            is_server_dir=is_server_dir,
+            registered_server_id=registered_server_id,
+        )
+
+
+class FileDirectoryInfo(BaseModel):
+    name: str = Field(description="ディレクトリ名")
+    path: str = Field(description="ディレクトリパス")
+    children: list[FileInfo] = Field(description="含まれるファイル")
+
+
+class FileOperationResult(BaseModel):
+    result: bool
+
+    @classmethod
+    def success(cls):
+        return cls(result=True)

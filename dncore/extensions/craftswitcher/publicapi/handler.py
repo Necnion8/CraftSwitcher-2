@@ -1,7 +1,11 @@
+import os
+import shutil
+from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from dncore.configuration.configuration import ConfigValueEntry, ConfigValues
 from dncore.extensions.craftswitcher import errors
@@ -11,6 +15,8 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher
     from dncore.extensions.craftswitcher.config import ServerConfig
 
+log = getLogger(__name__)
+
 
 class APIHandler(object):
     def __init__(self, inst: "CraftSwitcher", api: FastAPI):
@@ -18,6 +24,7 @@ class APIHandler(object):
         self.router = api
         self._app(api)
         self._server(api)
+        self._file(api)
 
     def _app(self, api: FastAPI):
         tags = ["App"]
@@ -281,3 +288,134 @@ class APIHandler(object):
 
             server._config.save(force=True)
             return await _get_config(server_id)
+
+    def _file(self, api: FastAPI):
+        tags = ["File"]
+        inst = self.inst  # type: CraftSwitcher
+        servers = self.inst.servers
+
+        def getpath(path: str):
+            return Path(path)  # TODO: replace root
+
+        def getserverpath(server, path):
+            pass
+
+        def make_file_info(path: Path):
+            is_server_dir = path.is_dir() and (path / inst.SERVER_CONFIG_FILE_NAME).is_file()
+            server_id = None  # TODO: find server path
+
+            return model.FileInfo.make_file_info(path, "", is_server_dir, server_id)  # TODO: add parent_path
+
+        @api.get(
+            "/files",
+            tags=tags,
+            summary="ファイルの一覧",
+            description="指定されたパスのファイルリストを返す",
+        )
+        async def _files(path: str) -> model.FileDirectoryInfo:
+            path_ = getpath(path)
+
+            if not path_.is_dir():
+                raise HTTPException(status_code=404, detail="Not a directory or not exists")
+
+            files = []
+            try:
+                for child in path_.iterdir():
+                    try:
+                        files.append(make_file_info(child))
+                    except Exception as e:
+                        log.warning("Failed to get file info: %s: %s", str(child), str(e))
+            except PermissionError as e:
+                raise HTTPException(status_code=400, detail=f"Unable to access: {e}")
+
+            return model.FileDirectoryInfo(
+                name=path_.name,
+                path="",  # TODO: add parent_path
+                children=files,
+            )
+
+        @api.get(
+            "/file",
+            tags=tags,
+            summary="ファイルデータを取得",
+            description="",
+        )
+        def _get_file(path: str):
+            path = getpath(path)
+
+            if not path.is_file():
+                raise HTTPException(status_code=400, detail="Not a file")
+
+            return FileResponse(path)
+
+        @api.post(
+            "/file",
+            tags=tags,
+            summary="ファイルデータを保存",
+            description="",
+        )
+        def _post_file(path: str, file: UploadFile) -> model.FileInfo:
+            path = getpath(path)
+
+            try:
+                with open(path, "wb") as f:
+                    shutil.copyfileobj(file.file, f)
+
+            finally:
+                file.file.close()
+
+            return make_file_info(path)
+
+        @api.delete(
+            "/file",
+            tags=tags,
+            summary="ファイルを削除",
+            description="",
+        )
+        def _delete_file(path: str) -> model.FileOperationResult:
+            path = getpath(path)
+
+            if path.is_dir():
+                shutil.rmtree(path)  # TODO: handling error
+            else:
+                os.remove(path)
+
+            return model.FileOperationResult.success()
+
+        @api.post(
+            "/file/mkdir",
+            tags=tags,
+            summary="空のディレクトリ作成",
+            description="",
+        )
+        def _mkdir(path: str) -> model.FileInfo:
+            path = getpath(path)
+
+            path.mkdir()  # TODO: handling error
+            return make_file_info(path)
+
+        @api.put(
+            "/file/copy",
+            tags=tags,
+            summary="ファイル複製",
+            description="",
+        )
+        def _copy(path: str, dst_path: str) -> model.FileInfo:
+            path = getpath(path)
+            dst_path = getpath(dst_path)
+
+            shutil.copyfile(path, dst_path)  # TODO: handling error
+            return make_file_info(dst_path)
+
+        @api.put(
+            "/file/move",
+            tags=tags,
+            summary="ファイル移動",
+            description="",
+        )
+        def _move(path: str, dst_path: str) -> model.FileInfo:
+            path = getpath(path)
+            dst_path = getpath(dst_path)
+
+            shutil.move(path, dst_path)  # TODO: handling error
+            return make_file_info(dst_path)
