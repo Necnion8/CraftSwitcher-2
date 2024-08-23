@@ -53,7 +53,7 @@ python3 -m pip install -r requirements.txt
 python3 -m dncore
 ```
 初回の起動時に以下のファイルが生成されます。
-- `./config/config.yml`
-- `./plugins`
+- `./config/config.yml` - dnCore設定
+- `./plugins/CraftSwitcherPlugin/config.yml` - メイン設定
 
 Discord機能を利用しない場合は[無効にする方法](https://github.com/Necnion8/dnCoreV6/wiki/No-Connect-Discord)を参照ください。 
