@@ -62,6 +62,7 @@ class CraftSwitcher(EventListener):
 
         self.load_config()
         self.load_servers()
+
         await self.start_api_server()
 
     async def shutdown(self):
@@ -203,8 +204,12 @@ class CraftSwitcher(EventListener):
 
     # public api
 
-    async def start_api_server(self):
+    async def start_api_server(self, *, force=False):
         config = self.config.api_server
+        if not (config.enable or force):
+            log.debug("Disabled API Server")
+            return
+
         try:
             await self.api_server.start(
                 self.api_handler.router,

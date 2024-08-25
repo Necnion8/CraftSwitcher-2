@@ -79,6 +79,7 @@ class JavaExecutable(ConfigValues):
 
 
 class PublicApiServer(ConfigValues):
+    enable = True
     bind_host = "0.0.0.0"
     bind_port = 8080
 
