@@ -155,7 +155,7 @@ class ServerProcess(object):
             directory: Path, server_id: str,
             config: ServerConfig, global_config: ServerGlobalConfig,
     ):
-        self.log = _log  # TODO: replace custom logger
+        self.log = ServerLoggerAdapter(_log, server_id)
         self.loop = loop
         self.directory = directory
         self.id = server_id

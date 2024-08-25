@@ -1,6 +1,7 @@
 import asyncio
+import logging
 import platform
-from typing import TypeVar, TYPE_CHECKING
+from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping
 
 import psutil
 
@@ -16,6 +17,7 @@ __all__ = [
     "call_event",
     "system_memory",
     "ProcessPerformanceMonitor",
+    "ServerLoggerAdapter",
     "getinst",
 ]
 
@@ -44,6 +46,15 @@ class ProcessPerformanceMonitor(object):
             memory_used_size=mem.rss,
             memory_used_total_size=mem.vms,
         )
+
+
+class ServerLoggerAdapter(logging.LoggerAdapter):
+    def __init__(self, logger: logging.Logger, server_name: str):
+        super().__init__(logger)
+        self._server_name = server_name
+
+    def process(self, msg: Any, kwargs: MutableMapping[str, Any]) -> tuple[Any, MutableMapping[str, Any]]:
+        return f"[{self._server_name}] {msg}", kwargs
 
 
 def getinst() -> "CraftSwitcher":
