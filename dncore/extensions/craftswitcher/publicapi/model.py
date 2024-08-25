@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
+from dncore.extensions.craftswitcher.files import abc as fabc
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
@@ -148,8 +149,18 @@ class FileDirectoryInfo(BaseModel):
 
 
 class FileOperationResult(BaseModel):
-    result: bool
+    result: fabc.FileTaskResult
+    task_id: int | None
+    file: FileInfo | None
 
     @classmethod
-    def success(cls):
-        return cls(result=True)
+    def success(cls, task_id: int | None, file: FileInfo | None):
+        return cls(result=fabc.FileTaskResult.SUCCESS, task_id=task_id, file=file)
+
+    @classmethod
+    def pending(cls, task_id: int | None, file: FileInfo = None):
+        return cls(result=fabc.FileTaskResult.PENDING, task_id=task_id, file=file)
+
+    @classmethod
+    def failed(cls, task_id: int | None, file: FileInfo = None):
+        return cls(result=fabc.FileTaskResult.FAILED, task_id=task_id, file=file)

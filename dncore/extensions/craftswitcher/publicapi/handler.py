@@ -1,14 +1,15 @@
-import os
+import asyncio
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Coroutine
 
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from dncore.configuration.configuration import ConfigValueEntry, ConfigValues
+from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
+from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import model
 
 if TYPE_CHECKING:
@@ -292,6 +293,7 @@ class APIHandler(object):
     def _file(self, api: FastAPI):
         tags = ["File"]
         inst = self.inst  # type: CraftSwitcher
+        files = inst.files  # type: FileManager
         servers = self.inst.servers
 
         def getpath(path: str):
@@ -305,6 +307,9 @@ class APIHandler(object):
             server_id = None  # TODO: find server path
 
             return model.FileInfo.make_file_info(path, "", is_server_dir, server_id)  # TODO: add parent_path
+
+        def wait_for_task(task: FileTask, timeout: float | None = 1) -> Coroutine[Any, Any, FileTask]:
+            return asyncio.wait_for(asyncio.shield(task.fut), timeout=timeout)
 
         @api.get(
             "/files",
@@ -372,15 +377,22 @@ class APIHandler(object):
             summary="ファイルを削除",
             description="",
         )
-        def _delete_file(path: str) -> model.FileOperationResult:
+        async def _delete_file(path: str) -> model.FileOperationResult:
             path = getpath(path)
 
-            if path.is_dir():
-                shutil.rmtree(path)  # TODO: handling error
-            else:
-                os.remove(path)
+            if not path.exists():
+                raise HTTPException(status_code=400, detail="Not exists")
 
-            return model.FileOperationResult.success()
+            task = files.delete(path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to delete: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, None)
 
         @api.post(
             "/file/mkdir",
@@ -388,11 +400,19 @@ class APIHandler(object):
             summary="空のディレクトリ作成",
             description="",
         )
-        def _mkdir(path: str) -> model.FileInfo:
+        async def _mkdir(path: str) -> model.FileOperationResult:
             path = getpath(path)
 
-            path.mkdir()  # TODO: handling error
-            return make_file_info(path)
+            if path.exists():
+                raise HTTPException(status_code=400, detail="Already exists")
+
+            try:
+                await files.mkdir(path)
+            except Exception as e:
+                log.warning(f"Failed to mkdir: {e}: {path}")
+                return model.FileOperationResult.failed(None)
+            else:
+                return model.FileOperationResult.success(None, make_file_info(path))
 
         @api.put(
             "/file/copy",
@@ -400,12 +420,23 @@ class APIHandler(object):
             summary="ファイル複製",
             description="",
         )
-        def _copy(path: str, dst_path: str) -> model.FileInfo:
+        async def _copy(path: str, dst_path: str) -> model.FileInfo:
             path = getpath(path)
             dst_path = getpath(dst_path)
 
-            shutil.copyfile(path, dst_path)  # TODO: handling error
-            return make_file_info(dst_path)
+            if not path.exists():
+                raise HTTPException(status_code=404, detail="source path not exists")
+
+            task = files.copy(path, dst_path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to copy: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, make_file_info(dst_path))
 
         @api.put(
             "/file/move",
@@ -413,9 +444,20 @@ class APIHandler(object):
             summary="ファイル移動",
             description="",
         )
-        def _move(path: str, dst_path: str) -> model.FileInfo:
+        async def _move(path: str, dst_path: str) -> model.FileInfo:
             path = getpath(path)
             dst_path = getpath(dst_path)
 
-            shutil.move(path, dst_path)  # TODO: handling error
-            return make_file_info(dst_path)
+            if not path.exists():
+                raise HTTPException(status_code=404, detail="source path not exists")
+
+            task = files.move(path, dst_path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to move: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, make_file_info(dst_path))
