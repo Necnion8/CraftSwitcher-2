@@ -5,6 +5,8 @@ import shlex
 import signal
 import time
 from pathlib import Path
+from typing import Any
+from typing import Callable
 
 from . import errors
 from .abc import ServerState
@@ -13,6 +15,31 @@ from .event import *
 from .utils import *
 
 _log = logging.getLogger(__name__)
+
+
+# noinspection PyMethodMayBeStatic
+class ProcessReader:
+    def subprocess_args(self, **kwargs) -> dict[str, Any]:
+        raise NotImplemented
+
+    async def loop_read(self, process: subprocess.Process):
+        raise NotImplemented
+
+
+class TextProcessReader(ProcessReader):
+    def subprocess_args(self, **kwargs) -> dict[str, Any]:
+        return dict(
+            kwargs,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+
+    async def loop_read(self, process: subprocess.Process):
+        reader = process.stdout
+        while line := await reader.readline():
+            line = line.rstrip()
+            _log.info(f"[OUTPUT] %s", line.decode("utf-8"))
 
 
 class ServerProcess(object):
@@ -135,6 +162,7 @@ class ServerProcess(object):
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
 
+        self.process_reader_type = TextProcessReader  # type: Callable[[], ProcessReader]
         self._state = ServerState.STOPPED
         self._process = None  # type: subprocess.Process | None
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
@@ -187,15 +215,46 @@ class ServerProcess(object):
         self.log.debug(f"Memory check -> Available:{round(mem_available, 1):,}MB, Require:{round(required, 1):,}MB")
         return mem_available > required
 
-    async def _process_read_loop(self, process: subprocess.Process, reader: asyncio.StreamReader):
+    async def _process_read_loop(self, process: subprocess.Process, reader: ProcessReader):
         try:
-            while line := await reader.readline():
-                line = line.rstrip()
-                self.log.info(f"[OUTPUT] %s", line.decode("utf-8"))
+            await reader.loop_read(process)
         finally:
-            await process.wait()
-            self.log.info("Stopped server process")
+            ret = await process.wait()
+            self.log.info("Stopped server process (ret: %s)", ret)
             self.state = ServerState.STOPPED
+
+    def _build_arguments(self):
+        generated_arguments = False
+        if self.config.enable_launch_command and self.config.launch_command:
+            args = shlex.split(self.config.launch_command)
+
+        else:
+            generated_arguments = True
+            args = [
+                self.config.launch_option.java_executable,
+                f"-Xms{self.config.launch_option.min_heap_memory}M",
+                f"-Xmx{self.config.launch_option.max_heap_memory}M",
+                *shlex.split(self.config.launch_option.java_options),
+                "-D" + f"swi.serverName={self.id}",
+                "-jar",
+                self.config.launch_option.jar_file,
+                *shlex.split(self.config.launch_option.server_options),
+            ]
+
+            if self.config.launch_option.enable_reporter_agent:
+                # TODO: add agent option
+                pass
+
+        _event = await call_event(ServerLaunchOptionBuildEvent(self, args, is_generated=generated_arguments))
+        return _event.args
+
+    async def _start_subprocess(self, args: list[str], reader: ProcessReader):
+        return await subprocess.create_subprocess_exec(
+            args[0], *args[1:], **reader.subprocess_args(
+                cwd=self.directory,
+                start_new_session=True,
+            )
+        )
 
     async def start(self):
         if self._is_running:
@@ -216,39 +275,11 @@ class ServerProcess(object):
             if not self.check_free_memory():
                 raise errors.OutOfMemoryError
 
-            generated_arguments = False
-            if self.config.enable_launch_command and self.config.launch_command:
-                args = shlex.split(self.config.launch_command)
+            args = self._build_arguments()
+            reader = self.process_reader_type()
+            p = self._process = await self._start_subprocess(args, reader)
 
-            else:
-                generated_arguments = True
-                args = [
-                    self.config.launch_option.java_executable,
-                    f"-Xms{self.config.launch_option.min_heap_memory}M",
-                    f"-Xmx{self.config.launch_option.max_heap_memory}M",
-                    *shlex.split(self.config.launch_option.java_options),
-                    "-D" + f"swi.serverName={self.id}",
-                    "-jar",
-                    self.config.launch_option.jar_file,
-                    *shlex.split(self.config.launch_option.server_options),
-                ]
-
-                if self.config.launch_option.enable_reporter_agent:
-                    # TODO: add agent option
-                    pass
-
-            _event = await call_event(ServerLaunchOptionBuildEvent(self, args, is_generated=generated_arguments))
-            args = list(_event.args)
-
-            p = self._process = await subprocess.create_subprocess_exec(
-                args.pop(0), *args,
-                cwd=self.directory,
-                start_new_session=True,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            self._process_read_loop_task = self.loop.create_task(self._process_read_loop(p, p.stdout))
+            self._process_read_loop_task = self.loop.create_task(self._process_read_loop(p, reader))
             try:
                 await asyncio.wait_for(p.wait(), timeout=1)
             except asyncio.TimeoutError:
