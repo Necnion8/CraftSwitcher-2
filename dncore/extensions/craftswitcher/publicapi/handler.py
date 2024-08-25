@@ -124,7 +124,7 @@ class APIHandler(object):
             except errors.OperationCancelledError as e:
                 raise HTTPException(status_code=400, detail=f"Operation cancelled: {e}")
 
-            return model.ServerOperationResult(result=True)
+            return model.ServerOperationResult.success(server.id)
 
         @api.post(
             "/server/{server_id}/stop",

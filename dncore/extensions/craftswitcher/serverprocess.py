@@ -223,7 +223,7 @@ class ServerProcess(object):
             self.log.info("Stopped server process (ret: %s)", ret)
             self.state = ServerState.STOPPED
 
-    def _build_arguments(self):
+    async def _build_arguments(self):
         generated_arguments = False
         if self.config.enable_launch_command and self.config.launch_command:
             args = shlex.split(self.config.launch_command)
@@ -275,7 +275,7 @@ class ServerProcess(object):
             if not self.check_free_memory():
                 raise errors.OutOfMemoryError
 
-            args = self._build_arguments()
+            args = await self._build_arguments()
             reader = self.process_reader_type()
             p = self._process = await self._start_subprocess(args, reader)
 
