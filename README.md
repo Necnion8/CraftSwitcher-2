@@ -27,6 +27,7 @@ Minecraft Java サーバー 管理システム |
 
 
 ## 環境
+- Python 3.10
 - Linux (推奨)
 - Windows (一部の機能は非対応)
 
