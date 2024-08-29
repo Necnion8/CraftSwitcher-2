@@ -1,6 +1,7 @@
 from dncore.discord.events import DebugCommandPreExecuteEvent
 from dncore.event import onevent
 from dncore.extensions.craftswitcher import CraftSwitcher
+from dncore.extensions.craftswitcher.bot import BotCommandHandler
 from dncore.plugin import Plugin
 
 
@@ -20,12 +21,14 @@ class CraftSwitcherPlugin(Plugin):
 
     async def on_enable(self):
         self.register_listener(self.switcher)
+        self.register_commands(BotCommandHandler(self.switcher))
         await self.switcher.init()
 
     async def on_disable(self):
         try:
             await self.switcher.shutdown()
         finally:
+            self.unregister_commands()
             self.unregister_listener(self.switcher)
 
     @onevent()
