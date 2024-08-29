@@ -39,7 +39,8 @@ class CleanSection(ConfigValues):
 
 class DiscordSection(ConfigValues):
     # Discordボットトークン
-    token: str
+    # ※ 接続しないで使用する場合は、debug.no_connect を true に設定してください
+    token: str | None
     # APIに要求するインテント
     #   利用可能な値については以下のページを参照してください。
     #   カンマで区切って複数を指定できます。

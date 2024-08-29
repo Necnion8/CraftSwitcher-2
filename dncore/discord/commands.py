@@ -392,6 +392,10 @@ class DNCoreCommands(EventListener):
             return Embed.info(embed)
 
         elif mode == "reconnect":
+            if not get_core().config.discord.token:
+                await ctx.send_error(":warning: ボットトークンが設定されていません。")
+                return
+
             m = await ctx.send_warn(":recycle: Discordに再接続しています･･･")
             m_id = m.id
             ch_id = m.channel.id

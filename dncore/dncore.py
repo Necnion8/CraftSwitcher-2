@@ -89,7 +89,7 @@ class DNCore(object):
             init_time = (end_at - start_at) * 1000
             log.info(f"初期化完了 ({round(init_time)}ms) / dnCore Bot Client v{__version__}")
 
-            if not self.config.debug.no_connect:
+            if not self.config.debug.no_connect and self.config.discord.token:
                 try:
                     self.loop.run_until_complete(self.connect(fail_to_shutdown=True))
                 except discord.DiscordException as e:
@@ -156,6 +156,10 @@ class DNCore(object):
             for s in e.stacks:
                 log.warning(f"- ({s.entry.type.typename()}) {s.key:20} -> {s.error}",
                             exc_info=None if isinstance(s.error, ValueNotSet) else s.error)
+            return False
+
+        if not self.config.discord.token and not self.config.debug.no_connect:
+            log.warning("Discordボットトークンを設定してください。(場所: config/config.yml -> discord.token)")
             return False
 
         self.data.load()
@@ -364,6 +368,11 @@ class DNCore(object):
         if self.client is not None and not reconnect:
             return
 
+        token = self.config.discord.token
+        if not token:
+            log.warning("Discord token is empty")
+            return
+
         try:
             first = True
             reconnect_delay = 1
@@ -388,7 +397,7 @@ class DNCore(object):
                 await call_event(DiscordInitializeEvent(self.client))
 
                 try:
-                    await self.client.login(token=self.config.discord.token)
+                    await self.client.login(token=token)
 
                 except discord.DiscordServerError as e:
                     reconnect_delay = reconnect_delay * 2
