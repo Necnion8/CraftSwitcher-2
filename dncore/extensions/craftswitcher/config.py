@@ -91,6 +91,12 @@ class SwitcherConfig(FileConfigValues):
     # グローバル設定
     server_defaults: ServerGlobalConfig
 
+    # ルートとして扱うシステム上のディレクトリパス
+    root_directory = "./minecraft_servers"
+
+    # サーバーの保管に使うパス
+    servers_location: str = "/"
+
     # Java リスト
     java_executables: list[JavaExecutable]
 
