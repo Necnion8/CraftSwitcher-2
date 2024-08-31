@@ -1,5 +1,4 @@
 import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -126,20 +125,6 @@ class FileInfo(BaseModel):
     create_time: int = Field(description="作成日時")
     is_server_dir: bool = Field(description="サーバーディレクトリ？")
     registered_server_id: str | None = Field(description="登録されているサーバーID")
-
-    @classmethod
-    def make_file_info(cls, path: Path, parent_path: str, is_server_dir: bool, registered_server_id: str | None):
-        stats = path.stat()
-        return cls(
-            name=path.name,
-            path=parent_path,
-            is_dir=path.is_dir(),
-            size=stats.st_size if path.is_file() else -1,
-            modify_time=int(stats.st_mtime),
-            create_time=int(stats.st_ctime),
-            is_server_dir=is_server_dir,
-            registered_server_id=registered_server_id,
-        )
 
 
 class FileDirectoryInfo(BaseModel):
