@@ -177,8 +177,11 @@ class CraftSwitcher(EventListener):
 
         swipath = self.files.swipath(realpath, force=True)
         try:
-            server = self.servers[self.config.servers[swipath].lower()]
-            match_server_id = server.id if server else None
+            match_server_id = None
+            for _server_id, _server_dir in self.config.servers.items():
+                if _server_dir == swipath:
+                    match_server_id = _server_id
+                    break
         except KeyError:
             match_server_id = None
 
