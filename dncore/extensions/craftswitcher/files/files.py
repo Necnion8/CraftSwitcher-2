@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -19,7 +20,7 @@ class FileManager(object):
 
     def realpath(self, swi_path: str, *, force=False):
         """
-        SWIパスを絶対パスにし、システムパスに変換します
+        SWIパスを正規化し、システムパスに変換します
 
         安全ではないパスの場合は :class:`ValueError` が発生します
 
@@ -30,16 +31,19 @@ class FileManager(object):
 
     def resolvepath(self, swi_path: str, *, force=False):
         """
-        SWIパスを絶対パスに変換します
+        SWIパスを正規化します
 
         安全ではないパスの場合は :class:`ValueError` を発生させます
 
         :arg swi_path: SWIパス
         :arg force: 例外を出さずに安全に処理します
         """
-        swi_path = Path(swi_path)
-        # 絶対パスなら、はじめのパスパーツ(C:\\や/)を除外する
-        swi_path = Path(*swi_path.parts[1:] if swi_path.is_absolute() else swi_path.parts).as_posix()
+        regex = re.compile(r"^([a-zA-Z]:/*|/+)")
+        swi_path = swi_path.replace("\\", "/")
+        match = regex.match(swi_path)
+        while match:  # 絶対パス(C:\\や/)を除外する
+            swi_path = swi_path[match.end():]
+            match = regex.match(swi_path)
 
         new_parts = []
         for part in swi_path.split("/"):
@@ -69,7 +73,7 @@ class FileManager(object):
         except ValueError:
             if not force:
                 raise ValueError("Not allowed path")
-            parts = []
+            return "/"
 
         return "/" + "/".join(parts)
 

@@ -336,7 +336,7 @@ class APIHandler(object):
                 raise HTTPException(status_code=400, detail=f"Unable to access: {e}")
 
             return model.FileDirectoryInfo(
-                name=path_.name,
+                name="" if files.swipath(path_, force=True) == "/" else path_.name,
                 path=files.swipath(path_.parent, force=True),
                 children=file_list,
             )

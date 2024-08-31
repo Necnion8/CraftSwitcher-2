@@ -188,7 +188,7 @@ class CraftSwitcher(EventListener):
         is_server_dir = realpath.is_dir() and (realpath / self.SERVER_CONFIG_FILE_NAME).is_file()
 
         return FileInfo(
-            name=realpath.name,
+            name="" if swipath == "/" else realpath.name,
             path=self.files.swipath(realpath.parent, force=True),
             is_dir=realpath.is_dir(),
             size=stats.st_size if realpath.is_file() else -1,
