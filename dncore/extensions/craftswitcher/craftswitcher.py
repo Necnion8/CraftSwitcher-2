@@ -33,9 +33,11 @@ class CraftSwitcher(EventListener):
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         # api
+        global __version__
+        __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
         api = FastAPI(
             title="CraftSwitcher",
-            version=str(plugin_info.version.numbers) if plugin_info else __version__,
+            version=__version__,
         )
 
         @api.on_event("startup")
@@ -50,6 +52,31 @@ class CraftSwitcher(EventListener):
         self.api_handler = APIHandler(self, api)
         #
         self._initialized = False
+
+    def print_welcome(self):
+        log.info("=" * 50)
+        log.info("")
+        log.info("  ##*  CraftSwitcher v" + __version__ + "  *##")
+        log.info("")
+        if self.config.api_server.enable:
+            log.info("  - API Bind    : %s:%s", self.config.api_server.bind_host, self.config.api_server.bind_port)
+        else:
+            log.info("  - API Bind    : DISABLED")
+
+        log.info("")
+        log.info("  - Root Directory:")
+        log.info("       %s", self.files.root_dir)
+
+        log.info("")
+        log.info("  - Server List : %s servers", len(self.servers))
+        for server_id, server_ in self.servers.items():
+            if server_:
+                log.info("     - %s", server_id)
+            else:
+                log.warning("     - %s  (NOT LOADED)", server_id)
+
+        log.info("")
+        log.info("=" * 50)
 
     # property
 
@@ -69,6 +96,8 @@ class CraftSwitcher(EventListener):
 
         self.load_config()
         self.load_servers()
+
+        self.print_welcome()
 
         await self.start_api_server()
 
