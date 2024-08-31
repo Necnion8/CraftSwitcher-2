@@ -9,10 +9,66 @@ from ..utils import call_event
 
 
 class FileManager(object):
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, root_dir: Path):
         self.loop = loop
         self._task_id = -1
         self.tasks = set()  # type: set[FileTask]
+        self.root_dir = root_dir.resolve()
+
+    # util
+
+    def realpath(self, swi_path: str, *, force=False):
+        """
+        SWIパスを絶対パスにし、システムパスに変換します
+
+        安全ではないパスの場合は :class:`ValueError` が発生します
+
+        :arg swi_path: SWIパス
+        :arg force: 安全でない場合は例外を出さずに安全に処理します
+        """
+        return self.root_dir / self.resolvepath(swi_path, force=force).lstrip("/")
+
+    def resolvepath(self, swi_path: str, *, force=False):
+        """
+        SWIパスを絶対パスに変換します
+
+        安全ではないパスの場合は :class:`ValueError` を発生させます
+
+        :arg swi_path: SWIパス
+        :arg force: 例外を出さずに安全に処理します
+        """
+        swi_path = swi_path.replace("\\", "/")  # to unix
+        new_parts = []
+        for part in swi_path.lstrip("/").split("/"):
+            if part == "..":
+                if not new_parts:
+                    if force:
+                        continue
+                    raise ValueError("Not allowed path")
+                new_parts.pop(-1)
+            else:
+                new_parts.append(part)
+        return "/" + "/".join(new_parts)
+
+    def swipath(self, realpath: str | Path, *, force=False):
+        """
+        システムパスをSWIパスに変換します
+
+        指定されたパスがシステムパス外である場合は :class:`ValueError` を発生させます
+
+        :arg realpath: システムパス
+        :arg force: 例外を出さずに安全に処理します
+        """
+        realpath = (realpath if isinstance(realpath, Path) else Path(realpath)).resolve()
+
+        try:
+            parts = realpath.relative_to(self.root_dir).parts
+        except ValueError:
+            if not force:
+                raise ValueError("Not allowed path")
+            parts = []
+
+        return "/" + "/".join(parts)
 
     # task
 

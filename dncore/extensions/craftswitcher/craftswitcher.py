@@ -30,7 +30,7 @@ class CraftSwitcher(EventListener):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
         self.servers = ServerProcessList()
-        self.files = FileManager(loop)
+        self.files = FileManager(self.loop, Path("./minecraft_servers"))
         # api
         api = FastAPI(
             title="CraftSwitcher",
@@ -49,6 +49,12 @@ class CraftSwitcher(EventListener):
         self.api_handler = APIHandler(self, api)
         #
         self._initialized = False
+
+    # property
+
+    @property
+    def servers_real_path(self):
+        return self.files.realpath(self.config.servers_location, force=True)
 
     # api
 
@@ -85,6 +91,13 @@ class CraftSwitcher(EventListener):
     def load_config(self):
         log.debug("Loading config")
         self.config.load()
+        self.files.root_dir = root_dir = Path(self.config.root_directory).resolve()
+
+        if not root_dir.is_dir():
+            if root_dir.parent.is_dir():  # 親フォルダがあるなら静かに作成する
+                root_dir.mkdir()
+            else:
+                log.warning("Root directory does not exist! -> %s", root_dir)
 
     def load_servers(self):
         if self.servers:
