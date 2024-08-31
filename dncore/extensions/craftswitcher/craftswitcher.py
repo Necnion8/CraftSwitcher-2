@@ -97,6 +97,7 @@ class CraftSwitcher(EventListener):
         if not root_dir.is_dir():
             if root_dir.parent.is_dir():  # 親フォルダがあるなら静かに作成する
                 root_dir.mkdir()
+                log.info("Created root directory: %s", root_dir)
             else:
                 log.warning("Root directory does not exist! -> %s", root_dir)
 
