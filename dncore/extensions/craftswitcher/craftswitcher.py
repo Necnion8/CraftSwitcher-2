@@ -159,6 +159,11 @@ class CraftSwitcher(EventListener):
             await asyncio.wait([_shutdown(s) for s in self.servers.values() if s])
 
     def unload_servers(self):
+        """
+        サーバーリストを空にします
+
+        :except ValueError: 起動しているサーバーがある場合
+        """
         if not self.servers:
             return
 
@@ -209,12 +214,18 @@ class CraftSwitcher(EventListener):
     # server api
 
     def create_server_config(self, server_directory: str | Path, jar_file=""):
+        """
+        指定されたサーバーディレクトリで :class:`ServerConfig` を作成します
+        """
         config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
         config.launch_option.jar_file = jar_file
         return config
 
     def import_server_config(self, server_directory: str):
+        """
+        構成済みのサーバーディレクトリから :class:`ServerConfig` を読み込み、作成します。
+        """
         config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         if not config_path.is_file():
             raise FileNotFoundError(str(config_path))
@@ -223,6 +234,15 @@ class CraftSwitcher(EventListener):
         return config
 
     def create_server(self, server_id: str, directory: str | Path, config: ServerConfig, *, set_creation_date=True):
+        """
+        サーバーを作成し、CraftSwitcherに追加されます。
+
+        この操作により、サーバーディレクトリにサーバー設定ファイルが保存されます。
+
+        既に存在するIDの場合は :class:`ValueError` を。
+
+        directoryが存在しない場合は :class:`NotADirectoryError` を発生させます。
+        """
         server_id = server_id.lower()
         if server_id in self.servers:
             raise ValueError("Already exists server id")
@@ -242,6 +262,9 @@ class CraftSwitcher(EventListener):
         return server
 
     def delete_server(self, server: ServerProcess, *, delete_server_config=False):
+        """
+        サーバーを削除します。サーバーは停止している必要があります。
+        """
         if server.state.is_running:
             raise RuntimeError("Server is running")
 
