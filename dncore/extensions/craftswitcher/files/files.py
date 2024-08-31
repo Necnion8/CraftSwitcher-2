@@ -37,9 +37,12 @@ class FileManager(object):
         :arg swi_path: SWIパス
         :arg force: 例外を出さずに安全に処理します
         """
-        swi_path = swi_path.replace("\\", "/")  # to unix
+        swi_path = Path(swi_path)
+        # 絶対パスなら、はじめのパスパーツ(C:\\や/)を除外する
+        swi_path = Path(*swi_path.parts[1:] if swi_path.is_absolute() else swi_path.parts).as_posix()
+
         new_parts = []
-        for part in swi_path.lstrip("/").split("/"):
+        for part in swi_path.split("/"):
             if part == "..":
                 if not new_parts:
                     if force:
