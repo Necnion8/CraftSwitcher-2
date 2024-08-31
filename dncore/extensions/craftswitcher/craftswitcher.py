@@ -13,6 +13,7 @@ from .config import SwitcherConfig, ServerConfig
 from .event import ServerChangeStateEvent
 from .files import FileManager
 from .publicapi import UvicornServer, APIHandler
+from .publicapi.model import FileInfo
 from .serverprocess import ServerProcessList, ServerProcess
 
 if TYPE_CHECKING:
@@ -102,36 +103,39 @@ class CraftSwitcher(EventListener):
     def load_servers(self):
         if self.servers:
             raise RuntimeError("server list is not empty")
-
         log.debug("Loading servers")
-        for server_id, server_dir in self.config.servers.items():
+        for server_id, _server_dir in self.config.servers.items():
             server_id = server_id.lower()
             if server_id in self.servers:
                 log.warning("Already exists server id!: %s", server_id)
                 continue
 
-            server_dir = Path(server_dir)
-
             server = None  # type: ServerProcess | None
-            server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
-            config = ServerConfig(server_config_path)
+            try:
+                server_dir = self.files.realpath(_server_dir)
+            except ValueError:
+                log.warning("Not allowed path: %s: %s", server_id, _server_dir)
 
-            if server_config_path.is_file():
-                try:
-                    config.load()
-                except Exception as e:
-                    log.error("Error in load server config: %s: %s", server_id, str(e))
-
-                else:
-                    server = ServerProcess(
-                        self.loop,
-                        directory=server_dir,
-                        server_id=server_id,
-                        config=config,
-                        global_config=self.config.server_defaults,
-                    )
             else:
-                log.warning("Not exists server config: %s", server_dir)
+                server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
+                config = ServerConfig(server_config_path)
+
+                if server_config_path.is_file():
+                    try:
+                        config.load()
+                    except Exception as e:
+                        log.error("Error in load server config: %s: %s", server_id, str(e))
+
+                    else:
+                        server = ServerProcess(
+                            self.loop,
+                            directory=server_dir,
+                            server_id=server_id,
+                            config=config,
+                            global_config=self.config.server_defaults,
+                        )
+                else:
+                    log.warning("Not exists server config: %s", server_dir)
 
             self.servers[server_id] = server
 
@@ -163,9 +167,45 @@ class CraftSwitcher(EventListener):
 
         self.servers.clear()
 
+    # util
+
+    def create_file_info(self, realpath: Path):
+        """
+        指定されたパスの :class:`FileInfo` を返します
+        """
+        stats = realpath.stat()
+
+        swipath = self.files.swipath(realpath, force=True)
+        try:
+            server = self.servers[self.config.servers[swipath].lower()]
+            match_server_id = server.id if server else None
+        except KeyError:
+            match_server_id = None
+
+        is_server_dir = realpath.is_dir() and (realpath / self.SERVER_CONFIG_FILE_NAME).is_file()
+
+        return FileInfo(
+            name=realpath.name,
+            path=self.files.swipath(realpath.parent, force=True),
+            is_dir=realpath.is_dir(),
+            size=stats.st_size if realpath.is_file() else -1,
+            modify_time=int(stats.st_mtime),
+            create_time=int(stats.st_ctime),
+            is_server_dir=is_server_dir,
+            registered_server_id=match_server_id,
+        )
+
+    def swipath_server(self, server: ServerProcess):
+        """
+        指定されたサーバーのSWIパスを返します
+
+        システムパス外である場合は :class:`ValueError` を発生させます
+        """
+        return self.files.swipath(server.directory)
+
     # server api
 
-    def create_server_config(self, server_directory: str, jar_file=""):
+    def create_server_config(self, server_directory: str | Path, jar_file=""):
         config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
         config.launch_option.jar_file = jar_file
@@ -179,7 +219,7 @@ class CraftSwitcher(EventListener):
         config.load(save_defaults=False)
         return config
 
-    def create_server(self, server_id: str, directory: str, config: ServerConfig, *, set_creation_date=True):
+    def create_server(self, server_id: str, directory: str | Path, config: ServerConfig, *, set_creation_date=True):
         server_id = server_id.lower()
         if server_id in self.servers:
             raise ValueError("Already exists server id")
@@ -194,7 +234,7 @@ class CraftSwitcher(EventListener):
 
         config.save(force=True)
         self.servers.append(server)
-        self.config.servers[server_id] = str(directory)
+        self.config.servers[server_id] = self.files.swipath(directory)
         self.config.save()
         return server
 

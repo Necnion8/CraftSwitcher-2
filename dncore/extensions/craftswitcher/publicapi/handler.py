@@ -190,15 +190,16 @@ class APIHandler(object):
             if server_id in servers:
                 raise HTTPException(status_code=400, detail="Already exists server id")
 
-            if not Path(param.directory).is_dir():
+            server_dir = self.inst.files.realpath(param.directory)
+            if not server_dir.is_dir():
                 raise HTTPException(status_code=400, detail="Not exists directory")
 
             try:
-                config = inst.import_server_config(param.directory)
+                config = inst.import_server_config(server_dir)
             except FileNotFoundError:
                 raise HTTPException(status_code=400, detail="Not exists server config")
 
-            server = inst.create_server(server_id, param.directory, config, set_creation_date=False)
+            server = inst.create_server(server_id, server_dir, config, set_creation_date=False)
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
@@ -212,10 +213,11 @@ class APIHandler(object):
             if server_id in servers:
                 raise HTTPException(status_code=400, detail="Already exists server id")
 
-            if not Path(param.directory).is_dir():
+            server_dir = self.inst.files.realpath(param.directory)
+            if not server_dir.is_dir():
                 raise HTTPException(status_code=400, detail="Not exists directory")
 
-            config = inst.create_server_config(param.directory)
+            config = inst.create_server_config(server_dir)
             config.name = param.name
             config.type = param.type
             config.launch_option.java_executable = param.launch_option.java_executable
@@ -231,7 +233,7 @@ class APIHandler(object):
             config.stop_command = param.stop_command
             config.shutdown_timeout = param.shutdown_timeout
 
-            server = inst.create_server(server_id, param.directory, config)
+            server = inst.create_server(server_id, server_dir, config)
             return model.ServerOperationResult.success(server.id)
 
         @api.delete(
@@ -296,17 +298,17 @@ class APIHandler(object):
         files = inst.files  # type: FileManager
         servers = self.inst.servers
 
-        def getpath(path: str):
-            return Path(path)  # TODO: replace root
+        def realpath(swipath_: str):
+            try:
+                return files.realpath(swipath_)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Unable to access: {swipath_}")
 
         def getserverpath(server, path):
             pass
 
-        def make_file_info(path: Path):
-            is_server_dir = path.is_dir() and (path / inst.SERVER_CONFIG_FILE_NAME).is_file()
-            server_id = None  # TODO: find server path
-
-            return model.FileInfo.make_file_info(path, "", is_server_dir, server_id)  # TODO: add parent_path
+        def create_file_info(realpath_: Path):
+            return inst.create_file_info(realpath_)
 
         def wait_for_task(task: FileTask, timeout: float | None = 1) -> Coroutine[Any, Any, FileTask]:
             return asyncio.wait_for(asyncio.shield(task.fut), timeout=timeout)
@@ -318,16 +320,16 @@ class APIHandler(object):
             description="指定されたパスのファイルリストを返す",
         )
         async def _files(path: str) -> model.FileDirectoryInfo:
-            path_ = getpath(path)
+            path_ = realpath(path)
 
             if not path_.is_dir():
                 raise HTTPException(status_code=404, detail="Not a directory or not exists")
 
-            files = []
+            file_list = []
             try:
                 for child in path_.iterdir():
                     try:
-                        files.append(make_file_info(child))
+                        file_list.append(create_file_info(child))
                     except Exception as e:
                         log.warning("Failed to get file info: %s: %s", str(child), str(e))
             except PermissionError as e:
@@ -335,8 +337,8 @@ class APIHandler(object):
 
             return model.FileDirectoryInfo(
                 name=path_.name,
-                path="",  # TODO: add parent_path
-                children=files,
+                path=files.swipath(path_.parent, force=True),
+                children=file_list,
             )
 
         @api.get(
@@ -346,7 +348,7 @@ class APIHandler(object):
             description="",
         )
         def _get_file(path: str):
-            path = getpath(path)
+            path = realpath(path)
 
             if not path.is_file():
                 raise HTTPException(status_code=400, detail="Not a file")
@@ -360,7 +362,7 @@ class APIHandler(object):
             description="",
         )
         def _post_file(path: str, file: UploadFile) -> model.FileInfo:
-            path = getpath(path)
+            path = realpath(path)
 
             try:
                 with open(path, "wb") as f:
@@ -369,7 +371,7 @@ class APIHandler(object):
             finally:
                 file.file.close()
 
-            return make_file_info(path)
+            return create_file_info(path)
 
         @api.delete(
             "/file",
@@ -378,7 +380,7 @@ class APIHandler(object):
             description="",
         )
         async def _delete_file(path: str) -> model.FileOperationResult:
-            path = getpath(path)
+            path = realpath(path)
 
             if not path.exists():
                 raise HTTPException(status_code=400, detail="Not exists")
@@ -401,7 +403,7 @@ class APIHandler(object):
             description="",
         )
         async def _mkdir(path: str) -> model.FileOperationResult:
-            path = getpath(path)
+            path = realpath(path)
 
             if path.exists():
                 raise HTTPException(status_code=400, detail="Already exists")
@@ -412,7 +414,7 @@ class APIHandler(object):
                 log.warning(f"Failed to mkdir: {e}: {path}")
                 return model.FileOperationResult.failed(None)
             else:
-                return model.FileOperationResult.success(None, make_file_info(path))
+                return model.FileOperationResult.success(None, create_file_info(path))
 
         @api.put(
             "/file/copy",
@@ -421,8 +423,8 @@ class APIHandler(object):
             description="",
         )
         async def _copy(path: str, dst_path: str) -> model.FileInfo:
-            path = getpath(path)
-            dst_path = getpath(dst_path)
+            path = realpath(path)
+            dst_path = realpath(dst_path)
 
             if not path.exists():
                 raise HTTPException(status_code=404, detail="source path not exists")
@@ -436,7 +438,7 @@ class APIHandler(object):
                 log.warning(f"Failed to copy: {e}: {path}")
                 return model.FileOperationResult.failed(task.id)
             else:
-                return model.FileOperationResult.success(task.id, make_file_info(dst_path))
+                return model.FileOperationResult.success(task.id, create_file_info(dst_path))
 
         @api.put(
             "/file/move",
@@ -445,8 +447,8 @@ class APIHandler(object):
             description="",
         )
         async def _move(path: str, dst_path: str) -> model.FileInfo:
-            path = getpath(path)
-            dst_path = getpath(dst_path)
+            path = realpath(path)
+            dst_path = realpath(dst_path)
 
             if not path.exists():
                 raise HTTPException(status_code=404, detail="source path not exists")
@@ -460,4 +462,4 @@ class APIHandler(object):
                 log.warning(f"Failed to move: {e}: {path}")
                 return model.FileOperationResult.failed(task.id)
             else:
-                return model.FileOperationResult.success(task.id, make_file_info(dst_path))
+                return model.FileOperationResult.success(task.id, create_file_info(dst_path))
