@@ -19,13 +19,13 @@ class Server(BaseModel):
     is_loaded: bool = Field(description="サーバー設定がロードされているか")
 
     @classmethod
-    def create(cls, server: "ServerProcess"):
+    def create(cls, server: "ServerProcess", directory: str):
         return cls(
             id=server.id,
             name=server.config.name,
             type=server.config.type,
             state=server.state,
-            directory=str(server.directory),
+            directory=directory,
             is_loaded=True,
         )
 

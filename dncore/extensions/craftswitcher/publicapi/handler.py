@@ -95,13 +95,13 @@ class APIHandler(object):
 
             for server_id, server in servers.items():
                 if server:
-                    ls.append(model.Server.create(server))
+                    ls.append(model.Server.create(server, inst.swipath_server(server)))
                 elif not only_loaded:
                     try:
                         server_dir = self.inst.config.servers[server_id]
                     except KeyError:
                         continue  # 外部から削除または変更されていた場合はリストから静かに除外する
-                    ls.append(model.Server.create_no_data(server_id, server_dir))
+                    ls.append(model.Server.create_no_data(server_id, inst.files.resolvepath(server_dir, force=True)))
 
             return ls
 
