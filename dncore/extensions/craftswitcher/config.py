@@ -94,7 +94,7 @@ class SwitcherConfig(FileConfigValues):
     # ルートとして扱うシステム上のディレクトリパス
     root_directory = "./minecraft_servers"
 
-    # サーバーの保管に使うパス
+    # サーバーの保管に使うパス (※ 通常は変更する必要はありません)
     servers_location: str = "/"
 
     # Java リスト
