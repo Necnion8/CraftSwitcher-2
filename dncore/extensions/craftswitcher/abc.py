@@ -24,6 +24,19 @@ class ServerState(Enum):
     def is_running(self):
         return self not in (ServerState.STOPPED, ServerState.UNKNOWN, )
 
+    def __lt__(self, other: "ServerState"):
+        return _SERVER_STATE_VALUE[self] < _SERVER_STATE_VALUE[other]
+
+
+_SERVER_STATE_VALUE = {
+    ServerState.UNKNOWN: -1,
+    ServerState.STOPPED: 0,
+    ServerState.STOPPING: 1,
+    ServerState.STARTING: 2,
+    ServerState.STARTED: 3,
+    ServerState.RUNNING: 3,
+}
+
 
 class _ServerType:
     def __init__(self, name: str, stop_command: str | None, is_proxy: bool, is_modded: bool):

@@ -1,9 +1,51 @@
 import datetime
+from typing import TYPE_CHECKING, Literal
 
+from dncore.abc import ObjectSerializable, Cloneable
 from dncore.abc.serializables import ActivitySetting
 from dncore.configuration import ConfigValues
 from dncore.configuration.files import FileConfigValues
 from dncore.extensions.craftswitcher.abc import ServerType
+
+if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher.serverprocess import ServerProcess
+
+SERVER_SELECT_TYPE = Literal["ALL", "PROXY", "NOT_PROXY", "SELECT", ]
+
+
+class ServerSelector(ObjectSerializable, Cloneable):
+    def __init__(self, type_: SERVER_SELECT_TYPE, ids: list[int] = None):
+        self.type = type_
+        self.ids = ids
+
+    def is_target(self, server: "ServerProcess"):
+        if self.type == "ALL":
+            return True
+        elif self.type == "PROXY":
+            return server.config.type.spec.is_proxy
+        elif self.type == "NOT_PROXY":
+            return not server.config.type.spec.is_proxy
+        elif not self.ids:
+            return False
+        return server.id in self.ids if isinstance(self.ids, list) else server.id == self.ids
+
+    def serialize(self):
+        if self.type in ("ALL", "PROXY", "NOT_PROXY", ):
+            return self.type
+        else:
+            return self.ids or []
+
+    @classmethod
+    def deserialize(cls, value):
+        if isinstance(value, str):
+            if value.upper() in ("ALL", "PROXY", "NOT_PROXY", ):
+                # noinspection PyTypeChecker
+                return cls(value.upper())
+            return cls("SELECT")
+        return cls("SELECT", list(value) or [])
+
+    def clone(self):
+        return ServerSelector(self.type, self.ids)
 
 
 class LaunchOption(ConfigValues):
@@ -87,7 +129,7 @@ class PublicApiServer(ConfigValues):
 
 class DiscordActivity(ConfigValues):
     # ステータスを参照するサーバー
-    target_server = "ALL"
+    target_server: ServerSelector = ServerSelector("ALL")
 
     # 指定されたサーバーが存在しない
     no_server: ActivitySetting | None = None

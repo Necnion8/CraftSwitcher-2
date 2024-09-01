@@ -198,6 +198,10 @@ class ServerProcess(object):
         self.log.info(f"Change state to {value} ({self.id})")
         call_event(ServerChangeStateEvent(self, value))
 
+    @property
+    def players(self) -> list:
+        return list()  # TODO: impl players
+
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
             # ignored
