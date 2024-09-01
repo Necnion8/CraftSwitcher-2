@@ -1,5 +1,6 @@
 import datetime
 
+from dncore.abc.serializables import ActivitySetting
 from dncore.configuration import ConfigValues
 from dncore.configuration.files import FileConfigValues
 from dncore.extensions.craftswitcher.abc import ServerType
@@ -84,6 +85,43 @@ class PublicApiServer(ConfigValues):
     bind_port = 8080
 
 
+class DiscordActivity(ConfigValues):
+    # ステータスを参照するサーバー
+    target_server = "ALL"
+
+    # 指定されたサーバーが存在しない
+    no_server: ActivitySetting | None = None
+    no_server_priority = -1
+    # サーバー状態: 停止している
+    stopped: ActivitySetting | None = ActivitySetting("dnd", "💤 停止中")
+    stopped_priority = 100
+    # サーバー状態: 起動中
+    starting: ActivitySetting | None = ActivitySetting("idle", "♻ 処理中")
+    starting_priority = 150
+    # サーバー状態: 停止中
+    stopping: ActivitySetting | None = ActivitySetting("idle", "♻ 処理中")
+    stopping_priority = 150
+    # サーバー状態: 起動済み
+    started: ActivitySetting | None = ActivitySetting("online", "🔹 サーバー運営中！")
+    started_priority = 100
+    # サーバー状態: 起動済みかつ、参加者がいる
+    started_joined: ActivitySetting | None = ActivitySetting("online", "🔹 {players}人が参加中！")
+    started_joined_priority = 150
+
+
+class Discord(ConfigValues):
+    # ボットのアクティビティステータス
+    #   利用できる値は
+    #     {players}  - 参加人数
+    #     {servers}  - 選択サーバーの数
+    #     {servers_online}  - 起動済みの選択サーバーの数
+    #
+    # xxx_priority の値について
+    #   ボットに表示されるアクティビティの優先度を決定します (50=弱い通知, 100=標準, 150=注意, 200=警告)
+    #   他プラグインのアクティビティと競合する場合に、より高い優先度に変更できます
+    activities: DiscordActivity
+
+
 class SwitcherConfig(FileConfigValues):
     # サーバーリスト (key: サーバーID、val: サーバー場所)
     servers: dict[str, str]
@@ -111,3 +149,6 @@ class SwitcherConfig(FileConfigValues):
 
     # APIサーバー
     api_server: PublicApiServer
+
+    # Discordボットの設定
+    discord: Discord
