@@ -4,13 +4,15 @@ from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
-from dncore.extensions.craftswitcher.publicapi import model
+from dncore.extensions.craftswitcher.publicapi import WebSocketClient, model
+from dncore.extensions.craftswitcher.publicapi.event import *
+from dncore.extensions.craftswitcher.utils import call_event
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher
@@ -23,9 +25,28 @@ class APIHandler(object):
     def __init__(self, inst: "CraftSwitcher", api: FastAPI):
         self.inst = inst
         self.router = api
+        self._websocket_clients = set()  # type: set[WebSocketClient]
+        #
         self._app(api)
         self._server(api)
         self._file(api)
+
+    # websocket
+
+    @property
+    def ws_clients(self):
+        return self._websocket_clients
+
+    async def broadcast_websocket(self, data):
+        tasks = [
+            client.websocket.send_json(data)
+            for client in self.ws_clients
+        ]
+
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    # api handling
 
     def _app(self, api: FastAPI):
         tags = ["App"]
@@ -68,6 +89,26 @@ class APIHandler(object):
 
             inst.config.save(force=True)
             return await _get_config_server_global()
+
+        @api.websocket(
+            "/ws",
+        )
+        async def _websocket(websocket: WebSocket):
+            await websocket.accept()
+
+            client = WebSocketClient(websocket)
+            log.debug("Connected WebSocket Client #%s", client.id)
+            call_event(WebSocketClientConnectEvent(client))
+            self._websocket_clients.add(client)
+
+            try:
+                async for data in websocket.iter_json():  # TODO: handle data
+                    log.debug("WS#%s -> %s", client.id, data)
+
+            finally:
+                self._websocket_clients.discard(client)
+                call_event(WebSocketClientDisconnectEvent(client))
+                log.debug("Disconnect WebSocket Client #%s", client.id)
 
     def _server(self, api: FastAPI):
         tags = ["Server"]
