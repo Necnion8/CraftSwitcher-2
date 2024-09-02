@@ -8,9 +8,9 @@ Minecraft Java サーバー 管理システム |
 ## 開発中
 - [x] DNC6プラグイン化
 - [x] サーバープロセスの操作ラッパー
-- [ ] REST API (もう少し)
-- [ ] WebSocket
-- [ ] 非同期ファイル操作マネージャ
+- [x] REST API
+- [x] WebSocket
+- [x] 非同期ファイル操作マネージャ
 - [ ] アーカイブファイルの操作
 - [ ] サーバー内連携モジュール
 - [ ] Discordからの操作コマンド (仮コマンド済み)
@@ -56,6 +56,18 @@ python3 -m dncore
 ```
 初回の起動時に以下のファイルが生成されます。
 - `./config/config.yml` - dnCore設定
-- `./plugins/CraftSwitcherPlugin/config.yml` - メイン設定
+- `./plugins/CraftSwitcher/config.yml` - メイン設定
 
-Discord機能を利用しない場合は[無効にする方法](https://github.com/Necnion8/dnCoreV6/wiki/No-Connect-Discord)を参照ください。 
+
+### Discord
+Discord機能を利用しない場合は[無効にする方法](https://github.com/Necnion8/dnCoreV6/wiki/No-Connect-Discord)を参照ください。
+
+### REST API
+REST API は初期設定で [`http://0.0.0.0:8080/docs`](http://localhost:8080/docs) に公開されています。
+
+
+## WebSocket
+WebSocket クライアントを `http://0.0.0.0:8080/ws` に接続することで、サーバーイベント等を JSON フォーマットで受信できます。
+
+> [craftswitcher.py](dncore%2Fextensions%2Fcraftswitcher%2Fcraftswitcher.py)<br>
+> `# events ws broadcast` このコマンド行の以下に実装があります
