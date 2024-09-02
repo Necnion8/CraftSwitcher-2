@@ -13,6 +13,11 @@ __all__ = [
     "ServerLaunchOptionBuildEvent",
     "ServerCreatedEvent",
     "ServerDeletedEvent",
+    "SwitcherInitializedEvent",
+    "SwitcherShutdownEvent",
+    "SwitcherConfigLoadedEvent",
+    "SwitcherServersLoadedEvent",
+    "SwitcherServersUnloadEvent",
 ]
 
 
@@ -58,4 +63,24 @@ class ServerCreatedEvent(Event, ServerEvent):
 
 
 class ServerDeletedEvent(Event, ServerEvent):
+    pass
+
+
+class SwitcherInitializedEvent(Event):
+    pass
+
+
+class SwitcherShutdownEvent(Event):
+    pass
+
+
+class SwitcherConfigLoadedEvent(Event):
+    pass
+
+
+class SwitcherServersLoadedEvent(Event):
+    pass
+
+
+class SwitcherServersUnloadEvent(Event):
     pass

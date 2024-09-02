@@ -104,10 +104,15 @@ class CraftSwitcher(EventListener):
 
         await self.start_api_server()
 
+        call_event(SwitcherInitializedEvent())
+
     async def shutdown(self):
         if not self._initialized:
             return
         log.info("Shutdown CraftSwitcher")
+
+        await call_event(SwitcherShutdownEvent())
+
         try:
             del CraftSwitcher._inst
         except AttributeError:
@@ -132,6 +137,8 @@ class CraftSwitcher(EventListener):
                 log.info("Created root directory: %s", root_dir)
             else:
                 log.warning("Root directory does not exist! -> %s", root_dir)
+
+        call_event(SwitcherConfigLoadedEvent())
 
     def load_servers(self):
         if self.servers:
@@ -173,6 +180,7 @@ class CraftSwitcher(EventListener):
             self.servers[server_id] = server
 
         log.info("Loaded %s server", len(self.servers))
+        call_event(SwitcherServersLoadedEvent())
 
     async def shutdown_all_servers(self):
         async def _shutdown(s: ServerProcess):
@@ -203,6 +211,7 @@ class CraftSwitcher(EventListener):
         if any(s.state.is_running for s in self.servers.values() if s):
             raise ValueError("Contains not stopped server")
 
+        call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
 
     # util
