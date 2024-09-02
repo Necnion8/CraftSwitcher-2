@@ -27,8 +27,9 @@ class CraftSwitcherPlugin(Plugin):
 
         servers = sorted(
             (s for s in self.servers.values() if s and conf.target_server.is_target(s)),
+            key=lambda s: s.state,
         )
-        players = sum(s.players for s in servers)
+        players = sum(len(s.players) for s in servers)
 
         if not servers:
             setting = conf.no_server.activity
