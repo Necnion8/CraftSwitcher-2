@@ -12,7 +12,9 @@ from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
 from .event import ServerChangeStateEvent
 from .files import FileManager
+from .files.event import *
 from .publicapi import UvicornServer, APIHandler
+from .publicapi.event import *
 from .publicapi.model import FileInfo
 from .serverprocess import ServerProcessList, ServerProcess
 
@@ -344,6 +346,71 @@ class CraftSwitcher(EventListener):
             await asyncio.sleep(delay)
             server.shutdown_to_restart = False
             await server.start()
+
+    # events ws broadcast
+
+    @onevent(monitor=True)
+    async def _ws_on_change_state(self, event: ServerChangeStateEvent):
+        event_data = dict(
+            type="event",
+            event_type="server_change_state",
+            server=event.server.id,
+            new_state=event.new_state.name,
+            old_state=event.old_state.name,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_task_start(self, event: FileTaskStartEvent):
+        task = event.task
+        src = self.files.swipath(task.src)
+        dst = self.files.swipath(task.dst) if task.dst else None
+        event_data = dict(
+            type="event",
+            event_type="file_task_start",
+            task_id=task.id,
+            task_type=task.type.name,
+            src=src,
+            dst=dst,
+            result=task.result.name,
+            progress=task.progress,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_task_end(self, event: FileTaskEndEvent):
+        task = event.task
+        src = self.files.swipath(task.src)
+        dst = self.files.swipath(task.dst) if task.dst else None
+        event_data = dict(
+            type="event",
+            event_type="file_task_end",
+            task_id=task.id,
+            task_type=task.type.name,
+            src=src,
+            dst=dst,
+            result=task.result.name,
+            progress=task.progress,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_websocket_client_connect(self, event: WebSocketClientConnectEvent):
+        event_data = dict(
+            type="event",
+            event_type="websocket_client_connect",
+            client_id=event.client.id,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_websocket_client_disconnect(self, event: WebSocketClientDisconnectEvent):
+        event_data = dict(
+            type="event",
+            event_type="websocket_client_disconnect",
+            client_id=event.client.id,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
 
 
 def getinst() -> "CraftSwitcher":

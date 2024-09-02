@@ -23,7 +23,7 @@ class ServerChangeStateEvent(Event, ServerEvent):
     def __init__(self, server: "ServerProcess", old_state: ServerState):
         super().__init__(server=server)
         self.old_state = old_state
-        self.new_state = server.state
+        self.new_state: ServerState = server.state
 
 
 class ServerPreStartEvent(Event, ServerEvent, Cancellable):
