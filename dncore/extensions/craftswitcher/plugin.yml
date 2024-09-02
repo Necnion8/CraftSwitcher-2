@@ -12,3 +12,5 @@ libraries:
   - fastapi
   - uvicorn
   - python-multipart
+  - sqlalchemy
+  - aiosqlite

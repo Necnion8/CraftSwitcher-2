@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from dncore.event import EventListener, onevent
 from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
+from .database import SwitcherDatabase
 from .event import *
 from .files import FileManager
 from .files.event import *
@@ -33,6 +34,7 @@ class CraftSwitcher(EventListener):
     def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *, plugin_info: "PluginInfo" = None):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
+        self.database = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         # api
@@ -100,6 +102,8 @@ class CraftSwitcher(EventListener):
         self.load_config()
         self.load_servers()
 
+        await self.database.connect()
+
         self.print_welcome()
 
         await self.start_api_server()
@@ -121,10 +125,20 @@ class CraftSwitcher(EventListener):
 
         try:
             await self.shutdown_all_servers()
-            await self.close_api_server()
+        except Exception as e:
+            log.warning("Exception in shutdown servers", exc_info=e)
 
-        finally:
-            self.unload_servers()
+        try:
+            await self.close_api_server()
+        except Exception as e:
+            log.warning("Exception in close api server", exc_info=e)
+
+        try:
+            await self.database.close()
+        except Exception as e:
+            log.warning("Exception in close database", exc_info=e)
+
+        self.unload_servers()
 
     def load_config(self):
         log.debug("Loading config")

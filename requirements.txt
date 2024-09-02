@@ -6,3 +6,5 @@ psutil
 fastapi
 uvicorn
 python-multipart
+sqlalchemy
+aiosqlite
