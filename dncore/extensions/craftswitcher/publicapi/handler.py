@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
-from dncore.extensions.craftswitcher.publicapi import WebSocketClient, model
+from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
 from dncore.extensions.craftswitcher.utils import call_event
 
@@ -30,6 +30,20 @@ class APIHandler(object):
         self._app(api)
         self._server(api)
         self._file(api)
+
+        @api.exception_handler(HTTPException)
+        def _on_api_error(_, exc: HTTPException):
+            return JSONResponse(status_code=exc.status_code, content=dict(
+                error=exc.detail,
+                error_code=exc.code if isinstance(exc, APIError) else -1,
+            ))
+
+        @api.exception_handler(500)
+        def _on_internal_exception_handler(_, __: Exception):
+            return JSONResponse(status_code=500, content=dict(
+                error="Internal Server Error",
+                error_code=-1,
+            ))
 
     # websocket
 
@@ -119,10 +133,10 @@ class APIHandler(object):
             try:
                 server = servers[server_id.lower()]
             except KeyError:
-                raise HTTPException(status_code=404, detail="Server not found")
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
 
             if server is None:
-                raise HTTPException(status_code=404, detail="Server config not loaded")
+                raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
 
         @api.get(
@@ -158,13 +172,13 @@ class APIHandler(object):
             try:
                 await server.start()
             except errors.AlreadyRunningError:
-                raise HTTPException(status_code=400, detail="Already running")
+                raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
             except errors.OutOfMemoryError:
-                raise HTTPException(status_code=400, detail="Out of memory")
+                raise APIErrorCode.OUT_OF_MEMORY.of("Out of memory")
             except errors.ServerLaunchError as e:
-                raise HTTPException(status_code=400, detail=f"Failed to launch: {e}")
+                raise APIErrorCode.SERVER_LAUNCH_ERROR.of(f"Failed to launch: {e}")
             except errors.OperationCancelledError as e:
-                raise HTTPException(status_code=400, detail=f"Operation cancelled: {e}")
+                raise APIErrorCode.OPERATION_CANCELLED.of(f"Operation cancelled: {e}")
 
             return model.ServerOperationResult.success(server.id)
 
@@ -180,9 +194,9 @@ class APIHandler(object):
             try:
                 await server.stop()
             except errors.NotRunningError:
-                raise HTTPException(status_code=400, detail="Not running")
+                raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
             except errors.ServerProcessingError:
-                raise HTTPException(status_code=400, detail="Server is processing")
+                raise APIErrorCode.SERVER_PROCESSING.of("Server is processing")
 
             return model.ServerOperationResult.success(server.id)
 
@@ -198,9 +212,9 @@ class APIHandler(object):
             try:
                 await server.restart()
             except errors.NotRunningError:
-                raise HTTPException(status_code=400, detail="Not running")
+                raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
             except errors.ServerProcessingError:
-                raise HTTPException(status_code=400, detail="Server is processing")
+                raise APIErrorCode.SERVER_PROCESSING.of("Server is processing")
 
             return model.ServerOperationResult.success(server.id)
 
@@ -216,7 +230,7 @@ class APIHandler(object):
             try:
                 await server.kill()
             except errors.NotRunningError:
-                raise HTTPException(status_code=400, detail="Not running")
+                raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
 
             return model.ServerOperationResult.success(server.id)
 
@@ -229,16 +243,16 @@ class APIHandler(object):
         async def _add(server_id: str, param: model.AddServerParam) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
-                raise HTTPException(status_code=400, detail="Already exists server id")
+                raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
             server_dir = self.inst.files.realpath(param.directory)
             if not server_dir.is_dir():
-                raise HTTPException(status_code=400, detail="Not exists directory")
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
 
             try:
                 config = inst.import_server_config(server_dir)
             except FileNotFoundError:
-                raise HTTPException(status_code=400, detail="Not exists server config")
+                raise APIErrorCode.NOT_EXISTS_CONFIG_FILE.of("Not exists server config")
 
             server = inst.create_server(server_id, server_dir, config, set_creation_date=False)
             return model.ServerOperationResult.success(server.id)
@@ -252,11 +266,11 @@ class APIHandler(object):
         async def _create(server_id: str, param: model.CreateServerParam) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
-                raise HTTPException(status_code=400, detail="Already exists server id")
+                raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
             server_dir = self.inst.files.realpath(param.directory)
             if not server_dir.is_dir():
-                raise HTTPException(status_code=400, detail="Not exists directory")
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
 
             config = inst.create_server_config(server_dir)
             config.name = param.name
@@ -287,7 +301,7 @@ class APIHandler(object):
             server = getserver(server_id)
 
             if server.state.is_running:
-                raise HTTPException(status_code=400, detail="Already running")
+                raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
 
             inst.delete_server(server, delete_server_config=delete_config_file)
             return model.ServerOperationResult.success(server.id)
@@ -343,7 +357,7 @@ class APIHandler(object):
             try:
                 return files.realpath(swipath_)
             except ValueError:
-                raise HTTPException(status_code=400, detail=f"Unable to access: {swipath_}")
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swipath_}")
 
         def getserverpath(server, path):
             pass
@@ -364,7 +378,7 @@ class APIHandler(object):
             path_ = realpath(path)
 
             if not path_.is_dir():
-                raise HTTPException(status_code=404, detail="Not a directory or not exists")
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not a directory or not exists", 404)
 
             file_list = []
             try:
@@ -374,7 +388,7 @@ class APIHandler(object):
                     except Exception as e:
                         log.warning("Failed to get file info: %s: %s", str(child), str(e))
             except PermissionError as e:
-                raise HTTPException(status_code=400, detail=f"Unable to access: {e}")
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {e}")
 
             return model.FileDirectoryInfo(
                 name="" if files.swipath(path_, force=True) == "/" else path_.name,
@@ -392,7 +406,7 @@ class APIHandler(object):
             path = realpath(path)
 
             if not path.is_file():
-                raise HTTPException(status_code=400, detail="Not a file")
+                raise APIErrorCode.NOT_FILE.of("Not a file", 404)
 
             return FileResponse(path)
 
@@ -424,7 +438,7 @@ class APIHandler(object):
             path = realpath(path)
 
             if not path.exists():
-                raise HTTPException(status_code=400, detail="Not exists")
+                raise APIErrorCode.NOT_EXISTS_PATH.of("Not exists", 404)
 
             task = files.delete(path)
             try:
@@ -447,7 +461,7 @@ class APIHandler(object):
             path = realpath(path)
 
             if path.exists():
-                raise HTTPException(status_code=400, detail="Already exists")
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Already exists")
 
             try:
                 await files.mkdir(path)
@@ -468,7 +482,10 @@ class APIHandler(object):
             dst_path = realpath(dst_path)
 
             if not path.exists():
-                raise HTTPException(status_code=404, detail="source path not exists")
+                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
+
+            if dst_path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
 
             task = files.copy(path, dst_path)
             try:
@@ -492,7 +509,10 @@ class APIHandler(object):
             dst_path = realpath(dst_path)
 
             if not path.exists():
-                raise HTTPException(status_code=404, detail="source path not exists")
+                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
+
+            if dst_path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
 
             task = files.move(path, dst_path)
             try:
