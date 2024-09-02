@@ -10,13 +10,14 @@ from fastapi import FastAPI
 from dncore.event import EventListener, onevent
 from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
-from .event import ServerChangeStateEvent
+from .event import *
 from .files import FileManager
 from .files.event import *
 from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo
 from .serverprocess import ServerProcessList, ServerProcess
+from .utils import call_event
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -291,6 +292,8 @@ class CraftSwitcher(EventListener):
         self.servers.append(server)
         self.config.servers[server_id] = self.files.swipath(directory)
         self.config.save()
+
+        call_event(ServerCreatedEvent(server))
         return server
 
     def delete_server(self, server: ServerProcess, *, delete_server_config=False):
@@ -302,6 +305,8 @@ class CraftSwitcher(EventListener):
 
         self.servers.pop(server.id, None)
         self.config.servers.pop(server.id, None)
+
+        call_event(ServerDeletedEvent(server))
 
         if delete_server_config:
             config_path = server.directory / self.SERVER_CONFIG_FILE_NAME
@@ -409,6 +414,24 @@ class CraftSwitcher(EventListener):
             type="event",
             event_type="websocket_client_disconnect",
             client_id=event.client.id,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_server_created(self, event: ServerCreatedEvent):
+        event_data = dict(
+            type="event",
+            event_type="server_created",
+            server=event.server.id,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_server_deleted(self, event: ServerDeletedEvent):
+        event_data = dict(
+            type="event",
+            event_type="server_deleted",
+            server=event.server.id,
         )
         await self.api_handler.broadcast_websocket(event_data)
 

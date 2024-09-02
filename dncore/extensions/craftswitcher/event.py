@@ -11,6 +11,8 @@ __all__ = [
     "ServerChangeStateEvent",
     "ServerPreStartEvent",
     "ServerLaunchOptionBuildEvent",
+    "ServerCreatedEvent",
+    "ServerDeletedEvent",
 ]
 
 
@@ -49,3 +51,11 @@ class ServerLaunchOptionBuildEvent(Event, ServerEvent):
     @property
     def orig_args(self):
         return list(self.__orig_args)
+
+
+class ServerCreatedEvent(Event, ServerEvent):
+    pass
+
+
+class ServerDeletedEvent(Event, ServerEvent):
+    pass
