@@ -1,4 +1,4 @@
-from enum import IntEnum
+from enum import IntEnum, auto
 
 from fastapi import WebSocket, HTTPException
 
@@ -21,25 +21,25 @@ class WebSocketClient(object):
 class APIErrorCode(IntEnum):
     # other
     OUT_OF_MEMORY = 100
-    OPERATION_CANCELLED = 101
-    ALREADY_EXISTS_ID = 102
+    OPERATION_CANCELLED = auto()
+    ALREADY_EXISTS_ID = auto()
 
     # server
     SERVER_NOT_FOUND = 200
-    SERVER_NOT_LOADED = 201
-    SERVER_NOT_RUNNING = 202
-    SERVER_LAUNCH_ERROR = 203
-    SERVER_ALREADY_RUNNING = 204
-    SERVER_PROCESSING = 205
+    SERVER_NOT_LOADED = auto()
+    SERVER_NOT_RUNNING = auto()
+    SERVER_LAUNCH_ERROR = auto()
+    SERVER_ALREADY_RUNNING = auto()
+    SERVER_PROCESSING = auto()
 
     # file
     NOT_EXISTS_PATH = 300
-    ALREADY_EXISTS_PATH = 301
-    NOT_EXISTS_DIRECTORY = 302
-    NOT_EXISTS_FILE = 303
-    NOT_EXISTS_CONFIG_FILE = 304
-    NOT_ALLOWED_PATH = 305
-    NOT_FILE = 306
+    ALREADY_EXISTS_PATH = auto()
+    NOT_EXISTS_DIRECTORY = auto()
+    NOT_EXISTS_FILE = auto()
+    NOT_EXISTS_CONFIG_FILE = auto()
+    NOT_ALLOWED_PATH = auto()
+    NOT_FILE = auto()
 
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
