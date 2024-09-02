@@ -194,9 +194,9 @@ class ServerProcess(object):
 
         if value is self._state:
             return
-        self._state = value
+        old_state, self._state = self._state, value
         self.log.info(f"Change state to {value} ({self.id})")
-        call_event(ServerChangeStateEvent(self, value))
+        call_event(ServerChangeStateEvent(self, old_state))
 
     @property
     def players(self) -> list:
