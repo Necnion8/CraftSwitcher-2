@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionm
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .model import Base, User
+from ..utils import datetime_now
 
 log = getLogger(__name__)
 TOKEN_EXPIRES = datetime.timedelta(weeks=2)
@@ -80,6 +81,14 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
+    async def get_user_by_id(self, user_id: int) -> User | None:
+        async with self.session() as db:
+            result = await db.execute(select(User).where(User.id == user_id))
+            try:
+                return result.one()[0]
+            except NoResultFound:
+                return None
+
     async def add_user(self, user: User):
         async with self._commit_lock:
             async with self.session() as db:
@@ -95,13 +104,23 @@ class SwitcherDatabase(object):
                     await db.execute(delete(User).where(User.id == user))
                 await db.commit()
 
-    async def update_user(self, user: User):
+    async def update_user(self, user: User | int, **new_values):
+        user_id = user if isinstance(user, int) else user.id
         async with self._commit_lock:
             async with self.session() as db:
+                result = await db.execute(select(User).where(User.id == user_id))
+                try:
+                    user = result.one()[0]
+                except NoResultFound:
+                    raise ValueError("Not exists user")
+
+                for key, val in new_values.items():
+                    setattr(user, key, val)
                 db.add(user)
                 await db.commit()
 
-    def token_update(self, user: User):
-        user.token = self.generate_token()
-        user.token_expire = expires = datetime.datetime.now() + TOKEN_EXPIRES
-        return TOKEN_EXPIRES, expires
+    async def update_user_token(self, user: User, **new_values):
+        token = self.generate_token()
+        expires = datetime_now() + TOKEN_EXPIRES
+        await self.update_user(user, token=token, token_expire=expires, **new_values)
+        return TOKEN_EXPIRES, token, expires

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import platform
 from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping
@@ -16,6 +17,7 @@ IS_WINDOWS = platform.system() == "Windows"
 __all__ = [
     "call_event",
     "system_memory",
+    "datetime_now",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "getinst",
@@ -29,6 +31,10 @@ def call_event(event: T) -> asyncio.Task[T]:
 def system_memory():
     mem = psutil.virtual_memory()
     return SystemMemoryInfo(mem.total, mem.available)
+
+
+def datetime_now():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 class ProcessPerformanceMonitor(object):

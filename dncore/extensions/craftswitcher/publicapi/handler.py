@@ -4,7 +4,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine
 
-from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
@@ -14,7 +14,7 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
-from dncore.extensions.craftswitcher.utils import call_event
+from dncore.extensions.craftswitcher.utils import call_event, datetime_now
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher
@@ -139,7 +139,7 @@ class APIHandler(object):
         @api.post(
             "/login",
         )
-        async def _login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+        async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.database.get_user(form_data.username)
             if not user:
                 raise HTTPException(
@@ -151,12 +151,15 @@ class APIHandler(object):
             if not db.verify_hash(form_data.password, user.password):
                 raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-            expires, _ = db.token_update(user)
-            await db.update_user(user)
+            expires, token, _ = await db.update_user_token(
+                user=user,
+                last_login=datetime_now(),
+                last_address=request.client.host,
+            )
 
             response.set_cookie(
                 key="session",
-                value=user.token,
+                value=token,
                 max_age=expires.total_seconds(),
             )
             return dict(result=True)

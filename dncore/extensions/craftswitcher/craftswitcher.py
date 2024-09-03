@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import os
 from logging import getLogger
 from pathlib import Path
@@ -19,7 +18,7 @@ from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo
 from .serverprocess import ServerProcessList, ServerProcess
-from .utils import call_event
+from .utils import call_event, datetime_now
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -110,6 +109,12 @@ class CraftSwitcher(EventListener):
         await self.start_api_server()
 
         call_event(SwitcherInitializedEvent())
+
+        if not await self.database.get_users():
+            log.info("Creating admin user")
+            user = await self.add_user("admin", "abc")
+            log.info("  login    : admin")
+            log.info("  password : abc")
 
     async def shutdown(self):
         if not self._initialized:
@@ -310,7 +315,7 @@ class CraftSwitcher(EventListener):
         server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
 
         if set_creation_date:
-            config.created_at = datetime.datetime.today()
+            config.created_at = datetime_now()
 
         config.save(force=True)
         self.servers.append(server)
@@ -361,6 +366,22 @@ class CraftSwitcher(EventListener):
 
     async def close_api_server(self):
         await self.api_server.shutdown()
+
+    # user
+
+    async def add_user(self, name: str, unhashed_password: str, **kwargs):
+
+        users = {u.name: u for u in await self.database.get_users()}
+        if name in users:
+            raise ValueError("Already exists user name")
+
+        password = self.database.generate_hash(unhashed_password)
+        user = User(name=name, password=password, **kwargs)
+        await self.database.add_user(user)
+        return user
+
+    async def create_user(self, name: str, password: str):
+        pass
 
     # events
 
