@@ -11,6 +11,7 @@ from dncore.event import EventListener, onevent
 from .abc import ServerState
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
+from .database.model import User
 from .event import *
 from .files import FileManager
 from .files.event import *
@@ -34,7 +35,7 @@ class CraftSwitcher(EventListener):
     def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *, plugin_info: "PluginInfo" = None):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
-        self.database = SwitcherDatabase(config_file.parent)
+        self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         # api
@@ -54,7 +55,7 @@ class CraftSwitcher(EventListener):
                     _log.addHandler(handler)
 
         self.api_server = UvicornServer()
-        self.api_handler = APIHandler(self, api)
+        self.api_handler = APIHandler(self, api, db)
         #
         self._initialized = False
 

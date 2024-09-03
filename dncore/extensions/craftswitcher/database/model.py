@@ -15,6 +15,7 @@ class User(Base):
     name = Column(String, nullable=False)
     password = Column(String, nullable=False)
     token = Column(String, nullable=True)
-    token_age = Column(DateTime(), nullable=True, index=True)
+    token_expire = Column(DateTime(), nullable=True, index=True)
     last_login = Column(DateTime(), nullable=True, index=True)
     last_address = Column(String, nullable=True)
+    permission = Column(Integer, nullable=False, default=0)

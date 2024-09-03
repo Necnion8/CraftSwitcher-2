@@ -14,3 +14,5 @@ libraries:
   - python-multipart
   - sqlalchemy
   - aiosqlite
+  - passlib
+  - bcrypt

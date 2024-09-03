@@ -4,11 +4,13 @@ from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine
 
-from fastapi import FastAPI, HTTPException, UploadFile, WebSocket
+from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
+from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
@@ -19,15 +21,18 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.config import ServerConfig
 
 log = getLogger(__name__)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 class APIHandler(object):
-    def __init__(self, inst: "CraftSwitcher", api: FastAPI):
+    def __init__(self, inst: "CraftSwitcher", api: FastAPI, database: SwitcherDatabase):
         self.inst = inst
+        self.database = database
         self.router = api
         self._websocket_clients = set()  # type: set[WebSocketClient]
         #
         self._app(api)
+        self._user(api)
         self._server(api)
         self._file(api)
 
@@ -59,6 +64,8 @@ class APIHandler(object):
 
         if tasks:
             await asyncio.gather(*tasks)
+
+    # user
 
     # api handling
 
@@ -123,6 +130,36 @@ class APIHandler(object):
                 self._websocket_clients.discard(client)
                 call_event(WebSocketClientDisconnectEvent(client))
                 log.debug("Disconnect WebSocket Client #%s", client.id)
+
+    def _user(self, api: FastAPI):
+        tags = ["User"]
+        inst = self.inst  # type: CraftSwitcher
+        db = self.database
+
+        @api.post(
+            "/login",
+        )
+        async def _login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+            user = await self.database.get_user(form_data.username)
+            if not user:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid authentication credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            if not db.verify_hash(form_data.password, user.password):
+                raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+            expires, _ = db.token_update(user)
+            await db.update_user(user)
+
+            response.set_cookie(
+                key="session",
+                value=user.token,
+                max_age=expires.total_seconds(),
+            )
+            return dict(result=True)
 
     def _server(self, api: FastAPI):
         tags = ["Server"]
