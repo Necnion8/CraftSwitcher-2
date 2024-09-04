@@ -20,31 +20,6 @@ from .utils import *
 _log = logging.getLogger(__name__)
 
 
-# noinspection PyMethodMayBeStatic
-class ProcessReader:
-    def subprocess_args(self, **kwargs) -> dict[str, Any]:
-        raise NotImplemented
-
-    async def loop_read(self, process: subprocess.Process):
-        raise NotImplemented
-
-
-class TextProcessReader(ProcessReader):
-    def subprocess_args(self, **kwargs) -> dict[str, Any]:
-        return dict(
-            kwargs,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-
-    async def loop_read(self, process: subprocess.Process):
-        reader = process.stdout
-        while line := await reader.readline():
-            line = line.rstrip()
-            _log.info(f"[OUTPUT] %s", line.decode("utf-8"))
-
-
 class ServerProcess(object):
     class Config:
         class LaunchOption:
@@ -165,21 +140,15 @@ class ServerProcess(object):
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
 
-        self.process_reader_type = TextProcessReader  # type: Callable[[], ProcessReader]
+        self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
-        self._process = None  # type: subprocess.Process | None
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
-        self._process_read_loop_task = None  # type: asyncio.Task | None
         #
         self.shutdown_to_restart = False
 
     @property
-    def process(self):
-        return self._process
-
-    @property
     def _is_running(self):
-        return self.process and self.process.returncode is None
+        return self.wrapper and self.wrapper.exit_status is None
 
     @property
     def state(self):
@@ -222,13 +191,8 @@ class ServerProcess(object):
         self.log.debug(f"Memory check -> Available:{round(mem_available, 1):,}MB, Require:{round(required, 1):,}MB")
         return mem_available > required
 
-    async def _process_read_loop(self, process: subprocess.Process, reader: ProcessReader):
-        try:
-            await reader.loop_read(process)
-        finally:
-            ret = await process.wait()
-            self.log.info("Stopped server process (ret: %s)", ret)
-            self.state = ServerState.STOPPED
+    async def _term_read(self, data: str):
+        self.log.info(f"[OUTPUT]: {data.lstrip()!r}")
 
     async def _build_arguments(self):
         generated_arguments = False
@@ -255,40 +219,42 @@ class ServerProcess(object):
         _event = await call_event(ServerLaunchOptionBuildEvent(self, args, is_generated=generated_arguments))
         return _event.args
 
-    async def _start_subprocess(self, args: list[str], reader: ProcessReader):
-        return await subprocess.create_subprocess_exec(
-            args[0], *args[1:], **reader.subprocess_args(
-                cwd=self.directory,
-                start_new_session=True,
-            )
+    # noinspection PyMethodMayBeStatic
+    async def _start_subprocess(
+            self, args: list[str], term_size: tuple[int, int],
+            *, read_handler: Callable[[str], Awaitable[None]],
+    ):
+        return await PtyProcessWrapper.spawn(
+            args=args,
+            cwd=self.directory,
+            term_size=term_size,
+            read_handler=read_handler,
         )
 
     async def start(self):
         if self._is_running:
             raise errors.AlreadyRunningError
 
-        if self._process_read_loop_task and not self._process_read_loop_task.done():
-            try:
-                await self._process_read_loop_task
-            except (Exception,):
-                pass
-
         self.log.info(f"Starting {self.id} server process")
         _event = await call_event(ServerPreStartEvent(self))
         if _event.cancelled:
             raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
+
+        def _end(_):
+            ret_ = wrapper.exit_status
+            self.log.info("Stopped server process (ret: %s)", ret_)
+            self.state = ServerState.STOPPED
 
         try:
             if not self.check_free_memory():
                 raise errors.OutOfMemoryError
 
             args = await self._build_arguments()
-            reader = self.process_reader_type()
-            p = self._process = await self._start_subprocess(args, reader)
 
-            self._process_read_loop_task = self.loop.create_task(self._process_read_loop(p, reader))
+            wrapper = self.wrapper = await self._start_subprocess(args, term_size=(80, 25), read_handler=self._term_read)
+            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
             try:
-                await asyncio.wait_for(p.wait(), timeout=1)
+                await asyncio.wait_for(wrapper.wait(), timeout=1)
             except asyncio.TimeoutError:
                 pass
 
@@ -296,15 +262,16 @@ class ServerProcess(object):
             self.log.exception("Exception in pre start", exc_info=e)
             raise errors.ServerLaunchError from e
 
-        if p.returncode is None:
+        ret = wrapper.exit_status
+        if ret is None:
             self.state = ServerState.RUNNING
 
         else:
-            self.log.warning("Exited process: return code: %s", p.returncode)
-            raise errors.ServerLaunchError(f"Failed to launch: process exited {p.returncode}")
+            self.log.warning("Exited process: return code: %s", ret)
+            raise errors.ServerLaunchError(f"Failed to launch: process exited {ret}")
 
         try:
-            self._perf_mon = ProcessPerformanceMonitor(p.pid)
+            self._perf_mon = ProcessPerformanceMonitor(wrapper.pid)
         except Exception as e:
             self.log.warning("Exception in init perf.mon", exc_info=e)
 
@@ -335,7 +302,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Killing {self.id} server process...")
-        self._process.send_signal(signal.SIGKILL)
+        self.wrapper.kill(signal.SIGKILL)
 
     async def wait_for_shutdown(self, *, timeout: int = None):
         if timeout is None:
