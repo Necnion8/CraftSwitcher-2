@@ -89,6 +89,20 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
+    async def get_user_by_token(self, token: str) -> User | None:
+        async with self.session() as db:
+            result = await db.execute(select(User).where(User.token == token))
+            try:
+                user = result.one()[0]
+            except NoResultFound:
+                return None
+
+            if user.token_expire is None:
+                return None
+
+            token_expire = user.token_expire.replace(tzinfo=datetime.timezone.utc)
+            return user if datetime_now() < token_expire else None
+
     async def add_user(self, user: User):
         async with self._commit_lock:
             async with self.session() as db:

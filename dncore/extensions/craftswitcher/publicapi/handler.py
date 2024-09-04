@@ -142,11 +142,7 @@ class APIHandler(object):
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.database.get_user(form_data.username)
             if not user:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
             if not db.verify_hash(form_data.password, user.password):
                 raise HTTPException(status_code=400, detail="Incorrect username or password")
@@ -163,6 +159,20 @@ class APIHandler(object):
                 max_age=expires.total_seconds(),
             )
             return dict(result=True)
+
+        @api.post(
+            "/login_test",
+        )
+        async def _login_test(request: Request):
+            log.debug("cookies:")  # TODO: remove debug
+            for key, value in request.cookies.items():
+                log.debug(f"  {key:10} -> {value}")
+
+            try:
+                token = request.cookies["session"]
+            except KeyError:
+                return False
+            return await self.database.get_user_by_token(token)
 
     def _server(self, api: FastAPI):
         tags = ["Server"]
