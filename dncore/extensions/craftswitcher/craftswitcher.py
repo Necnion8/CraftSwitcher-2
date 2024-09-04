@@ -405,8 +405,8 @@ class CraftSwitcher(EventListener):
             type="event",
             event_type="server_change_state",
             server=event.server.id,
-            new_state=event.new_state.name,
-            old_state=event.old_state.name,
+            new_state=event.new_state.value,
+            old_state=event.old_state.value,
         )
         await self.api_handler.broadcast_websocket(event_data)
 
