@@ -13,6 +13,7 @@ __all__ = [
     "ServerLaunchOptionBuildEvent",
     "ServerCreatedEvent",
     "ServerDeletedEvent",
+    "ServerProcessReadEvent",
     "SwitcherInitializedEvent",
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
@@ -64,6 +65,12 @@ class ServerCreatedEvent(Event, ServerEvent):
 
 class ServerDeletedEvent(Event, ServerEvent):
     pass
+
+
+class ServerProcessReadEvent(Event, ServerEvent):
+    def __init__(self, server: "ServerProcess", data: str):
+        super().__init__(server)
+        self.data = data
 
 
 class SwitcherInitializedEvent(Event):

@@ -193,7 +193,11 @@ class ServerProcess(object):
         return mem_available > required
 
     async def _term_read(self, data: str):
-        self.log.info(f"[OUTPUT]: {data.lstrip()!r}")
+        data = data.lstrip()
+        self.log.info(f"[OUTPUT]: {data!r}")
+
+        if data:
+            call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
 
     async def _build_arguments(self):
         generated_arguments = False

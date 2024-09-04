@@ -480,6 +480,16 @@ class CraftSwitcher(EventListener):
         )
         await self.api_handler.broadcast_websocket(event_data)
 
+    @onevent(monitor=True)
+    async def _ws_on_server_process_read(self, event: ServerProcessReadEvent):
+        event_data = dict(
+            type="event",
+            event_type="server_process_read",
+            server=event.server.id,
+            data=event.data
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
 
 def getinst() -> "CraftSwitcher":
     try:
