@@ -11,6 +11,7 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
+from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.config import ServerConfig
 
 log = getLogger(__name__)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
 class APIHandler(object):
@@ -136,6 +137,18 @@ class APIHandler(object):
         inst = self.inst  # type: CraftSwitcher
         db = self.database
 
+        async def get_authorized_user(request: Request):
+            try:
+                token = request.cookies["session"]
+            except KeyError:
+                pass
+            else:
+                user = await self.database.get_user_by_valid_token(token)
+                if user:
+                    return user
+
+            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
         @api.post(
             "/login",
         )
@@ -172,7 +185,14 @@ class APIHandler(object):
                 token = request.cookies["session"]
             except KeyError:
                 return False
-            return await self.database.get_user_by_token(token)
+            return bool(await self.database.get_user_by_valid_token(token))
+
+        @api.get(
+            "/login_requires",
+        )
+        async def _login_requires(_: User = Depends(get_authorized_user)):
+            log.debug("accepted login requires")
+            return True
 
     def _server(self, api: FastAPI):
         tags = ["Server"]

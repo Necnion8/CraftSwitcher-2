@@ -89,7 +89,7 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
-    async def get_user_by_token(self, token: str) -> User | None:
+    async def get_user_by_valid_token(self, token: str) -> User | None:
         async with self.session() as db:
             result = await db.execute(select(User).where(User.token == token))
             try:
