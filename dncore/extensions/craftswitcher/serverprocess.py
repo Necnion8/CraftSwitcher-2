@@ -5,6 +5,7 @@ import os
 import shlex
 import signal
 import sys
+import threading
 import time
 from functools import partial
 from pathlib import Path
@@ -280,7 +281,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Sending command to {self.id} server: {command}")
-        self.wrapper.write(command + "\n")  # TODO: check
+        self.wrapper.write(command + "\n")
 
     async def stop(self):
         if not self._is_running:
@@ -416,7 +417,8 @@ if sys.platform == "win32":
 
             wrapper = cls(pty.pid, cwd, args, pty)
             loop.create_task(wrapper._loop_read_handler(read_handler))
-            loop.run_in_executor(None, wrapper._loop_reader)
+            # loop.run_in_executor(None, wrapper._loop_reader)
+            threading.Thread(target=wrapper._loop_reader, daemon=True).start()  # ExecutorだとなぜかdnCoreが落ちない
             return wrapper
 
         def _loop_reader(self):
@@ -427,8 +429,7 @@ if sys.platform == "win32":
 
             try:
                 while pty_isalive():
-                    chunk = pty_read(1024 * 8, blocking=True)
-                    # chunk = _decode(pty_read(1024 * 8, blocking=True), "utf-8", errors="ignore")
+                    chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
                     queue_put(chunk)
             except Exception as e:
                 _log.exception("Exception in pty.read", exc_info=e)
