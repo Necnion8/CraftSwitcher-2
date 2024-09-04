@@ -472,7 +472,7 @@ else:
             try:
                 p = await asyncio.create_subprocess_exec(
                     *args,
-                    stdin=slave, stdout=slave, stderr=slave, close_fds=True,
+                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, close_fds=True,
                 )
             except Exception as e:
                 raise RuntimeError("Unable to create_subprocess_exec") from e
@@ -494,9 +494,12 @@ else:
             _decode = bytes.decode
 
             try:
-                while data := os_read(fd, 1024 * 8):
+                while True:
+                    try:
+                        data = os_read(fd, 1024 * 8)
+                    except OSError:
+                        break
                     queue_put(_decode(data, "utf-8", errors="ignore"))
-                queue_put("")
             except Exception as e:
                 _log.exception("Exception in os.read", exc_info=e)
             finally:
