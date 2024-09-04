@@ -1,11 +1,14 @@
 import asyncio
 import asyncio.subprocess as subprocess
 import logging
+import os
 import shlex
 import signal
+import sys
 import time
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Awaitable
 from typing import Callable
 
 from . import errors
@@ -310,8 +313,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Sending command to {self.id} server: {command}")
-        self._process.stdin.write(command.encode("utf-8") + b"\n")
-        await self._process.stdin.drain()
+        self.wrapper.write(command + "\n")  # TODO: check
 
     async def stop(self):
         if not self._is_running:
@@ -373,3 +375,179 @@ class ServerProcessList(dict[str, ServerProcess | None]):
         if server_id is None:
             return None
         return dict.get(self, server_id.lower())
+
+
+# wrapper
+
+
+class ProcessWrapper:
+    def __init__(self, pid: int, cwd: Path, args: list[str]):
+        self._read_queue = asyncio.Queue()
+        self.pid = pid
+        self.cwd = cwd
+        self.args = args
+
+    @classmethod
+    async def spawn(
+            cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+            *, read_handler: Callable[[str], Awaitable[None]],
+    ) -> "ProcessWrapper":
+        raise NotImplementedError
+
+    async def _loop_read_handler(self, read_handler: Callable[[str], Awaitable[None]]):
+        while data := await self._read_queue.get():
+            if data is EOFError:
+                break
+            try:
+                await read_handler(data)
+            except Exception as e:
+                _log.exception("Exception in read_handler", exc_info=e)
+
+    def write(self, data: str):
+        raise NotImplementedError
+
+    async def flush(self):
+        raise NotImplementedError
+
+    @property
+    def exit_status(self) -> int | None:
+        raise NotImplementedError
+
+    async def wait(self) -> int:
+        raise NotImplementedError
+
+    def kill(self, sig: signal.Signals = signal.SIGTERM):
+        os.kill(self.pid, sig)
+
+
+if sys.platform == "win32":
+    import winpty
+
+    class WinPtyProcessWrapper(ProcessWrapper):
+        def __init__(self, pid: int, cwd: Path, args: list[str], pty: winpty.PTY):
+            super().__init__(pid, cwd, args)
+            self.pty = pty
+
+        @classmethod
+        async def spawn(
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                *, read_handler: Callable[[str], Awaitable[None]],
+        ) -> "WinPtyProcessWrapper":
+            pty = winpty.PTY(*term_size)
+            # noinspection PyTypeChecker
+            _appname: bytes = args[0]
+            # noinspection PyTypeChecker
+            _cmdline: bytes = shlex.join(args[1:])
+            # noinspection PyTypeChecker
+            _cwd: bytes = str(cwd)
+
+            func = partial(pty.spawn, _appname, _cmdline, _cwd, )
+            loop = asyncio.get_running_loop()
+
+            if not loop.run_in_executor(None, func):
+                raise RuntimeError("Unable to pty.spawn")
+
+            wrapper = cls(pty.pid, cwd, args, pty)
+            loop.create_task(wrapper._loop_read_handler(read_handler))
+            loop.run_in_executor(None, wrapper._loop_reader)
+            return wrapper
+
+        def _loop_reader(self):
+            pty_read = self.pty.read
+            pty_isalive = self.pty.isalive
+            queue_put = self._read_queue.put_nowait
+            _decode = bytes.decode
+
+            try:
+                while pty_isalive():
+                    chunk = pty_read(1024 * 8, blocking=True)
+                    # chunk = _decode(pty_read(1024 * 8, blocking=True), "utf-8", errors="ignore")
+                    queue_put(chunk)
+            except Exception as e:
+                _log.exception("Exception in pty.read", exc_info=e)
+            finally:
+                queue_put(EOFError)
+
+        def write(self, data: str):
+            # noinspection PyTypeChecker
+            self.pty.write(data)
+
+        async def flush(self):
+            pass
+
+        @property
+        def exit_status(self) -> int | None:
+            return self.pty.get_exitstatus()
+
+        async def wait(self) -> int:
+            while self.pty.isalive():
+                await asyncio.sleep(.1)
+            return self.exit_status
+
+    PtyProcessWrapper = WinPtyProcessWrapper
+
+else:
+    import pty
+
+    class UnixPtyProcessWrapper(ProcessWrapper):
+        def __init__(self, pid: int, cwd: Path, args: list[str], process: subprocess.Process, fd: int):
+            super().__init__(pid, cwd, args)
+            self.process = process
+            self.fd = fd
+
+        @classmethod
+        async def spawn(
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                *, read_handler: Callable[[str], Awaitable[None]],
+        ) -> "UnixPtyProcessWrapper":
+            master, slave = pty.openpty()
+            try:
+                p = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdin=slave, stdout=slave, stderr=slave, close_fds=True,
+                )
+            except Exception as e:
+                raise RuntimeError("Unable to create_subprocess_exec") from e
+
+            finally:
+                os.close(slave)
+
+            loop = asyncio.get_running_loop()
+
+            wrapper = cls(p.pid, cwd, args, p, master)
+            loop.create_task(wrapper._loop_read_handler(read_handler))
+            loop.run_in_executor(None, wrapper._loop_reader)
+            return wrapper
+
+        def _loop_reader(self):
+            fd = self.fd
+            os_read = os.read
+            queue_put = self._read_queue.put_nowait
+            _decode = bytes.decode
+
+            try:
+                while data := os_read(fd, 1024 * 8):
+                    queue_put(_decode(data, "utf-8", errors="ignore"))
+                queue_put("")
+            except Exception as e:
+                _log.exception("Exception in os.read", exc_info=e)
+            finally:
+                queue_put(EOFError)
+
+        def write(self, data: str):
+            os.write(self.fd, data.encode("utf-8"))
+
+        async def flush(self):
+            pass
+
+        @property
+        def exit_status(self) -> int | None:
+            return self.process.returncode
+
+        async def wait(self) -> int:
+            return await self.process.wait()
+
+        def kill(self, sig: signal.Signals = signal.SIGTERM):
+            self.process.send_signal(sig)
+
+    PtyProcessWrapper = UnixPtyProcessWrapper
