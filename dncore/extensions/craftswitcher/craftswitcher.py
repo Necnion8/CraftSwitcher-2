@@ -274,14 +274,6 @@ class CraftSwitcher(EventListener):
         """
         return self.files.swipath(server.directory)
 
-    def realpath_server(self, server: ServerProcess, swi_path: str):
-        """
-        サーバーディレクトリとSWIパスを連結して、実際のシステムパスを返します
-
-        このメソッドはrootDir外でも値を返しますが、サーバーディレクトリ外である場合は :class:`ValueError` を発生させます
-        """
-        self.files.realpath(swi_path, force=False, root_dir=server.directory)
-
     # server api
 
     def create_server_config(self, server_directory: str | Path, jar_file=""):
