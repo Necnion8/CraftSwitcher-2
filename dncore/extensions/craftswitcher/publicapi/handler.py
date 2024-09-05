@@ -78,7 +78,7 @@ class APIHandler(object):
             if user:
                 return user
 
-        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+        raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
 
     @property
     def require_login(self) -> User:
@@ -159,10 +159,10 @@ class APIHandler(object):
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.database.get_user(form_data.username)
             if not user:
-                raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+                raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
 
             if not db.verify_hash(form_data.password, user.password):
-                raise HTTPException(status_code=400, detail="Incorrect username or password")
+                raise APIErrorCode.INCORRECT_USERNAME_OR_PASSWORD.of("Incorrect username or password")
 
             expires, token, _ = await db.update_user_token(
                 user=user,

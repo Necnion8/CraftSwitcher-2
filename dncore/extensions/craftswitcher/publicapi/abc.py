@@ -41,6 +41,10 @@ class APIErrorCode(IntEnum):
     NOT_ALLOWED_PATH = auto()
     NOT_FILE = auto()
 
+    # auth
+    INVALID_AUTHENTICATION_CREDENTIALS = 400
+    INCORRECT_USERNAME_OR_PASSWORD = auto()
+
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
 
