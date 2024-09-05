@@ -68,6 +68,22 @@ class APIHandler(object):
 
     # user
 
+    async def get_authorized_user(self, request: Request):
+        try:
+            token = request.cookies["session"]
+        except KeyError:
+            pass
+        else:
+            user = await self.database.get_user_by_valid_token(token)
+            if user:
+                return user
+
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+    @property
+    def require_login(self) -> User:
+        return Depends(self.get_authorized_user)
+
     # api handling
 
     def _app(self, api: FastAPI):
@@ -80,7 +96,7 @@ class APIHandler(object):
             summary="",
             description="",
         )
-        async def _get_config_server_global() -> model.ServerGlobalConfig:
+        async def _get_config_server_global(_=self.require_login) -> model.ServerGlobalConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
                 ls = {}
                 for key, entry in conf.get_values().items():
@@ -98,7 +114,7 @@ class APIHandler(object):
             summary="",
             description="",
         )
-        async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
+        async def _put_config_server_global(param: model.ServerGlobalConfig, _=self.require_login) -> model.ServerGlobalConfig:
             config = inst.config.server_defaults
 
             for key, value in param.model_dump(exclude_unset=True).items():
@@ -115,7 +131,7 @@ class APIHandler(object):
         @api.websocket(
             "/ws",
         )
-        async def _websocket(websocket: WebSocket):
+        async def _websocket(websocket: WebSocket, _=self.require_login):
             await websocket.accept()
 
             client = WebSocketClient(websocket)
@@ -136,18 +152,6 @@ class APIHandler(object):
         tags = ["User"]
         inst = self.inst  # type: CraftSwitcher
         db = self.database
-
-        async def get_authorized_user(request: Request):
-            try:
-                token = request.cookies["session"]
-            except KeyError:
-                pass
-            else:
-                user = await self.database.get_user_by_valid_token(token)
-                if user:
-                    return user
-
-            raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
         @api.post(
             "/login",
@@ -190,7 +194,7 @@ class APIHandler(object):
         @api.get(
             "/login_requires",
         )
-        async def _login_requires(_: User = Depends(get_authorized_user)):
+        async def _login_requires(_=self.require_login):
             log.debug("accepted login requires")
             return True
 
@@ -215,7 +219,7 @@ class APIHandler(object):
             summary="登録サーバーの一覧",
             description="登録されているサーバーを返します",
         )
-        async def _list(only_loaded: bool = False) -> list[model.Server]:
+        async def _list(only_loaded: bool = False, _=self.require_login) -> list[model.Server]:
             ls = []  # type: list[model.Server]
 
             for server_id, server in servers.items():
@@ -236,7 +240,7 @@ class APIHandler(object):
             summary="サーバーを起動",
             description="サーバーを起動します",
         )
-        async def _start(server_id: str) -> model.ServerOperationResult:
+        async def _start(server_id: str, _=self.require_login) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -258,7 +262,7 @@ class APIHandler(object):
             summary="サーバーを停止",
             description="サーバーを停止します",
         )
-        async def _stop(server_id: str) -> model.ServerOperationResult:
+        async def _stop(server_id: str, _=self.require_login) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -276,7 +280,7 @@ class APIHandler(object):
             summary="サーバーを再起動",
             description="サーバーを再起動します",
         )
-        async def _restart(server_id: str) -> model.ServerOperationResult:
+        async def _restart(server_id: str, _=self.require_login) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -294,7 +298,7 @@ class APIHandler(object):
             summary="サーバーを強制終了",
             description="サーバーを強制終了します",
         )
-        async def _kill(server_id: str) -> model.ServerOperationResult:
+        async def _kill(server_id: str, _=self.require_login) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -310,7 +314,7 @@ class APIHandler(object):
             summary="構成済みのサーバーを追加",
             description="構成済みのサーバーを登録します",
         )
-        async def _add(server_id: str, param: model.AddServerParam) -> model.ServerOperationResult:
+        async def _add(server_id: str, param: model.AddServerParam, _=self.require_login) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -333,7 +337,7 @@ class APIHandler(object):
             summary="サーバーを作成",
             description="サーバーを作成します",
         )
-        async def _create(server_id: str, param: model.CreateServerParam) -> model.ServerOperationResult:
+        async def _create(server_id: str, param: model.CreateServerParam, _=self.require_login) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -367,7 +371,7 @@ class APIHandler(object):
             summary="サーバーを削除",
             description="サーバーを削除します",
         )
-        async def _delete(server_id: str, delete_config_file: bool = False) -> model.ServerOperationResult:
+        async def _delete(server_id: str, delete_config_file: bool = False, _=self.require_login) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             if server.state.is_running:
@@ -382,7 +386,7 @@ class APIHandler(object):
             summary="サーバー設定の取得",
             description="サーバーの設定を返します",
         )
-        async def _get_config(server_id: str) -> model.ServerConfig:
+        async def _get_config(server_id: str, _=self.require_login) -> model.ServerConfig:
             server = getserver(server_id)
 
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
@@ -402,7 +406,7 @@ class APIHandler(object):
             summary="サーバー設定の更新",
             description="サーバーの設定を変更します",
         )
-        async def _put_config(server_id: str, param: model.ServerConfig) -> model.ServerConfig:
+        async def _put_config(server_id: str, param: model.ServerConfig, _=self.require_login) -> model.ServerConfig:
             server = getserver(server_id)
 
             config = server._config  # type: ServerConfig
@@ -444,7 +448,7 @@ class APIHandler(object):
             summary="ファイルの一覧",
             description="指定されたパスのファイルリストを返す",
         )
-        async def _files(path: str) -> model.FileDirectoryInfo:
+        async def _files(path: str, _=self.require_login) -> model.FileDirectoryInfo:
             path_ = realpath(path)
 
             if not path_.is_dir():
@@ -472,7 +476,7 @@ class APIHandler(object):
             summary="ファイルデータを取得",
             description="",
         )
-        def _get_file(path: str):
+        def _get_file(path: str, _=self.require_login):
             path = realpath(path)
 
             if not path.is_file():
@@ -486,7 +490,7 @@ class APIHandler(object):
             summary="ファイルデータを保存",
             description="",
         )
-        def _post_file(path: str, file: UploadFile) -> model.FileInfo:
+        def _post_file(path: str, file: UploadFile, _=self.require_login) -> model.FileInfo:
             path = realpath(path)
 
             try:
@@ -504,7 +508,7 @@ class APIHandler(object):
             summary="ファイルを削除",
             description="",
         )
-        async def _delete_file(path: str) -> model.FileOperationResult:
+        async def _delete_file(path: str, _=self.require_login) -> model.FileOperationResult:
             path = realpath(path)
 
             if not path.exists():
@@ -527,7 +531,7 @@ class APIHandler(object):
             summary="空のディレクトリ作成",
             description="",
         )
-        async def _mkdir(path: str) -> model.FileOperationResult:
+        async def _mkdir(path: str, _=self.require_login) -> model.FileOperationResult:
             path = realpath(path)
 
             if path.exists():
@@ -547,7 +551,7 @@ class APIHandler(object):
             summary="ファイル複製",
             description="",
         )
-        async def _copy(path: str, dst_path: str) -> model.FileInfo:
+        async def _copy(path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
             path = realpath(path)
             dst_path = realpath(dst_path)
 
@@ -574,7 +578,7 @@ class APIHandler(object):
             summary="ファイル移動",
             description="",
         )
-        async def _move(path: str, dst_path: str) -> model.FileInfo:
+        async def _move(path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
             path = realpath(path)
             dst_path = realpath(dst_path)
 
