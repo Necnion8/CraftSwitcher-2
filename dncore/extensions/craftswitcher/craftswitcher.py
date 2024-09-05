@@ -270,7 +270,7 @@ class CraftSwitcher(EventListener):
         """
         指定されたサーバーのSWIパスを返します
 
-        rootDir外である場合は :class:`ValueError` を発生させます
+        rootDirが変更されているか、rootDir元に属さないサーバーである場合は :class:`ValueError` を発生させます
         """
         return self.files.swipath(server.directory)
 

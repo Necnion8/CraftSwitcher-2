@@ -224,7 +224,11 @@ class APIHandler(object):
 
             for server_id, server in servers.items():
                 if server:
-                    ls.append(model.Server.create(server, inst.swipath_server(server)))
+                    try:
+                        server_swi_path = inst.swipath_server(server)
+                    except ValueError:
+                        server_swi_path = None
+                    ls.append(model.Server.create(server, server_swi_path))
                 elif not only_loaded:
                     try:
                         server_dir = self.inst.config.servers[server_id]

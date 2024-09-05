@@ -15,11 +15,11 @@ class Server(BaseModel):
     name: str | None = Field(description="表示名")
     type: abc.ServerType = Field(description="サーバータイプ")
     state: abc.ServerState = Field(description="状態")
-    directory: str = Field(description="場所")
+    directory: str | None = Field(description="サーバーがある場所のパス。rootDirに属さないサーバーは null")
     is_loaded: bool = Field(description="サーバー設定がロードされているか")
 
     @classmethod
-    def create(cls, server: "ServerProcess", directory: str):
+    def create(cls, server: "ServerProcess", directory: str | None):
         return cls(
             id=server.id,
             name=server.config.name,
