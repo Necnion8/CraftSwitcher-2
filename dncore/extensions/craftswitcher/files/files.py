@@ -18,16 +18,17 @@ class FileManager(object):
 
     # util
 
-    def realpath(self, swi_path: str, *, force=False):
+    def realpath(self, swi_path: str, *, force=False, root_dir: Path = None):
         """
-        SWIパスを正規化し、システムパスに変換します
+        SWIパスを正規化し、rootDirを基準にシステムパスに変換します
 
         安全ではないパスの場合は :class:`ValueError` が発生します
 
         :arg swi_path: SWIパス
         :arg force: 安全でない場合は例外を出さずに安全に処理します
+        :arg root_dir: ルートディレクトリ。Noneの時は、設定されたrootDirを使用します。
         """
-        return self.root_dir / self.resolvepath(swi_path, force=force).lstrip("/")
+        return (root_dir or self.root_dir) / self.resolvepath(swi_path, force=force).lstrip("/")
 
     def resolvepath(self, swi_path: str, *, force=False):
         """
@@ -57,19 +58,20 @@ class FileManager(object):
                 new_parts.append(part)
         return "/" + "/".join(new_parts)
 
-    def swipath(self, realpath: str | Path, *, force=False):
+    def swipath(self, realpath: str | Path, *, force=False, root_dir: Path = None):
         """
         システムパスをSWIパスに変換します
 
-        指定されたパスがシステムパス外である場合は :class:`ValueError` を発生させます
+        指定されたパスがrootDir外である場合は :class:`ValueError` を発生させます
 
         :arg realpath: システムパス
         :arg force: 例外を出さずに安全に処理します
+        :arg root_dir: ルートディレクトリ。Noneの時は、設定されたrootDirを使用します。
         """
         realpath = (realpath if isinstance(realpath, Path) else Path(realpath)).resolve()
 
         try:
-            parts = realpath.relative_to(self.root_dir).parts
+            parts = realpath.relative_to(root_dir or self.root_dir).parts
         except ValueError:
             if not force:
                 raise ValueError("Not allowed path")

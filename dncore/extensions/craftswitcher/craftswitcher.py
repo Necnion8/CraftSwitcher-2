@@ -236,17 +236,18 @@ class CraftSwitcher(EventListener):
 
     # util
 
-    def create_file_info(self, realpath: Path):
+    def create_file_info(self, realpath: Path, *, root_dir: Path = None):
         """
         指定されたパスの :class:`FileInfo` を返します
         """
         stats = realpath.stat()
 
-        swipath = self.files.swipath(realpath, force=True)
+        swipath = self.files.swipath(realpath, force=True, root_dir=root_dir)
+        swipath_by_root = self.files.swipath(realpath, force=True) if root_dir else swipath
         try:
             match_server_id = None
             for _server_id, _server_dir in self.config.servers.items():
-                if _server_dir == swipath:
+                if _server_dir == swipath_by_root:
                     match_server_id = _server_id
                     break
         except KeyError:
@@ -256,7 +257,7 @@ class CraftSwitcher(EventListener):
 
         return FileInfo(
             name="" if swipath == "/" else realpath.name,
-            path=self.files.swipath(realpath.parent, force=True),
+            path=self.files.swipath(realpath.parent, force=True, root_dir=root_dir),
             is_dir=realpath.is_dir(),
             size=stats.st_size if realpath.is_file() else -1,
             modify_time=int(stats.st_mtime),
@@ -269,9 +270,17 @@ class CraftSwitcher(EventListener):
         """
         指定されたサーバーのSWIパスを返します
 
-        システムパス外である場合は :class:`ValueError` を発生させます
+        rootDir外である場合は :class:`ValueError` を発生させます
         """
         return self.files.swipath(server.directory)
+
+    def realpath_server(self, server: ServerProcess, swi_path: str):
+        """
+        サーバーディレクトリとSWIパスを連結して、実際のシステムパスを返します
+
+        このメソッドはrootDir外でも値を返しますが、サーバーディレクトリ外である場合は :class:`ValueError` を発生させます
+        """
+        self.files.realpath(swi_path, force=False, root_dir=server.directory)
 
     # server api
 

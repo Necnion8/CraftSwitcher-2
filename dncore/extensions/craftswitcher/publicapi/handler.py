@@ -427,20 +427,30 @@ class APIHandler(object):
         files = inst.files  # type: FileManager
         servers = self.inst.servers
 
-        def realpath(swipath_: str):
+        def realpath(swipath_: str, root_dir_: Path = None):
             try:
-                return files.realpath(swipath_)
+                return files.realpath(swipath_, root_dir=root_dir_)
             except ValueError:
                 raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swipath_}")
 
         def getserverpath(server, path):
             pass
 
-        def create_file_info(realpath_: Path):
-            return inst.create_file_info(realpath_)
+        def create_file_info(realpath_: Path, root_dir_: Path = None):
+            return inst.create_file_info(realpath_, root_dir=root_dir_)
 
         def wait_for_task(task: FileTask, timeout: float | None = 1) -> Coroutine[Any, Any, FileTask]:
             return asyncio.wait_for(asyncio.shield(task.fut), timeout=timeout)
+
+        def getserver(server_id: str):
+            try:
+                server = servers[server_id.lower()]
+            except KeyError:
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
+
+            if server is None:
+                raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
+            return server
 
         @api.get(
             "/files",
@@ -598,3 +608,169 @@ class APIHandler(object):
                 return model.FileOperationResult.failed(task.id)
             else:
                 return model.FileOperationResult.success(task.id, create_file_info(dst_path))
+
+        # server
+
+        @api.get(
+            "/server/{server_id}/files",
+            tags=tags,
+            summary="ファイルの一覧",
+            description="指定されたパスのファイルリストを返す",
+        )
+        async def _server_files(server_id: str, path: str, _=self.require_login) -> model.FileDirectoryInfo:
+            server = getserver(server_id)
+            path_ = realpath(path, server.directory)
+
+            if not path_.is_dir():
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not a directory or not exists", 404)
+
+            file_list = []
+            try:
+                for child in path_.iterdir():
+                    try:
+                        file_list.append(create_file_info(child, server.directory))
+                    except Exception as e:
+                        log.warning("Failed to get file info: %s: %s", str(child), str(e))
+            except PermissionError as e:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {e}")
+
+            return model.FileDirectoryInfo(
+                name="" if files.swipath(path_, force=True, root_dir=server.directory) == "/" else path_.name,
+                path=files.swipath(path_.parent, force=True, root_dir=server.directory),
+                children=file_list,
+            )
+
+        @api.get(
+            "/server/{server_id}/file",
+            tags=tags,
+            summary="ファイルデータを取得",
+            description="",
+        )
+        def _server_get_file(server_id: str, path: str, _=self.require_login):
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+
+            if not path.is_file():
+                raise APIErrorCode.NOT_FILE.of("Not a file", 404)
+
+            return FileResponse(path)
+
+        @api.post(
+            "/server/{server_id}/file",
+            tags=tags,
+            summary="ファイルデータを保存",
+            description="",
+        )
+        def _server_post_file(server_id: str, path: str, file: UploadFile, _=self.require_login) -> model.FileInfo:
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+
+            try:
+                with open(path, "wb") as f:
+                    shutil.copyfileobj(file.file, f)
+
+            finally:
+                file.file.close()
+
+            return create_file_info(path, server.directory)
+
+        @api.delete(
+            "/server/{server_id}/file",
+            tags=tags,
+            summary="ファイルを削除",
+            description="",
+        )
+        async def _server_delete_file(server_id: str, path: str, _=self.require_login) -> model.FileOperationResult:
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+
+            if not path.exists():
+                raise APIErrorCode.NOT_EXISTS_PATH.of("Not exists", 404)
+
+            task = files.delete(path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to delete: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, None)
+
+        @api.post(
+            "/server/{server_id}/file/mkdir",
+            tags=tags,
+            summary="空のディレクトリ作成",
+            description="",
+        )
+        async def _server_mkdir(server_id: str, path: str, _=self.require_login) -> model.FileOperationResult:
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+
+            if path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Already exists")
+
+            try:
+                await files.mkdir(path)
+            except Exception as e:
+                log.warning(f"Failed to mkdir: {e}: {path}")
+                return model.FileOperationResult.failed(None)
+            else:
+                return model.FileOperationResult.success(None, create_file_info(path, server.directory))
+
+        @api.put(
+            "/server/{server_id}/file/copy",
+            tags=tags,
+            summary="ファイル複製",
+            description="",
+        )
+        async def _server_copy(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+            dst_path = realpath(dst_path, server.directory)
+
+            if not path.exists():
+                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
+
+            if dst_path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
+
+            task = files.copy(path, dst_path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to copy: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, create_file_info(dst_path, server.directory))
+
+        @api.put(
+            "/server/{server_id}/file/move",
+            tags=tags,
+            summary="ファイル移動",
+            description="",
+        )
+        async def _server_move(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
+            server = getserver(server_id)
+            path = realpath(path, server.directory)
+            dst_path = realpath(dst_path, server.directory)
+
+            if not path.exists():
+                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
+
+            if dst_path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
+
+            task = files.move(path, dst_path)
+            try:
+                await wait_for_task(task)
+            except asyncio.TimeoutError:
+                return model.FileOperationResult.pending(task.id)
+            except Exception as e:
+                log.warning(f"Failed to move: {e}: {path}")
+                return model.FileOperationResult.failed(task.id)
+            else:
+                return model.FileOperationResult.success(task.id, create_file_info(dst_path, server.directory))
