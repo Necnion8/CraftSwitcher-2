@@ -18,7 +18,7 @@ from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo
 from .serverprocess import ServerProcessList, ServerProcess
-from .utils import call_event, datetime_now
+from .utils import call_event, datetime_now, safe_server_id
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -158,6 +158,11 @@ class CraftSwitcher(EventListener):
             else:
                 log.warning("Root directory does not exist! -> %s", root_dir)
 
+        for _id, val in dict(self.config.servers).items():
+            _safe_id = safe_server_id(_id)
+            if _id != _safe_id:
+                self.config.servers[_safe_id] = val
+
         call_event(SwitcherConfigLoadedEvent())
 
     def load_servers(self):
@@ -165,7 +170,7 @@ class CraftSwitcher(EventListener):
             raise RuntimeError("server list is not empty")
         log.debug("Loading servers")
         for server_id, _server_dir in self.config.servers.items():
-            server_id = server_id.lower()
+            server_id = safe_server_id(server_id)
             if server_id in self.servers:
                 log.warning("Already exists server id!: %s", server_id)
                 continue
@@ -306,7 +311,7 @@ class CraftSwitcher(EventListener):
 
         directoryが存在しない場合は :class:`NotADirectoryError` を発生させます。
         """
-        server_id = server_id.lower()
+        server_id = safe_server_id(server_id)
         if server_id in self.servers:
             raise ValueError("Already exists server id")
 

@@ -18,6 +18,7 @@ __all__ = [
     "call_event",
     "system_memory",
     "datetime_now",
+    "safe_server_id",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "getinst",
@@ -35,6 +36,13 @@ def system_memory():
 
 def datetime_now():
     return datetime.datetime.now(datetime.timezone.utc)
+
+
+def safe_server_id(s: str):
+    """
+    サーバーIDとして正しい値に変換します
+    """
+    return s.lower().replace(" ", "_")
 
 
 class ProcessPerformanceMonitor(object):
