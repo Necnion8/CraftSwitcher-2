@@ -8,11 +8,11 @@ __all__ = [
 
 class ArchiveProgress(NamedTuple):
     progress: float
-    total_files: int = None
-    total_size: int = None
+    total_files: int | None = None
+    total_size: int | None = None
 
 
 class ArchiveFile(NamedTuple):
     filename: str
-    size: int = None
-    compressed_size: int = None
+    size: int | None = None
+    compressed_size: int | None = None

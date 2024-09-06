@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .abc import *
+from .archive.helper import ZipArchiveHelper
 from .event import *
 from ..utils import call_event
 
@@ -19,6 +20,10 @@ class FileManager(object):
         self._task_id = -1
         self.tasks = set()  # type: set[FileTask]
         self.root_dir = root_dir.resolve()
+        #
+        self.archive_helpers = [
+            ZipArchiveHelper(),
+        ]
 
     # util
 
