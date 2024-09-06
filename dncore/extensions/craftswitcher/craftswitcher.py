@@ -16,9 +16,9 @@ from .files import FileManager
 from .files.event import *
 from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
-from .publicapi.model import FileInfo
+from .publicapi.model import FileInfo, FileTask
 from .serverprocess import ServerProcessList, ServerProcess
-from .utils import call_event, datetime_now, safe_server_id
+from .utils import call_event, datetime_now, safe_server_id, AsyncCallTimer
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -57,6 +57,8 @@ class CraftSwitcher(EventListener):
         self.api_handler = APIHandler(self, api, db)
         #
         self._initialized = False
+        #
+        self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
 
     def print_welcome(self):
         log.info("=" * 50)
@@ -145,6 +147,7 @@ class CraftSwitcher(EventListener):
             log.warning("Exception in close database", exc_info=e)
 
         self.unload_servers()
+        AsyncCallTimer.cancel_all_timers()
 
     def load_config(self):
         log.debug("Loading config")
@@ -389,6 +392,19 @@ class CraftSwitcher(EventListener):
     async def create_user(self, name: str, password: str):
         pass
 
+    # task
+
+    async def _files_task_broadcast_loop(self):
+        if not self.files.tasks:
+            return False
+
+        progress_data = dict(
+            type="progress",
+            progress_type="file_task",
+            tasks=[FileTask.create(task).model_dump("json") for task in self.files.tasks],
+        )
+        await self.api_handler.broadcast_websocket(progress_data)
+
     # events
 
     @onevent(monitor=True)
@@ -402,6 +418,11 @@ class CraftSwitcher(EventListener):
             await asyncio.sleep(delay)
             server.shutdown_to_restart = False
             await server.start()
+
+    @onevent(monitor=True)
+    async def on_file_task_start(self, _: FileTaskStartEvent):
+        if self.files.tasks:
+            await self._files_task_broadcast_loop.start()
 
     # events ws broadcast
 

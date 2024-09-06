@@ -1,8 +1,10 @@
 import asyncio
 import datetime
+import functools
 import logging
 import platform
-from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping
+from logging import getLogger
+from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaitable
 
 import psutil
 
@@ -12,6 +14,7 @@ from dncore.extensions.craftswitcher.abc import SystemMemoryInfo, ProcessInfo
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher
 
+log = getLogger(__name__)
 T = TypeVar("T")
 IS_WINDOWS = platform.system() == "Windows"
 __all__ = [
@@ -21,6 +24,7 @@ __all__ = [
     "safe_server_id",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
+    "AsyncCallTimer",
     "getinst",
 ]
 
@@ -69,6 +73,74 @@ class ServerLoggerAdapter(logging.LoggerAdapter):
 
     def process(self, msg: Any, kwargs: MutableMapping[str, Any]) -> tuple[Any, MutableMapping[str, Any]]:
         return f"[{self._server_name}] {msg}", kwargs
+
+
+class AsyncCallTimer(object):
+    RUNNING_TIMERS = set()  # type: set[AsyncCallTimer]
+
+    @classmethod
+    def cancel_all_timers(cls):
+        for timer in set(cls.RUNNING_TIMERS):
+            asyncio.create_task(timer.stop(cancel=True))
+
+    def __init__(self, task: Callable[[], Awaitable[bool | None]], delay: float, period: float):
+        self.task = task
+        self.delay = delay
+        self.period = period
+        self._interrupt = False
+        self._task = None  # type: asyncio.Task | None
+
+    @property
+    def is_running(self):
+        return self._task and not self._task.done()
+
+    async def start(self, *, restart=False):
+        if self.is_running and not restart:
+            return
+        if self.is_running:
+            await self.stop()
+
+        self._interrupt = False
+        self._task = asyncio.get_running_loop().create_task(self._run())
+
+    async def stop(self, *, cancel=False):
+        self._interrupt = True
+        if self._task:
+            if cancel:
+                self._task.cancel()
+            try:
+                await self._task
+            except (Exception,):
+                pass
+        self._task = None
+
+    async def _run(self):
+        self.RUNNING_TIMERS.add(self)
+        try:
+            await asyncio.sleep(self.delay)
+            while not self._interrupt:
+                try:
+                    ret = await self.task()
+                except Exception as e:
+                    log.warning("Exception in timer task:", exc_info=e)
+                else:
+                    if ret is False:
+                        return
+
+                if self._interrupt:
+                    return
+                await asyncio.sleep(self.period)
+        finally:
+            self.RUNNING_TIMERS.discard(self)
+
+    @classmethod
+    def create(cls, period: float, delay=0.0):
+        def _wrap(func):
+            @functools.wraps(func)
+            async def wrapped(*args):
+                return await func(*args)
+            return cls(wrapped, delay, period)
+        return _wrap
 
 
 def getinst() -> "CraftSwitcher":
