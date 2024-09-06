@@ -457,6 +457,15 @@ class APIHandler(object):
             return server
 
         @api.get(
+            "/file/tasks",
+            tags=tags,
+            summary="ファイルタスクの一覧",
+            description="実行中のファイル操作タスクのリストを返す",
+        )
+        def _file_tasks(_=self.require_login) -> list[model.FileTask]:
+            return [model.FileTask.create(task) for task in files.tasks]
+
+        @api.get(
             "/files",
             tags=tags,
             summary="ファイルの一覧",
@@ -686,12 +695,13 @@ class APIHandler(object):
         )
         async def _server_delete_file(server_id: str, path: str, _=self.require_login) -> model.FileOperationResult:
             server = getserver(server_id)
-            path = realpath(path, server.directory)
+            swi_path = files.resolvepath(path)
+            path = realpath(swi_path, server.directory)
 
             if not path.exists():
                 raise APIErrorCode.NOT_EXISTS_PATH.of("Not exists", 404)
 
-            task = files.delete(path)
+            task = files.delete(path, server, swi_path)
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:
@@ -731,6 +741,8 @@ class APIHandler(object):
         )
         async def _server_copy(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
             server = getserver(server_id)
+            src_swi_path = files.resolvepath(path)
+            dst_swi_path = files.resolvepath(dst_path)
             path = realpath(path, server.directory)
             dst_path = realpath(dst_path, server.directory)
 
@@ -740,7 +752,7 @@ class APIHandler(object):
             if dst_path.exists():
                 raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
 
-            task = files.copy(path, dst_path)
+            task = files.copy(path, dst_path, server, src_swi_path, dst_swi_path)
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:
@@ -759,6 +771,8 @@ class APIHandler(object):
         )
         async def _server_move(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
             server = getserver(server_id)
+            src_swi_path = files.resolvepath(path)
+            dst_swi_path = files.resolvepath(dst_path)
             path = realpath(path, server.directory)
             dst_path = realpath(dst_path, server.directory)
 
@@ -768,7 +782,7 @@ class APIHandler(object):
             if dst_path.exists():
                 raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
 
-            task = files.move(path, dst_path)
+            task = files.move(path, dst_path, server, src_swi_path, dst_swi_path)
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:

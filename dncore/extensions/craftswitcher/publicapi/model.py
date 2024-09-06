@@ -149,3 +149,25 @@ class FileOperationResult(BaseModel):
     @classmethod
     def failed(cls, task_id: int | None, file: FileInfo = None):
         return cls(result=fabc.FileTaskResult.FAILED, task_id=task_id, file=file)
+
+
+class FileTask(BaseModel):
+    id: str = Field(description="タスクID")
+    type: fabc.FileEventType = Field(description="タスクタイプ")
+    progress: float = Field(description="進行度。対応しない場合は常に 0.0 を返す。")
+    result: fabc.FileTaskResult = Field(description="タスクの結果")
+    src_path: str | None = Field(description="元ファイルのパス")
+    dst_path: str | None = Field(description="送り先または処理後のファイルパス")
+    server: str | None = Field(description="対象のサーバー。値がある場合、xxx_path はサーバーディレクトリからの相対パス。")
+
+    @classmethod
+    def create(cls, task: "fabc.FileTask"):
+        return cls(
+            id=task.id,
+            type=task.type,
+            progress=task.progress,
+            result=task.result,
+            src_path=task.src_swi_path,
+            dst_path=task.dst_swi_path,
+            server=task.server.id,
+        )

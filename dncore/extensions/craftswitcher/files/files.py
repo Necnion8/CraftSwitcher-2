@@ -3,10 +3,14 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .abc import *
 from .event import *
 from ..utils import call_event
+
+if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher import ServerProcess
 
 
 class FileManager(object):
@@ -96,43 +100,54 @@ class FileManager(object):
 
         task.fut.add_done_callback(_done)
 
-    def create_task(self, event_type: FileEventType, src: Path, dst: Path | None, fut: asyncio.Future):
+    def create_task(self, event_type: FileEventType, src: Path, dst: Path | None, fut: asyncio.Future,
+                    server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
         ファイルタスクを作成します
         """
         if fut.done():
             raise ValueError("Already task completed")
-        task = FileTask(self._add_task_id(), event_type, src, dst, fut)
+        task = FileTask(self._add_task_id(), event_type, src, dst, fut, server, src_swi_path, dst_swi_path)
         self._add_task_callback(task)
         self.tasks.add(task)
         call_event(FileTaskStartEvent(task))
         return task
 
-    def create_task_in_executor(self, event_type: FileEventType, src: Path, dst: Path | None, do_task, executor=None):
+    def create_task_in_executor(self, event_type: FileEventType, src: Path, dst: Path | None, do_task, executor=None,
+                                server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         fut = self.loop.run_in_executor(executor, do_task)
-        return self.create_task(event_type, src, dst, fut)
+        return self.create_task(event_type, src, dst, fut, server, src_swi_path, dst_swi_path)
 
     # method
 
-    def copy(self, src: Path, dst: Path):
+    def copy(self, src: Path, dst: Path,
+             server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
         ファイルをコピーするタスクを作成し、実行します。
         """
         def _do():
             shutil.copyfile(src, dst)
 
-        return self.create_task_in_executor(FileEventType.COPY, src, dst, _do)
+        return self.create_task_in_executor(
+            FileEventType.COPY, src, dst, _do, executor=None,
+            server=server, src_swi_path=src_swi_path, dst_swi_path=dst_swi_path,
+        )
 
-    def move(self, src: Path, dst: Path):
+    def move(self, src: Path, dst: Path,
+             server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
         ファイルをコピーするタスクを作成し、実行します。
         """
         def _do():
             shutil.move(src, dst)
 
-        return self.create_task_in_executor(FileEventType.MOVE, src, dst, _do)
+        return self.create_task_in_executor(
+            FileEventType.MOVE, src, dst, _do, executor=None,
+            server=server, src_swi_path=src_swi_path, dst_swi_path=dst_swi_path,
+        )
 
-    def delete(self, src: Path):
+    def delete(self, src: Path,
+               server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
         ファイルを削除するタスクを作成し、実行します。
         """
@@ -142,7 +157,10 @@ class FileManager(object):
             else:
                 os.remove(src)
 
-        return self.create_task_in_executor(FileEventType.DELETE, src, None, _do)
+        return self.create_task_in_executor(
+            FileEventType.DELETE, src, None, _do, executor=None,
+            server=server, src_swi_path=src_swi_path, dst_swi_path=dst_swi_path,
+        )
 
     async def mkdir(self, src: Path):
         """

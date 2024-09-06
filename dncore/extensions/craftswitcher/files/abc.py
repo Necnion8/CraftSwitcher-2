@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import asyncio
     from pathlib import Path
+    from dncore.extensions.craftswitcher import ServerProcess
 
 __all__ = [
     "FileEventType",
@@ -27,12 +28,16 @@ class FileTaskResult(Enum):
 
 
 class FileTask(object):
-    def __init__(self, task_id: int, event_type: FileEventType, src: "Path", dst: "Path | None", fut: "asyncio.Future"):
+    def __init__(self, task_id: int, event_type: FileEventType, src: "Path", dst: "Path | None", fut: "asyncio.Future",
+                 server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None):
         self.id = task_id
         self.type = event_type
         self.src = src
         self.dst = dst
         self.fut = fut
+        self.src_swi_path = src_swi_path
+        self.dst_swi_path = dst_swi_path
+        self.server = server
         self._progress = 0.0
         self.result = FileTaskResult.PENDING
 
