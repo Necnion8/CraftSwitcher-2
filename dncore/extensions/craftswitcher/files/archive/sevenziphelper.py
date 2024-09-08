@@ -22,6 +22,22 @@ class SevenZipHelper(ArchiveHelper):
 
         return {"7z", "zip", }
 
+    async def is_archive(self, file_path: Path) -> bool:
+        proc = await subprocess.create_subprocess_exec(
+            self.command_name,
+            "t",
+            "-bso1", "-bse1",
+            "-y", "-x!*", "-p"
+            "--", str(file_path),
+        )
+
+        detect_encrypted_archive = False
+        while line := await proc.stdout.read():
+            if line.strip() == b"Can not open encrypted archive. Wrong password?":
+                detect_encrypted_archive = True
+
+        return detect_encrypted_archive or await proc.wait() == 0
+
     async def make_archive(self, archive_path: Path, root_dir: Path, files: list[Path],
                            ) -> AsyncGenerator[ArchiveProgress, None]:
 
