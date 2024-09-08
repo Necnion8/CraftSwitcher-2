@@ -99,22 +99,25 @@ class SevenZipHelper(ArchiveHelper):
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
-            "l", str(archive_path),
-            "-bb1", "-bso2", "-bse2", "-so", f"-p{password or ''}",
-            stderr=subprocess.PIPE,
+            "l",
+            "-bso1", "-bse2", f"-p{password or ''}",
+            "--", str(archive_path),
+            stdout=subprocess.PIPE,
         )
 
         files = []  # type: list[ArchiveFile]
         try:
-            while line := await proc.stderr.readline():
+            while line := await proc.stdout.readline():
                 line = line.strip()
                 m = self.LIST_FILE_REGEX.match(line)
                 if m:
-                    size = int(m.group(1))
-                    compressed_size = int(m.group(2))
-                    filename = m.group(3)
+                    size = int(m.group(1).decode())
+                    compressed_size = int(m.group(2).decode()) if m.group(2) else 0
+                    filename = m.group(3).decode("utf-8")
 
                     files.append(ArchiveFile(filename, size, compressed_size))
+                else:
+                    print("RAW:", line)
 
         finally:
             await proc.wait()

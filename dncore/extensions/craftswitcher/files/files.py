@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from .abc import *
 from .archive.helper import ZipArchiveHelper
+from .archive.sevenziphelper import SevenZipHelper
 from .event import *
 from ..utils import call_event
 
@@ -23,6 +24,7 @@ class FileManager(object):
         #
         self.archive_helpers = [
             ZipArchiveHelper(),
+            SevenZipHelper(),
         ]
 
     # util
