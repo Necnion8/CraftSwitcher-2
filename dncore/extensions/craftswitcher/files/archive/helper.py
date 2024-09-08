@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os.path
 import zipfile
 from pathlib import Path
 from typing import AsyncGenerator
@@ -59,22 +60,34 @@ class ZipArchiveHelper(ArchiveHelper):
 
     async def make_archive(self, archive_path: Path, root_dir: Path, files: list[Path],
                            ) -> AsyncGenerator[ArchiveProgress, None]:
+
+        def _search():
+            _total_size = 0
+            new_files = []
+            for _file in files:
+                for _child in _file.glob("**/*"):
+                    new_files.append(_child)
+                    _total_size += os.path.getsize(_child)
+            return new_files, _total_size
+
+        loop = asyncio.get_running_loop()
+        files, total_size = await loop.run_in_executor(self.executor, _search)
         file_count = len(files)
         completed = asyncio.Queue()
 
         def _in_thread():
             with zipfile.ZipFile(archive_path, "w") as fz:
                 for child in files:
-                    fz.write(child)
+                    fz.write(child, self._safe_path(root_dir, child))
                     completed.put_nowait(child)
 
-        fut = asyncio.get_running_loop().run_in_executor(self.executor, _in_thread)
+        fut = loop.run_in_executor(self.executor, _in_thread)
 
         completed_count = 0
         while not fut.done() or not completed.empty():
             await completed.get()
             completed_count += 1
-            yield ArchiveProgress(completed_count / file_count, file_count)
+            yield ArchiveProgress(completed_count / file_count, file_count, total_size)
 
         await fut
 
