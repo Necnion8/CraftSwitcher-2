@@ -19,7 +19,7 @@ class ArchiveHelper:
         raise NotImplementedError
 
     async def make_archive(self, archive_path: Path, root_dir: Path, files: list[Path],
-                           ) -> AsyncGenerator[ArchiveProgress]:
+                           ) -> AsyncGenerator[ArchiveProgress, None]:
         """
         files を root_dir で相対パスに変換し、圧縮ファイルを作成します
 
@@ -28,7 +28,7 @@ class ArchiveHelper:
         raise NotImplementedError
 
     async def extract_archive(self, archive_path: Path, extract_dir: Path, password: str = None,
-                              ) -> AsyncGenerator[ArchiveProgress]:
+                              ) -> AsyncGenerator[ArchiveProgress, None]:
         """
         archive_path を開き、extract_dir に全ファイルを展開します
         """
@@ -58,7 +58,7 @@ class ZipArchiveHelper(ArchiveHelper):
         return await asyncio.get_running_loop().run_in_executor(self.executor, zipfile.is_zipfile, file_path)
 
     async def make_archive(self, archive_path: Path, root_dir: Path, files: list[Path],
-                           ) -> AsyncGenerator[ArchiveProgress]:
+                           ) -> AsyncGenerator[ArchiveProgress, None]:
         file_count = len(files)
         completed = asyncio.Queue()
 
@@ -79,7 +79,7 @@ class ZipArchiveHelper(ArchiveHelper):
         await fut
 
     async def extract_archive(self, archive_path: Path, extract_dir: Path, password: str = None,
-                              ) -> AsyncGenerator[ArchiveProgress]:
+                              ) -> AsyncGenerator[ArchiveProgress, None]:
         _args = []
         completed = asyncio.Queue()
 

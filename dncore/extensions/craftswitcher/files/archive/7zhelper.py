@@ -23,7 +23,7 @@ class SevenZipHelper(ArchiveHelper):
         return {"7z", "zip", }
 
     async def make_archive(self, archive_path: Path, root_dir: Path, files: list[Path],
-                           ) -> AsyncGenerator[ArchiveProgress]:
+                           ) -> AsyncGenerator[ArchiveProgress, None]:
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
@@ -60,7 +60,7 @@ class SevenZipHelper(ArchiveHelper):
             raise RuntimeError(f"Error exit: {proc.returncode}")
 
     async def extract_archive(self, archive_path: Path, extract_dir: Path, password: str = None,
-                              ) -> AsyncGenerator[ArchiveProgress]:
+                              ) -> AsyncGenerator[ArchiveProgress, None]:
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
