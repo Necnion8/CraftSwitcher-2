@@ -4,8 +4,7 @@ import shutil
 from pathlib import Path
 from typing import AsyncGenerator
 
-from dncore.extensions.craftswitcher.files.archive import ArchiveFile
-from ..archive import ArchiveHelper, ArchiveProgress
+from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 
 
 class SevenZipHelper(ArchiveHelper):
