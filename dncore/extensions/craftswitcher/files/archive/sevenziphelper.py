@@ -132,8 +132,8 @@ class SevenZipHelper(ArchiveHelper):
                     filename = m.group(3).decode("utf-8")
 
                     files.append(ArchiveFile(filename, size, compressed_size))
-                else:
-                    print("RAW:", line)
+                # else:
+                #     print("RAW:", line)
 
         finally:
             await proc.wait()
