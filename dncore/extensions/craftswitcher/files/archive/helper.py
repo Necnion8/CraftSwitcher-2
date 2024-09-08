@@ -3,7 +3,7 @@ import concurrent.futures
 import os.path
 import zipfile
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any
 
 from .abc import ArchiveProgress, ArchiveFile
 
@@ -85,7 +85,11 @@ class ZipArchiveHelper(ArchiveHelper):
 
         completed_count = 0
         while not fut.done() or not completed.empty():
-            await completed.get()
+            try:
+                await asyncio.wait_for(completed.get(), .2)
+            except asyncio.TimeoutError:
+                continue
+
             completed_count += 1
             yield ArchiveProgress(completed_count / file_count, file_count, total_size)
 
@@ -93,7 +97,7 @@ class ZipArchiveHelper(ArchiveHelper):
 
     async def extract_archive(self, archive_path: Path, extract_dir: Path, password: str = None,
                               ) -> AsyncGenerator[ArchiveProgress, None]:
-        _args = []
+        _args = [None]  # type: list[Any]
         completed = asyncio.Queue()
 
         def _in_thread():
@@ -112,7 +116,11 @@ class ZipArchiveHelper(ArchiveHelper):
 
         completed_count = 0
         while not fut.done() or not completed.empty():
-            await completed.get()
+            try:
+                await asyncio.wait_for(completed.get(), timeout=.2)
+            except asyncio.TimeoutError:
+                continue
+
             completed_count += 1
 
             if _args:
