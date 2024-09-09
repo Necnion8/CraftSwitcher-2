@@ -1,4 +1,5 @@
 import asyncio.subprocess as subprocess
+import collections
 import re
 import shutil
 from pathlib import Path
@@ -8,7 +9,7 @@ from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 
 
 class SevenZipHelper(ArchiveHelper):
-    SCAN_INFO_REGEX = re.compile(br"^(\d+) folders?, (\d+) files?, (\d+) byte")
+    SCAN_INFO_REGEX = re.compile(br"^((?P<folders>\d+) folders?, )?(?P<files>\d+) files?, (?P<bytes>\d+) bytes?")
     PROGRESS_VALUE_REGEX = re.compile(br"^(\d+)%")
     LIST_FILE_REGEX = re.compile(br"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \..{4} +(\d+) +(\d+)? +(.*)$")
 
@@ -79,43 +80,76 @@ class SevenZipHelper(ArchiveHelper):
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
-            "x", str(archive_path),
-            "-bb1", "-bso2", "-bse2", "-si", f"-p{password or ''}",
+            "x",
+            "-bb0", "-bso2", "-bse2", "-bsp2", "-y", "-sccUTF-8", f"-p{password or ''}",
+            f"-o{extract_dir}",
+            "--", str(archive_path),
             stderr=subprocess.PIPE,
         )
 
-        files = total_bytes = 0
+        last_logs = collections.deque(maxlen=10)
         try:
+            eol_rex = re.compile(br"\r\n?")  # EOLもしくは行更新があれば一行とする
+            files = total_bytes = None
             parsing = False
-            while line := await proc.stderr.readline():
-                line = line.strip()
-                if line.startswith(b"Scanning the drive:"):
-                    parsing = True
+            buffer = b""
+            while (chunk := await proc.stderr.read(1024)) or buffer:
+                buffer += chunk
 
-                elif parsing:
-                    m = self.SCAN_INFO_REGEX.match(line)
-                    if m:
-                        parsing = False
-                        _, files, total_bytes = map(int, m.groups())
+                m_eol = True
+                while m_eol:
+                    m_eol = eol_rex.search(buffer)
+                    if m_eol:  # found eol
+                        line, buffer = buffer[:m_eol.start()], buffer[m_eol.end():]
+                    elif not chunk:  # ended read
+                        line, buffer = buffer, b""
+                    else:  # wait buffer
+                        break
 
-                else:
-                    m = self.PROGRESS_VALUE_REGEX.match(line)
-                    if m:
-                        progress = int(m.group(1))
-                        yield ArchiveProgress(progress, files, total_bytes)
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    last_logs.append(line)
+
+                    if line.startswith(b"Scanning the drive"):
+                        parsing = True
+
+                    elif parsing:
+                        m = self.SCAN_INFO_REGEX.match(line)
+                        if m:
+                            parsing = False
+                            # 返る値が再帰されたファイル数ではなかったので無視する
+                            # _val = m.group("files")
+                            # if _val:
+                            #     files = int(_val)
+                            _val = m.group("bytes")
+                            if _val:
+                                total_bytes = int(_val)
+
+                    else:
+                        m = self.PROGRESS_VALUE_REGEX.match(line)
+                        if m:
+                            progress = int(m.group(1)) / 100
+                            yield ArchiveProgress(progress, files, total_bytes)
 
         finally:
             await proc.wait()
 
-        if proc.returncode != 0:
-            raise RuntimeError(f"Error exit: {proc.returncode}")
+            # noinspection PyUnreachableCode
+            if proc.returncode != 0:
+                raise RuntimeError(f"Error exit: {proc.returncode}\n\n"
+                                   f"=== LAST OUTPUT ===\n"
+                                   + b"\n".join(last_logs).decode("utf-8") +
+                                   "\n=== LAST OUTPUT ===")
 
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
             "l",
-            "-bso1", "-bse2", f"-p{password or ''}",
+            "-bso1", "-bse2", "-sccUTF-8", f"-p{password or ''}",
             "--", str(archive_path),
             stdout=subprocess.PIPE,
         )
