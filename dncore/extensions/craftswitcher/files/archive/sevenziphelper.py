@@ -16,6 +16,9 @@ class SevenZipHelper(ArchiveHelper):
     def __init__(self, command_name="7z", ):
         self.command_name = command_name
 
+    def available(self):
+        return bool(shutil.which(self.command_name))
+
     def available_formats(self) -> set[str]:
         if not shutil.which(self.command_name):
             return set()

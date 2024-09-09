@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .abc import *
+from .archive import ArchiveFile, ArchiveHelper
 from .archive.helper import ZipArchiveHelper
 from .archive.sevenziphelper import SevenZipHelper
 from .event import *
@@ -177,3 +178,94 @@ class FileManager(object):
             src.mkdir()
 
         await self.loop.run_in_executor(None, _do)
+
+    # archive
+
+    @property
+    def _available_archive_helpers(self):
+        return filter(lambda h: h.available(), self.archive_helpers)
+
+    def find_archive_helper(self, path: Path, *, ignore_suffix=False) -> ArchiveHelper | None:
+        """
+        ファイルの拡張子に従い、利用できるヘルパーを返します
+        """
+        suffix_name = path.suffix[1:].lower()
+        for helper in self._available_archive_helpers:
+            if ignore_suffix or suffix_name in helper.available_formats():
+                return helper
+
+    async def is_archive(self, src: Path, *, ignore_suffix=False) -> bool:
+        """
+        指定されたファイルがアーカイブファイルかどうかチェックします
+        """
+        suffix_name = src.suffix[1:].lower()
+        return any(
+            (ignore_suffix or suffix_name in h.available_formats()) and await h.is_archive(src)
+            for h in self._available_archive_helpers
+        )
+
+    async def list_archive(self, src: Path, password: str = None, *, ignore_suffix=False) -> list[ArchiveFile]:
+        """
+        指定されたアーカイブファイルに格納されているファイルを返します
+        """
+        suffix_name = src.suffix[1:].lower()
+
+        for helper in self._available_archive_helpers:
+            if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(src)):
+                return await helper.list_archive(src, password=password)
+
+        raise RuntimeError("No supported archive helper")
+
+    async def extract_archive(self, archive: Path, extract_dir: Path, password: str = None,
+                              server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None,
+                              *, ignore_suffix=False):
+        """
+        格納されてるファイルを展開します
+        """
+        suffix_name = archive.suffix[1:].lower()
+
+        for helper in self._available_archive_helpers:
+            if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(archive)):
+                break
+        else:
+            raise ValueError("No supported archive helper")
+
+        async def _progressing():
+            async for progress in helper.extract_archive(archive, extract_dir, password=password):
+                task.progress = progress.progress
+
+        task = self.create_task(
+            FileEventType.EXTRACT_ARCHIVE,
+            archive, extract_dir,
+            asyncio.get_running_loop().create_task(_progressing()),
+            server, src_swi_path, dst_swi_path,
+        )
+        return task
+
+    async def make_archive(self, archive: Path, files_root: Path, files: list[Path],
+                           server: "ServerProcess" = None, src_swi_path: str = None,
+                           ):
+        """
+        ファイルを圧縮します
+
+        格納される各ファイルのパスは files_root を基準に相対パスに変換されます
+        """
+        suffix_name = archive.suffix[1:].lower()
+
+        for helper in self._available_archive_helpers:
+            if suffix_name in helper.available_formats():
+                break
+        else:
+            raise RuntimeError("No supported archive helper by suffix")
+
+        async def _progressing():
+            async for progress in helper.make_archive(archive, files_root, files):
+                task.progress = progress.progress
+
+        task = self.create_task(
+            FileEventType.EXTRACT_ARCHIVE,
+            archive, None,
+            asyncio.get_running_loop().create_task(_progressing()),
+            server, src_swi_path, None,
+        )
+        return task

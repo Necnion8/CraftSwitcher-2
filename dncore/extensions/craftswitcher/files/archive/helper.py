@@ -16,6 +16,9 @@ class ArchiveHelper:
         except ValueError:
             return (root_dir / path.name).as_posix()
 
+    def available(self) -> bool:
+        raise NotImplementedError
+
     def available_formats(self) -> set[str]:
         raise NotImplementedError
 
@@ -51,6 +54,9 @@ class ZipArchiveHelper(ArchiveHelper):
 
     def __del__(self):
         self.executor.shutdown()
+
+    def available(self):
+        return True
 
     def available_formats(self) -> set[str]:
         return {"zip", }

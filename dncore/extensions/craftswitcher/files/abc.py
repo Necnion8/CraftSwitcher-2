@@ -19,6 +19,8 @@ class FileEventType(Enum):
     DELETE = "delete"
     UPDATE = "update"
     CREATE = "create"
+    EXTRACT_ARCHIVE = "extract_archive"
+    CREATE_ARCHIVE = "create_archive"
 
 
 class FileTaskResult(Enum):
