@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Coroutine
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordRequestForm
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.config import ServerConfig
 
 log = getLogger(__name__)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
 class APIHandler(object):
@@ -150,11 +149,11 @@ class APIHandler(object):
 
     def _user(self, api: FastAPI):
         tags = ["User"]
-        inst = self.inst  # type: CraftSwitcher
         db = self.database
 
         @api.post(
             "/login",
+            tags=tags,
         )
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.database.get_user(form_data.username)
@@ -176,27 +175,6 @@ class APIHandler(object):
                 max_age=expires.total_seconds(),
             )
             return dict(result=True)
-
-        @api.post(
-            "/login_test",
-        )
-        async def _login_test(request: Request):
-            log.debug("cookies:")  # TODO: remove debug
-            for key, value in request.cookies.items():
-                log.debug(f"  {key:10} -> {value}")
-
-            try:
-                token = request.cookies["session"]
-            except KeyError:
-                return False
-            return bool(await self.database.get_user_by_valid_token(token))
-
-        @api.get(
-            "/login_requires",
-        )
-        async def _login_requires(_=self.require_login):
-            log.debug("accepted login requires")
-            return True
 
     def _server(self, api: FastAPI):
         tags = ["Server"]
@@ -436,9 +414,6 @@ class APIHandler(object):
                 return files.realpath(swipath_, root_dir=root_dir_)
             except ValueError:
                 raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swipath_}")
-
-        def getserverpath(server, path):
-            pass
 
         def create_file_info(realpath_: Path, root_dir_: Path = None):
             return inst.create_file_info(realpath_, root_dir=root_dir_)
