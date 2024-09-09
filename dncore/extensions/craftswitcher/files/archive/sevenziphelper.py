@@ -44,36 +44,67 @@ class SevenZipHelper(ArchiveHelper):
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
             "a", str(archive_path),
-            "-bb1", "-bso2", "-bse2", "-so",
-            *[str(self._safe_path(root_dir, p)) for p in files],
+            "-bb0", "-bso2", "-bse2", "-bsp2", "-sccUTF-8", "-y",
+            "--", *[str(self._safe_path(root_dir, p)) for p in files],
             stderr=subprocess.PIPE,
         )
 
-        files = total_bytes = 0
+        last_logs = collections.deque(maxlen=10)
         try:
+            eol_rex = re.compile(br"\r\n?")  # EOLもしくは行更新があれば一行とする
+            files = total_bytes = None
             parsing = False
-            while line := await proc.stderr.readline():
-                line = line.strip()
-                if line.startswith(b"Scanning the drive:"):
-                    parsing = True
+            buffer = b""
+            while (chunk := await proc.stderr.read(1024 * 8)) or buffer:
+                buffer += chunk
 
-                elif parsing:
-                    m = self.SCAN_INFO_REGEX.match(line)
-                    if m:
-                        parsing = False
-                        _, files, total_bytes = map(int, m.groups())
+                m_eol = True
+                while m_eol:
+                    m_eol = eol_rex.search(buffer)
+                    if m_eol:  # found eol
+                        line, buffer = buffer[:m_eol.start()], buffer[m_eol.end():]
+                    elif not chunk:  # ended read
+                        line, buffer = buffer, b""
+                    else:  # wait buffer
+                        break
 
-                else:
-                    m = self.PROGRESS_VALUE_REGEX.match(line)
-                    if m:
-                        progress = int(m.group(1))
-                        yield ArchiveProgress(progress, files, total_bytes)
+                    line = line.strip()
+
+                    if not line:
+                        continue
+
+                    last_logs.append(line)
+
+                    if line.startswith(b"Scanning the drive"):
+                        parsing = True
+
+                    elif parsing:
+                        m = self.SCAN_INFO_REGEX.match(line)
+                        if m:
+                            parsing = False
+                            # 返る値が再帰されたファイル数ではなかったので無視する
+                            # _val = m.group("files")
+                            # if _val:
+                            #     files = int(_val)
+                            _val = m.group("bytes")
+                            if _val:
+                                total_bytes = int(_val)
+
+                    else:
+                        m = self.PROGRESS_VALUE_REGEX.match(line)
+                        if m:
+                            progress = int(m.group(1)) / 100
+                            yield ArchiveProgress(progress, files, total_bytes)
 
         finally:
             await proc.wait()
 
+        # noinspection PyUnreachableCode
         if proc.returncode != 0:
-            raise RuntimeError(f"Error exit: {proc.returncode}")
+            raise RuntimeError(f"Error exit: {proc.returncode}\n\n"
+                               f"=== LAST OUTPUT ===\n"
+                               + b"\n".join(last_logs).decode("utf-8") +
+                               "\n=== LAST OUTPUT ===")
 
     async def extract_archive(self, archive_path: Path, extract_dir: Path, password: str = None,
                               ) -> AsyncGenerator[ArchiveProgress, None]:

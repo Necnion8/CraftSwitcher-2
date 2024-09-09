@@ -12,9 +12,9 @@ class ArchiveHelper:
     # noinspection PyMethodMayBeStatic
     def _safe_path(self, root_dir: Path, path: Path) -> str:
         try:
-            return path.resolve().relative_to(root_dir.resolve()).as_posix()
+            return (root_dir / path.resolve().relative_to(root_dir.resolve())).as_posix()
         except ValueError:
-            return path.name
+            return (root_dir / path.name).as_posix()
 
     def available_formats(self) -> set[str]:
         raise NotImplementedError
