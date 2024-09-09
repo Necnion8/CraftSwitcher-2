@@ -23,8 +23,8 @@ class FileManager(object):
         self.root_dir = root_dir.resolve()
         #
         self.archive_helpers = [
-            ZipArchiveHelper(),
             SevenZipHelper(),
+            ZipArchiveHelper(),
         ]
 
     # util

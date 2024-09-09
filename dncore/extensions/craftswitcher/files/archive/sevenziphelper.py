@@ -32,7 +32,7 @@ class SevenZipHelper(ArchiveHelper):
         )
 
         detect_encrypted_archive = False
-        while line := await proc.stdout.read():
+        while line := await proc.stdout.readline():
             if line.strip() == b"Can not open encrypted archive. Wrong password?":
                 detect_encrypted_archive = True
 
@@ -55,7 +55,7 @@ class SevenZipHelper(ArchiveHelper):
             files = total_bytes = None
             parsing = False
             buffer = b""
-            while (chunk := await proc.stderr.read(1024 * 8)) or buffer:
+            while (chunk := await proc.stderr.read(1024)) or buffer:
                 buffer += chunk
 
                 m_eol = True
