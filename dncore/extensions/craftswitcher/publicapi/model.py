@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
 from dncore.extensions.craftswitcher.files import abc as fabc
+from dncore.extensions.craftswitcher.files.archive import abc as aabc
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
@@ -170,4 +171,18 @@ class FileTask(BaseModel):
             src_path=task.src_swi_path,
             dst_path=task.dst_swi_path,
             server=task.server.id,
+        )
+
+
+class ArchiveFile(BaseModel):
+    filename: str = Field(description="パスを含むファイル名")
+    size: int | None = Field(description="展開後のサイズ")
+    compressed_size: int | None = Field(description="圧縮後のサイズ")
+
+    @classmethod
+    def create(cls, archive_file: "aabc.ArchiveFile"):
+        return cls(
+            filename=archive_file.filename,
+            size=archive_file.size,
+            compressed_size=archive_file.compressed_size,
         )

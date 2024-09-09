@@ -597,6 +597,21 @@ class APIHandler(object):
             else:
                 return model.FileOperationResult.success(task.id, create_file_info(dst_path))
 
+        @api.get(
+            "/archive/files",
+            tags=tags,
+            summary="アーカイブ内のファイル一覧",
+            description="",
+        )
+        async def _archive_files(path: str, password: str = None, ignore_suffix=False, _=self.require_login) -> list[model.ArchiveFile]:
+            path = realpath(path)
+
+            if not path.is_file():
+                raise APIErrorCode.NOT_EXISTS_FILE.of("source path not exists", 404)
+
+            arc_files = await files.list_archive(path, password=password, ignore_suffix=ignore_suffix)
+            return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
+
         # server
 
         @api.get(
