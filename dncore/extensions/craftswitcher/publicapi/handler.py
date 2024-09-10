@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request
+from fastapi.params import Form
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -603,7 +604,7 @@ class APIHandler(object):
             summary="アーカイブ内のファイル一覧",
             description="",
         )
-        async def _archive_files(path: str, password: str = None, ignore_suffix=False, _=self.require_login) -> list[model.ArchiveFile]:
+        async def _archive_files(path: str, password: str | None = Form(None), ignore_suffix=False, _=self.require_login) -> list[model.ArchiveFile]:
             path = realpath(path)
 
             if not path.is_file():
@@ -611,6 +612,52 @@ class APIHandler(object):
 
             arc_files = await files.list_archive(path, password=password, ignore_suffix=ignore_suffix)
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
+
+        @api.post(
+            "/archive/extract",
+            tags=tags,
+            summary="アーカイブの展開",
+            description="",
+        )
+        async def _archive_extract(path: str, output_dir: str, password: str | None = Form(None), ignore_suffix=False, _=self.require_login) -> model.FileOperationResult:
+            swi_path = files.resolvepath(path)
+            path = realpath(swi_path)
+            dst_swi_path = files.resolvepath(output_dir)
+            dst_path = realpath(dst_swi_path)
+
+            if not path.is_file():
+                raise APIErrorCode.NOT_EXISTS_FILE.of("Source path is not exists", 404)
+
+            if not dst_path.parent.is_dir():
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Output path parent is not exists", 404)
+
+            task = await files.extract_archive(path, dst_path, password, None, swi_path, dst_swi_path, ignore_suffix=ignore_suffix)
+            return model.FileOperationResult.pending(task.id)
+
+        @api.post(
+            "/archive/make",
+            tags=tags,
+            summary="アーカイブファイルの作成",
+            description="",
+        )
+        async def _archive_make(path: str, files_root: str, include_files: list[str], _=self.require_login) -> model.FileOperationResult:
+            swi_path = files.resolvepath(path)
+            path = realpath(swi_path)
+
+            try:
+                include_files = [realpath(p) for p in include_files]
+            except APIError:
+                raise
+            files_root = realpath(files_root)
+
+            if path.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Destination path already exists")
+
+            if not any(p.exists() for p in include_files):
+                raise APIErrorCode.NOT_EXISTS_PATH.of("No files")
+
+            task = await files.make_archive(path, files_root, include_files, None, swi_path)
+            return model.FileOperationResult.pending(task.id)
 
         # server
 
