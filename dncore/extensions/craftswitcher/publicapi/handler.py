@@ -2,40 +2,54 @@ import asyncio
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Coroutine
+from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple
 
-from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request
-from fastapi.params import Form
+from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
+from fastapi.params import Form, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
-from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
 from dncore.extensions.craftswitcher.utils import call_event, datetime_now
 
 if TYPE_CHECKING:
-    from dncore.extensions.craftswitcher import CraftSwitcher
+    from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
     from dncore.extensions.craftswitcher.config import ServerConfig
+    from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
 
 log = getLogger(__name__)
 
 
+class PairPath(NamedTuple):
+    real: Path
+    swi: str
+    server: "ServerProcess | None"
+    root_dir: Path | None
+
+
 class APIHandler(object):
+    inst: "CraftSwitcher"
+    database: "SwitcherDatabase"
+    servers: "ServerProcessList"
+    files: "FileManager"
+
     def __init__(self, inst: "CraftSwitcher", api: FastAPI, database: SwitcherDatabase):
         self.inst = inst
         self.database = database
+        self.servers = inst.servers
+        self.files = inst.files
         self.router = api
         self._websocket_clients = set()  # type: set[WebSocketClient]
         #
-        self._app(api)
-        self._user(api)
-        self._server(api)
-        self._file(api)
+        api.include_router(self._app())
+        api.include_router(self._user())
+        api.include_router(self._server())
+        api.include_router(self._file())
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):
@@ -80,23 +94,19 @@ class APIHandler(object):
 
         raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
 
-    @property
-    def require_login(self) -> User:
-        return Depends(self.get_authorized_user)
-
     # api handling
 
-    def _app(self, api: FastAPI):
-        tags = ["App"]
+    def _app(self):
         inst = self.inst  # type: CraftSwitcher
+        api = APIRouter(
+            tags=["App", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
 
         @api.get(
             "/config/server_global",
-            tags=tags,
-            summary="",
-            description="",
         )
-        async def _get_config_server_global(_=self.require_login) -> model.ServerGlobalConfig:
+        async def _get_config_server_global() -> model.ServerGlobalConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
                 ls = {}
                 for key, entry in conf.get_values().items():
@@ -110,11 +120,8 @@ class APIHandler(object):
 
         @api.put(
             "/config/server_global",
-            tags=tags,
-            summary="",
-            description="",
         )
-        async def _put_config_server_global(param: model.ServerGlobalConfig, _=self.require_login) -> model.ServerGlobalConfig:
+        async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
             config = inst.config.server_defaults
 
             for key, value in param.model_dump(exclude_unset=True).items():
@@ -131,7 +138,7 @@ class APIHandler(object):
         @api.websocket(
             "/ws",
         )
-        async def _websocket(websocket: WebSocket, _=self.require_login):
+        async def _websocket(websocket: WebSocket):
             await websocket.accept()
 
             client = WebSocketClient(websocket)
@@ -147,14 +154,17 @@ class APIHandler(object):
                 self._websocket_clients.discard(client)
                 call_event(WebSocketClientDisconnectEvent(client))
                 log.debug("Disconnect WebSocket Client #%s", client.id)
+                
+        return api
 
-    def _user(self, api: FastAPI):
-        tags = ["User"]
+    def _user(self):
         db = self.database
+        api = APIRouter(
+            tags=["User", ],
+        )
 
         @api.post(
             "/login",
-            tags=tags,
         )
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
             user = await self.database.get_user(form_data.username)
@@ -176,11 +186,16 @@ class APIHandler(object):
                 max_age=expires.total_seconds(),
             )
             return dict(result=True)
+        
+        return api
 
-    def _server(self, api: FastAPI):
-        tags = ["Server"]
+    def _server(self):
         inst = self.inst  # type: CraftSwitcher
         servers = self.inst.servers
+        api = APIRouter(
+            tags=["Server", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
         
         def getserver(server_id: str):
             try:
@@ -194,11 +209,10 @@ class APIHandler(object):
 
         @api.get(
             "/servers",
-            tags=tags,
             summary="登録サーバーの一覧",
             description="登録されているサーバーを返します",
         )
-        async def _list(only_loaded: bool = False, _=self.require_login) -> list[model.Server]:
+        async def _list(only_loaded: bool = False, ) -> list[model.Server]:
             ls = []  # type: list[model.Server]
 
             for server_id, server in servers.items():
@@ -219,11 +233,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}/start",
-            tags=tags,
             summary="サーバーを起動",
             description="サーバーを起動します",
         )
-        async def _start(server_id: str, _=self.require_login) -> model.ServerOperationResult:
+        async def _start(server_id: str, ) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -241,11 +254,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}/stop",
-            tags=tags,
             summary="サーバーを停止",
             description="サーバーを停止します",
         )
-        async def _stop(server_id: str, _=self.require_login) -> model.ServerOperationResult:
+        async def _stop(server_id: str, ) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -259,11 +271,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}/restart",
-            tags=tags,
             summary="サーバーを再起動",
             description="サーバーを再起動します",
         )
-        async def _restart(server_id: str, _=self.require_login) -> model.ServerOperationResult:
+        async def _restart(server_id: str, ) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -277,11 +288,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}/kill",
-            tags=tags,
             summary="サーバーを強制終了",
             description="サーバーを強制終了します",
         )
-        async def _kill(server_id: str, _=self.require_login) -> model.ServerOperationResult:
+        async def _kill(server_id: str, ) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             try:
@@ -293,11 +303,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}/import",
-            tags=tags,
             summary="構成済みのサーバーを追加",
             description="構成済みのサーバーを登録します",
         )
-        async def _add(server_id: str, param: model.AddServerParam, _=self.require_login) -> model.ServerOperationResult:
+        async def _add(server_id: str, param: model.AddServerParam, ) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -316,11 +325,10 @@ class APIHandler(object):
 
         @api.post(
             "/server/{server_id}",
-            tags=tags,
             summary="サーバーを作成",
             description="サーバーを作成します",
         )
-        async def _create(server_id: str, param: model.CreateServerParam, _=self.require_login) -> model.ServerOperationResult:
+        async def _create(server_id: str, param: model.CreateServerParam, ) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -350,11 +358,10 @@ class APIHandler(object):
 
         @api.delete(
             "/server/{server_id}",
-            tags=tags,
             summary="サーバーを削除",
             description="サーバーを削除します",
         )
-        async def _delete(server_id: str, delete_config_file: bool = False, _=self.require_login) -> model.ServerOperationResult:
+        async def _delete(server_id: str, delete_config_file: bool = False, ) -> model.ServerOperationResult:
             server = getserver(server_id)
 
             if server.state.is_running:
@@ -365,11 +372,10 @@ class APIHandler(object):
 
         @api.get(
             "/server/{server_id}/config",
-            tags=tags,
             summary="サーバー設定の取得",
             description="サーバーの設定を返します",
         )
-        async def _get_config(server_id: str, _=self.require_login) -> model.ServerConfig:
+        async def _get_config(server_id: str, ) -> model.ServerConfig:
             server = getserver(server_id)
 
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
@@ -385,11 +391,10 @@ class APIHandler(object):
 
         @api.put(
             "/server/{server_id}/config",
-            tags=tags,
             summary="サーバー設定の更新",
             description="サーバーの設定を変更します",
         )
-        async def _put_config(server_id: str, param: model.ServerConfig, _=self.require_login) -> model.ServerConfig:
+        async def _put_config(server_id: str, param: model.ServerConfig, ) -> model.ServerConfig:
             server = getserver(server_id)
 
             config = server._config  # type: ServerConfig
@@ -403,28 +408,38 @@ class APIHandler(object):
 
             server._config.save(force=True)
             return await _get_config(server_id)
+        
+        return api
 
-    def _file(self, api: FastAPI):
-        tags = ["File"]
-        inst = self.inst  # type: CraftSwitcher
-        files = inst.files  # type: FileManager
-        servers = self.inst.servers
+    def _file(self):
+        api = APIRouter(
+            tags=["File", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
 
-        def realpath(swipath_: str, root_dir_: Path = None):
+        def realpath(swi_path: str, root_dir: Path = None):
             try:
-                return files.realpath(swipath_, root_dir=root_dir_)
+                return self.files.realpath(swi_path, root_dir=root_dir)
             except ValueError:
-                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swipath_}")
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swi_path}")
 
-        def create_file_info(realpath_: Path, root_dir_: Path = None):
-            return inst.create_file_info(realpath_, root_dir=root_dir_)
+        def create_file_info(path: PairPath | Path, root_dir: Path = None):
+            if isinstance(path, PairPath):
+                _path = path.real
+                root_dir = root_dir or path.root_dir
+            else:
+                _path = path
+
+            return self.inst.create_file_info(_path, root_dir=root_dir)
 
         def wait_for_task(task: FileTask, timeout: float | None = 1) -> Coroutine[Any, Any, FileTask]:
             return asyncio.wait_for(asyncio.shield(task.fut), timeout=timeout)
 
-        def getserver(server_id: str):
+        # param
+
+        def get_server(server_id: str) -> "ServerProcess":
             try:
-                server = servers[server_id.lower()]
+                server = self.servers[server_id.lower()]
             except KeyError:
                 raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
 
@@ -432,88 +447,129 @@ class APIHandler(object):
                 raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
 
+        def get_pair_path(swi_path: str, *, server: "ServerProcess" = None):
+            root_dir = server and server.directory or None  # type: Path | None
+            try:
+                real_path = self.files.realpath(swi_path, root_dir=root_dir)
+            except ValueError as e:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"{e}: {swi_path}")
+            swi_path = self.files.swipath(real_path, force=True, root_dir=root_dir)
+            return PairPath(real_path, swi_path, server, root_dir)
+
+        def get_path_of_root(query: str | Query = None, *, is_dir=False, is_file=False, exists=False, no_exists=False):
+            if query is None or isinstance(query, Query):
+                name = query and query.alias or "path"
+            else:
+                name = "path"
+                query = Query(description=query)
+
+            def check(path: str = query) -> PairPath:
+                p = get_pair_path(path)
+                if no_exists and p.real.exists():
+                    raise APIErrorCode.ALREADY_EXISTS_PATH.of(f"Already exists: {name!r}")
+                elif is_dir and not p.real.is_dir():
+                    raise APIErrorCode.NOT_EXISTS_DIRECTORY.of(f"Not a directory or not exists: {name!r}", 404)
+                elif is_file and not p.real.is_file():
+                    raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: {name!r}", 404)
+                elif exists and not p.real.exists():
+                    raise APIErrorCode.NOT_EXISTS_PATH.of(f"Not exists: {name!r}", 404)
+                return p
+            return check
+
+        def get_path_of_server_root(query: str | Query = None, *, is_dir=False, is_file=False, exists=False, no_exists=False):
+            if query is None or isinstance(query, Query):
+                name = query and query.alias or "path"
+            else:
+                name = "path"
+                query = Query(description=query)
+
+            def check(path: str = query, server: "ServerProcess" = Depends(get_server)) -> PairPath:
+                p = get_pair_path(path, server=server)
+                if no_exists and p.real.exists():
+                    raise APIErrorCode.ALREADY_EXISTS_PATH.of(f"Already exists: {name!r}")
+                elif is_dir and not p.real.is_dir():
+                    raise APIErrorCode.NOT_EXISTS_DIRECTORY.of(f"Not a directory or not exists: {name!r}", 404)
+                elif is_file and not p.real.is_file():
+                    raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: {name!r}", 404)
+                elif exists and not p.real.exists():
+                    raise APIErrorCode.NOT_EXISTS_PATH.of(f"Not exists: {name!r}", 404)
+                return p
+            return check
+
+        # method
+
         @api.get(
             "/file/tasks",
-            tags=tags,
             summary="ファイルタスクの一覧",
             description="実行中のファイル操作タスクのリストを返す",
         )
-        def _file_tasks(_=self.require_login) -> list[model.FileTask]:
-            return [model.FileTask.create(task) for task in files.tasks]
+        def _file_tasks() -> list[model.FileTask]:
+            return [model.FileTask.create(task) for task in self.files.tasks]
 
         @api.get(
             "/files",
-            tags=tags,
             summary="ファイルの一覧",
             description="指定されたパスのファイルリストを返す",
         )
-        async def _files(path: str, _=self.require_login) -> model.FileDirectoryInfo:
-            path_ = realpath(path)
-
-            if not path_.is_dir():
-                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not a directory or not exists", 404)
+        async def _files(
+                path: PairPath = Depends(get_path_of_root(is_dir=True)),
+        ) -> model.FileDirectoryInfo:
 
             file_list = []
             try:
-                for child in path_.iterdir():
+                for child in path.real.iterdir():
                     try:
-                        file_list.append(create_file_info(child))
+                        file_list.append(create_file_info(child, path.root_dir))
                     except Exception as e:
                         log.warning("Failed to get file info: %s: %s", str(child), str(e))
             except PermissionError as e:
                 raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {e}")
 
             return model.FileDirectoryInfo(
-                name="" if files.swipath(path_, force=True) == "/" else path_.name,
-                path=files.swipath(path_.parent, force=True),
+                name="" if path.swi == "/" else path.real.name,
+                path=self.files.swipath(path.real.parent, force=True),
                 children=file_list,
             )
 
         @api.get(
             "/file",
-            tags=tags,
             summary="ファイルデータを取得",
             description="",
         )
-        def _get_file(path: str, _=self.require_login):
-            path = realpath(path)
-
-            if not path.is_file():
-                raise APIErrorCode.NOT_FILE.of("Not a file", 404)
-
-            return FileResponse(path)
+        def _get_file(
+                path: PairPath = Depends(get_path_of_root(is_file=True)),
+        ):
+            return FileResponse(path.real)
 
         @api.post(
             "/file",
-            tags=tags,
             summary="ファイルデータを保存",
             description="",
         )
-        def _post_file(path: str, file: UploadFile, _=self.require_login) -> model.FileInfo:
-            path = realpath(path)
+        def _post_file(
+                file: UploadFile,
+                path: PairPath = Depends(get_path_of_root(is_file=True)),
+        ) -> model.FileInfo:
 
             try:
-                with open(path, "wb") as f:
+                with path.real.open("wb") as f:
                     shutil.copyfileobj(file.file, f)
 
             finally:
                 file.file.close()
 
-            return create_file_info(path)
+            return create_file_info(path, path.root_dir)
 
         @api.delete(
             "/file",
-            tags=tags,
             summary="ファイルを削除",
             description="",
         )
-        async def _delete_file(path: str, _=self.require_login) -> model.FileOperationResult:
-            path = realpath(path)
+        async def _delete_file(
+                path: PairPath = Depends(get_path_of_root(exists=True)),
+        ) -> model.FileOperationResult:
 
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("Not exists", 404)
-
-            task = files.delete(path)
+            task = self.files.delete(path.real, path.server, path.swi)
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:
@@ -526,18 +582,15 @@ class APIHandler(object):
 
         @api.post(
             "/file/mkdir",
-            tags=tags,
             summary="空のディレクトリ作成",
             description="",
         )
-        async def _mkdir(path: str, _=self.require_login) -> model.FileOperationResult:
-            path = realpath(path)
-
-            if path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Already exists")
-
+        async def _mkdir(
+                path: PairPath = Depends(get_path_of_root(no_exists=True)),
+                
+        ) -> model.FileOperationResult:
             try:
-                await files.mkdir(path)
+                await self.files.mkdir(path.real)
             except Exception as e:
                 log.warning(f"Failed to mkdir: {e}: {path}")
                 return model.FileOperationResult.failed(None)
@@ -546,21 +599,18 @@ class APIHandler(object):
 
         @api.put(
             "/file/copy",
-            tags=tags,
             summary="ファイル複製",
             description="",
         )
-        async def _copy(path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
-            path = realpath(path)
-            dst_path = realpath(dst_path)
+        async def _copy(
+                path: PairPath = Depends(get_path_of_root(exists=True)),
+                dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
+        ) -> model.FileInfo:
 
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
-
-            if dst_path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
-
-            task = files.copy(path, dst_path)
+            task = self.files.copy(
+                path.real, dst_path.real,
+                server=path.server, src_swi_path=path.swi, dst_swi_path=dst_path.swi,
+            )
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:
@@ -573,21 +623,18 @@ class APIHandler(object):
 
         @api.put(
             "/file/move",
-            tags=tags,
             summary="ファイル移動",
             description="",
         )
-        async def _move(path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
-            path = realpath(path)
-            dst_path = realpath(dst_path)
+        async def _move(
+                path: PairPath = Depends(get_path_of_root(exists=True)),
+                dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
+        ) -> model.FileInfo:
 
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
-
-            if dst_path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
-
-            task = files.move(path, dst_path)
+            task = self.files.move(
+                path.real, dst_path.real,
+                server=path.server, src_swi_path=path.swi, dst_swi_path=dst_path.swi,
+            )
             try:
                 await wait_for_task(task)
             except asyncio.TimeoutError:
@@ -600,232 +647,176 @@ class APIHandler(object):
 
         @api.get(
             "/archive/files",
-            tags=tags,
             summary="アーカイブ内のファイル一覧",
             description="",
         )
-        async def _archive_files(path: str, password: str | None = Form(None), ignore_suffix=False, _=self.require_login) -> list[model.ArchiveFile]:
-            path = realpath(path)
+        async def _archive_files(
+                path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", is_file=True)),
+                password: str | None = Form(None),
+                ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
+        ) -> list[model.ArchiveFile]:
 
-            if not path.is_file():
-                raise APIErrorCode.NOT_EXISTS_FILE.of("source path not exists", 404)
-
-            arc_files = await files.list_archive(path, password=password, ignore_suffix=ignore_suffix)
+            arc_files = await self.files.list_archive(path.real, password=password, ignore_suffix=ignore_suffix)
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
         @api.post(
             "/archive/extract",
-            tags=tags,
             summary="アーカイブの展開",
             description="",
         )
-        async def _archive_extract(path: str, output_dir: str, password: str | None = Form(None), ignore_suffix=False, _=self.require_login) -> model.FileOperationResult:
-            swi_path = files.resolvepath(path)
-            path = realpath(swi_path)
-            dst_swi_path = files.resolvepath(output_dir)
-            dst_path = realpath(dst_swi_path)
+        async def _archive_extract(
+                path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", is_file=True)),
+                output_dir: PairPath = Depends(get_path_of_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
+                password: str | None = Form(None),
+                ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
+                
+        ) -> model.FileOperationResult:
 
-            if not path.is_file():
-                raise APIErrorCode.NOT_EXISTS_FILE.of("Source path is not exists", 404)
-
-            if not dst_path.parent.is_dir():
+            if not output_dir.real.parent.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Output path parent is not exists", 404)
 
-            task = await files.extract_archive(path, dst_path, password, None, swi_path, dst_swi_path, ignore_suffix=ignore_suffix)
+            task = await self.files.extract_archive(
+                path.real, output_dir.real, password,
+                server=path.server, src_swi_path=path.swi, dst_swi_path=output_dir.swi, ignore_suffix=ignore_suffix,
+            )
             return model.FileOperationResult.pending(task.id)
 
         @api.post(
             "/archive/make",
-            tags=tags,
             summary="アーカイブファイルの作成",
             description="",
         )
-        async def _archive_make(path: str, files_root: str, include_files: list[str], _=self.require_login) -> model.FileOperationResult:
-            swi_path = files.resolvepath(path)
-            path = realpath(swi_path)
+        async def _archive_make(
+                path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", no_exists=True)),
+                files_root: PairPath = Depends(get_path_of_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
+                include_files: list[str] = Query(description="格納するファイルのパス"),
+        ) -> model.FileOperationResult:
 
             try:
-                include_files = [realpath(p) for p in include_files]
+                include_files = [realpath(p, root_dir=files_root.root_dir) for p in include_files]
             except APIError:
                 raise
-            files_root = realpath(files_root)
-
-            if path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Destination path already exists")
 
             if not any(p.exists() for p in include_files):
                 raise APIErrorCode.NOT_EXISTS_PATH.of("No files")
 
-            task = await files.make_archive(path, files_root, include_files, None, swi_path)
+            task = await self.files.make_archive(
+                path.real, files_root.real, include_files,
+                server=path.server, src_swi_path=path.swi,
+            )
             return model.FileOperationResult.pending(task.id)
 
         # server
 
         @api.get(
             "/server/{server_id}/files",
-            tags=tags,
             summary="ファイルの一覧",
             description="指定されたパスのファイルリストを返す",
         )
-        async def _server_files(server_id: str, path: str, _=self.require_login) -> model.FileDirectoryInfo:
-            server = getserver(server_id)
-            path_ = realpath(path, server.directory)
-
-            if not path_.is_dir():
-                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not a directory or not exists", 404)
-
-            file_list = []
-            try:
-                for child in path_.iterdir():
-                    try:
-                        file_list.append(create_file_info(child, server.directory))
-                    except Exception as e:
-                        log.warning("Failed to get file info: %s: %s", str(child), str(e))
-            except PermissionError as e:
-                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {e}")
-
-            return model.FileDirectoryInfo(
-                name="" if files.swipath(path_, force=True, root_dir=server.directory) == "/" else path_.name,
-                path=files.swipath(path_.parent, force=True, root_dir=server.directory),
-                children=file_list,
-            )
+        async def _server_files(
+                path: PairPath = Depends(get_path_of_server_root(is_dir=True)),
+        ) -> model.FileDirectoryInfo:
+            return await _files(path)
 
         @api.get(
             "/server/{server_id}/file",
-            tags=tags,
             summary="ファイルデータを取得",
             description="",
         )
-        def _server_get_file(server_id: str, path: str, _=self.require_login):
-            server = getserver(server_id)
-            path = realpath(path, server.directory)
-
-            if not path.is_file():
-                raise APIErrorCode.NOT_FILE.of("Not a file", 404)
-
-            return FileResponse(path)
+        def _server_get_file(
+                path: PairPath = Depends(get_path_of_server_root(is_file=True)),
+        ):
+            return _get_file(path)
 
         @api.post(
             "/server/{server_id}/file",
-            tags=tags,
             summary="ファイルデータを保存",
             description="",
         )
-        def _server_post_file(server_id: str, path: str, file: UploadFile, _=self.require_login) -> model.FileInfo:
-            server = getserver(server_id)
-            path = realpath(path, server.directory)
-
-            try:
-                with open(path, "wb") as f:
-                    shutil.copyfileobj(file.file, f)
-
-            finally:
-                file.file.close()
-
-            return create_file_info(path, server.directory)
+        def _server_post_file(
+                file: UploadFile,
+                path: PairPath = Depends(get_path_of_server_root(is_file=True)),
+        ) -> model.FileInfo:
+            return _post_file(file, path)
 
         @api.delete(
             "/server/{server_id}/file",
-            tags=tags,
             summary="ファイルを削除",
             description="",
         )
-        async def _server_delete_file(server_id: str, path: str, _=self.require_login) -> model.FileOperationResult:
-            server = getserver(server_id)
-            swi_path = files.resolvepath(path)
-            path = realpath(swi_path, server.directory)
-
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("Not exists", 404)
-
-            task = files.delete(path, server, swi_path)
-            try:
-                await wait_for_task(task)
-            except asyncio.TimeoutError:
-                return model.FileOperationResult.pending(task.id)
-            except Exception as e:
-                log.warning(f"Failed to delete: {e}: {path}")
-                return model.FileOperationResult.failed(task.id)
-            else:
-                return model.FileOperationResult.success(task.id, None)
+        async def _server_delete_file(
+                path: PairPath = Depends(get_path_of_server_root(exists=True)),
+        ) -> model.FileOperationResult:
+            return await _delete_file(path)
 
         @api.post(
             "/server/{server_id}/file/mkdir",
-            tags=tags,
             summary="空のディレクトリ作成",
             description="",
         )
-        async def _server_mkdir(server_id: str, path: str, _=self.require_login) -> model.FileOperationResult:
-            server = getserver(server_id)
-            path = realpath(path, server.directory)
-
-            if path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Already exists")
-
-            try:
-                await files.mkdir(path)
-            except Exception as e:
-                log.warning(f"Failed to mkdir: {e}: {path}")
-                return model.FileOperationResult.failed(None)
-            else:
-                return model.FileOperationResult.success(None, create_file_info(path, server.directory))
+        async def _server_mkdir(
+                path: PairPath = Depends(get_path_of_server_root(no_exists=True)),
+        ) -> model.FileOperationResult:
+            return await _mkdir(path)
 
         @api.put(
             "/server/{server_id}/file/copy",
-            tags=tags,
             summary="ファイル複製",
             description="",
         )
-        async def _server_copy(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
-            server = getserver(server_id)
-            src_swi_path = files.resolvepath(path)
-            dst_swi_path = files.resolvepath(dst_path)
-            path = realpath(path, server.directory)
-            dst_path = realpath(dst_path, server.directory)
-
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
-
-            if dst_path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
-
-            task = files.copy(path, dst_path, server, src_swi_path, dst_swi_path)
-            try:
-                await wait_for_task(task)
-            except asyncio.TimeoutError:
-                return model.FileOperationResult.pending(task.id)
-            except Exception as e:
-                log.warning(f"Failed to copy: {e}: {path}")
-                return model.FileOperationResult.failed(task.id)
-            else:
-                return model.FileOperationResult.success(task.id, create_file_info(dst_path, server.directory))
+        async def _server_copy(
+                path: PairPath = Depends(get_path_of_server_root(exists=True)),
+                dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
+        ) -> model.FileInfo:
+            return await _copy(path, dst_path)
 
         @api.put(
             "/server/{server_id}/file/move",
-            tags=tags,
             summary="ファイル移動",
             description="",
         )
-        async def _server_move(server_id: str, path: str, dst_path: str, _=self.require_login) -> model.FileInfo:
-            server = getserver(server_id)
-            src_swi_path = files.resolvepath(path)
-            dst_swi_path = files.resolvepath(dst_path)
-            path = realpath(path, server.directory)
-            dst_path = realpath(dst_path, server.directory)
+        async def _server_move(
+                path: PairPath = Depends(get_path_of_server_root(exists=True)),
+                dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
+        ) -> model.FileInfo:
+            return await _move(path, dst_path)
 
-            if not path.exists():
-                raise APIErrorCode.NOT_EXISTS_PATH.of("source path not exists", 404)
+        @api.get(
+            "/server/{server_id}/archive/files",
+            summary="アーカイブ内のファイル一覧",
+            description="",
+        )
+        async def _server_archive_files(
+                path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", is_file=True)),
+                password: str | None = Form(None),
+                ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
+        ) -> list[model.ArchiveFile]:
+            return await _archive_files(path, password, ignore_suffix)
 
-            if dst_path.exists():
-                raise APIErrorCode.ALREADY_EXISTS_PATH.of("destination path already exists")
+        @api.post(
+            "/server/{server_id}/archive/extract",
+            summary="アーカイブの展開",
+            description="",
+        )
+        async def _server_archive_extract(
+                path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", is_file=True)),
+                output_dir: PairPath = Depends(get_path_of_server_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
+                password: str | None = Form(None),
+                ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
 
-            task = files.move(path, dst_path, server, src_swi_path, dst_swi_path)
-            try:
-                await wait_for_task(task)
-            except asyncio.TimeoutError:
-                return model.FileOperationResult.pending(task.id)
-            except Exception as e:
-                log.warning(f"Failed to move: {e}: {path}")
-                return model.FileOperationResult.failed(task.id)
-            else:
-                return model.FileOperationResult.success(task.id, create_file_info(dst_path, server.directory))
+        ) -> model.FileOperationResult:
+            return await _archive_extract(path, output_dir, password, ignore_suffix)
+
+        @api.post(
+            "/server/{server_id}/archive/make",
+            summary="アーカイブファイルの作成",
+            description="",
+        )
+        async def _server_archive_make(
+                path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", no_exists=True)),
+                files_root: PairPath = Depends(get_path_of_server_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
+                include_files: list[str] = Query(description="格納するファイルのパス"),
+        ) -> model.FileOperationResult:
+            return await _archive_make(path, files_root, include_files)
+
+        return api
