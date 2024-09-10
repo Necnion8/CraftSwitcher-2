@@ -645,8 +645,8 @@ class APIHandler(object):
             else:
                 return model.FileOperationResult.success(task.id, create_file_info(dst_path))
 
-        @api.get(
-            "/archive/files",
+        @api.post(
+            "/file/archive/files",
             summary="アーカイブ内のファイル一覧",
             description="",
         )
@@ -660,7 +660,7 @@ class APIHandler(object):
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
         @api.post(
-            "/archive/extract",
+            "/file/archive/extract",
             summary="アーカイブの展開",
             description="",
         )
@@ -682,7 +682,7 @@ class APIHandler(object):
             return model.FileOperationResult.pending(task.id)
 
         @api.post(
-            "/archive/make",
+            "/file/archive/make",
             summary="アーカイブファイルの作成",
             description="",
         )
@@ -781,8 +781,8 @@ class APIHandler(object):
         ) -> model.FileInfo:
             return await _move(path, dst_path)
 
-        @api.get(
-            "/server/{server_id}/archive/files",
+        @api.post(
+            "/server/{server_id}/file/archive/files",
             summary="アーカイブ内のファイル一覧",
             description="",
         )
@@ -794,7 +794,7 @@ class APIHandler(object):
             return await _archive_files(path, password, ignore_suffix)
 
         @api.post(
-            "/server/{server_id}/archive/extract",
+            "/server/{server_id}/file/archive/extract",
             summary="アーカイブの展開",
             description="",
         )
@@ -808,7 +808,7 @@ class APIHandler(object):
             return await _archive_extract(path, output_dir, password, ignore_suffix)
 
         @api.post(
-            "/server/{server_id}/archive/make",
+            "/server/{server_id}/file/archive/make",
             summary="アーカイブファイルの作成",
             description="",
         )
