@@ -196,7 +196,7 @@ class SevenZipHelper(ArchiveHelper):
                 if m:
                     size = int(m.group(1).decode())
                     compressed_size = int(m.group(2).decode()) if m.group(2) else 0
-                    filename = m.group(3).decode("utf-8")
+                    filename = m.group(3).decode("utf-8").replace("\\", "/")
 
                     files.append(ArchiveFile(filename, size, compressed_size))
                 # else:
