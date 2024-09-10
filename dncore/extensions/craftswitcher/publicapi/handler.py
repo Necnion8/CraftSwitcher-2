@@ -655,8 +655,10 @@ class APIHandler(object):
                 password: str | None = Form(None),
                 ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
         ) -> list[model.ArchiveFile]:
-
-            arc_files = await self.files.list_archive(path.real, password=password, ignore_suffix=ignore_suffix)
+            try:
+                arc_files = await self.files.list_archive(path.real, password=password, ignore_suffix=ignore_suffix)
+            except RuntimeError as e:
+                raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
         @api.post(
@@ -675,10 +677,13 @@ class APIHandler(object):
             if not output_dir.real.parent.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Output path parent is not exists", 404)
 
-            task = await self.files.extract_archive(
-                path.real, output_dir.real, password,
-                server=path.server, src_swi_path=path.swi, dst_swi_path=output_dir.swi, ignore_suffix=ignore_suffix,
-            )
+            try:
+                task = await self.files.extract_archive(
+                    path.real, output_dir.real, password,
+                    server=path.server, src_swi_path=path.swi, dst_swi_path=output_dir.swi, ignore_suffix=ignore_suffix,
+                )
+            except RuntimeError as e:
+                raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
         @api.post(
@@ -700,10 +705,13 @@ class APIHandler(object):
             if not any(p.exists() for p in include_files):
                 raise APIErrorCode.NOT_EXISTS_PATH.of("No files")
 
-            task = await self.files.make_archive(
-                path.real, files_root.real, include_files,
-                server=path.server, src_swi_path=path.swi,
-            )
+            try:
+                task = await self.files.make_archive(
+                    path.real, files_root.real, include_files,
+                    server=path.server, src_swi_path=path.swi,
+                )
+            except RuntimeError as e:
+                raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
         # server

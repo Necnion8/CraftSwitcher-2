@@ -228,7 +228,7 @@ class FileManager(object):
             if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(archive)):
                 break
         else:
-            raise ValueError("No supported archive helper")
+            raise RuntimeError("No supported archive helper")
 
         async def _progressing():
             async for progress in helper.extract_archive(archive, extract_dir, password=password):

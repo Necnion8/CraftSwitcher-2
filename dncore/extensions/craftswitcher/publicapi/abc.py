@@ -40,6 +40,7 @@ class APIErrorCode(IntEnum):
     NOT_EXISTS_CONFIG_FILE = auto()
     NOT_ALLOWED_PATH = auto()
     NOT_FILE = auto()
+    NO_SUPPORTED_ARCHIVE_FORMAT = auto()
 
     # auth
     INVALID_AUTHENTICATION_CREDENTIALS = 400
