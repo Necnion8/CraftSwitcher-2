@@ -3,7 +3,7 @@ import datetime
 import aiohttp
 from pydantic import BaseModel
 
-from .jardl import ServerMCVersion, ServerFile, ServerDownloader
+from .jardl import ServerMCVersion, ServerBuild, ServerDownloader
 
 
 class Version(BaseModel):
@@ -44,7 +44,7 @@ class VanillaVersion(ServerMCVersion):
         super().__init__(mc_version, None)
         self.info = version
 
-    async def _list_builds(self) -> "list[ServerFile]":
+    async def _list_builds(self) -> "list[ServerBuild]":
         async with aiohttp.request("GET", self.info.url) as res:
             res.raise_for_status()
             info = VersionInfo.model_validate_json(await res.json())
@@ -52,7 +52,7 @@ class VanillaVersion(ServerMCVersion):
             dl_server = info.downloads.server
             if dl_server:
                 java_ver = info.javaVersion and info.javaVersion.majorVersion or None
-                return [ServerFile(
+                return [ServerBuild(
                     info.id, "latest", dl_server.url,
                     java_major_version=java_ver, updated_datetime=updated)]
         return []

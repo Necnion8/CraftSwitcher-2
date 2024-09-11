@@ -3,7 +3,7 @@ import datetime
 import aiohttp
 from pydantic import BaseModel
 
-from .jardl import ServerDownloader, ServerMCVersion, ServerFile, SF, SV
+from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SB, SV
 
 
 class ProjectInfo(BaseModel):
@@ -38,7 +38,7 @@ class ProjectBuildsInfo(BaseModel):
 #
 
 
-class ProjectBuild(ServerFile):
+class ProjectBuild(ServerBuild):
     def __init__(self, builds: "ProjectBuildsInfo", info: ProjectBuildInfo):
         dl_url = f"https://api.papermc.io/v2/projects/{builds.project_id}" \
                  f"/versions/{builds.version}" \
@@ -52,7 +52,7 @@ class ProjectVersion(ServerMCVersion[ProjectBuild]):
         super().__init__(mc_version, None)
         self.project_id = project_id
 
-    async def _list_builds(self) -> list[SF]:
+    async def _list_builds(self) -> list[SB]:
         url = f"https://api.papermc.io/v2/projects/{self.project_id}/versions/{self.mc_version}/builds"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()

@@ -3,13 +3,13 @@ from pathlib import Path
 from typing import TypeVar, Generic
 
 __all__ = [
-    "ServerFile",
+    "ServerBuild",
     "ServerMCVersion",
     "ServerDownloader",
 ]
 
 
-class ServerFile(object):
+class ServerBuild(object):
     def __init__(self, mc_version: str, build: str, download_url: str = None, downloaded_path: Path = None,
                  *, java_major_version: int = None, updated_datetime: datetime.datetime = None):
         self.mc_version = mc_version
@@ -24,10 +24,10 @@ class ServerFile(object):
         return False
 
 
-SF = TypeVar("SF", bound=ServerFile)
+SB = TypeVar("SB", bound=ServerBuild)
 
 
-class ServerMCVersion(Generic[SF]):
+class ServerMCVersion(Generic[SB]):
     def __init__(self, mc_version: str, builds: "list[SF] | None"):
         self.mc_version = mc_version
         self.builds = builds
@@ -35,10 +35,10 @@ class ServerMCVersion(Generic[SF]):
     def clear_cache(self):
         self.builds = None
 
-    async def _list_builds(self) -> list[SF]:
+    async def _list_builds(self) -> list[SB]:
         raise NotImplementedError
 
-    async def list_builds(self) -> list[SF]:
+    async def list_builds(self) -> list[SB]:
         if self.builds is None:
             self.builds = (await self._list_builds()) or []
         return self.builds
