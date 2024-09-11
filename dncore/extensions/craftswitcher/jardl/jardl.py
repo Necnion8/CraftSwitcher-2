@@ -24,37 +24,40 @@ class ServerFile(object):
         return False
 
 
-class ServerMCVersion(object):
-    def __init__(self, mc_version: str, builds: "list[ServerFile] | None"):
+SF = TypeVar("SF", bound=ServerFile)
+
+
+class ServerMCVersion(Generic[SF]):
+    def __init__(self, mc_version: str, builds: "list[SF] | None"):
         self.mc_version = mc_version
         self.builds = builds
 
     def clear_cache(self):
         self.builds = None
 
-    async def _list_builds(self) -> list[ServerFile]:
+    async def _list_builds(self) -> list[SF]:
         raise NotImplementedError
 
-    async def list_builds(self) -> list[ServerFile]:
+    async def list_builds(self) -> list[SF]:
         if self.builds is None:
             self.builds = (await self._list_builds()) or []
         return self.builds
 
 
-T = TypeVar("T", bound=ServerMCVersion)
+SV = TypeVar("SV", bound=ServerMCVersion)
 
 
-class ServerDownloader(Generic[T]):
+class ServerDownloader(Generic[SV]):
     def __init__(self):
-        self.versions = None  # type: list[T] | None
+        self.versions = None  # type: list[SV] | None
 
     def clear_cache(self):
         self.versions = None
 
-    async def _list_versions(self) -> list[T]:
+    async def _list_versions(self) -> list[SV]:
         raise NotImplementedError
 
-    async def list_versions(self) -> list[T]:
+    async def list_versions(self) -> list[SV]:
         if self.versions is None:
             self.versions = (await self._list_versions()) or []
         return self.versions
