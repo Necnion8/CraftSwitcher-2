@@ -401,7 +401,7 @@ class CraftSwitcher(EventListener):
         progress_data = dict(
             type="progress",
             progress_type="file_task",
-            tasks=[FileTask.create(task).model_dump("json") for task in self.files.tasks],
+            tasks=[FileTask.create(task).model_dump(mode="json") for task in self.files.tasks],
         )
         await self.api_handler.broadcast_websocket(progress_data)
 
@@ -440,34 +440,20 @@ class CraftSwitcher(EventListener):
     @onevent(monitor=True)
     async def _ws_on_file_task_start(self, event: FileTaskStartEvent):
         task = event.task
-        src = self.files.swipath(task.src)
-        dst = self.files.swipath(task.dst) if task.dst else None
         event_data = dict(
             type="event",
             event_type="file_task_start",
-            task_id=task.id,
-            task_type=task.type.name,
-            src=src,
-            dst=dst,
-            result=task.result.name,
-            progress=task.progress,
+            task=FileTask.create(task).model_dump(mode="json"),
         )
         await self.api_handler.broadcast_websocket(event_data)
 
     @onevent(monitor=True)
     async def _ws_on_file_task_end(self, event: FileTaskEndEvent):
         task = event.task
-        src = self.files.swipath(task.src)
-        dst = self.files.swipath(task.dst) if task.dst else None
         event_data = dict(
             type="event",
             event_type="file_task_end",
-            task_id=task.id,
-            task_type=task.type.name,
-            src=src,
-            dst=dst,
-            result=task.result.name,
-            progress=task.progress,
+            task=FileTask.create(task).model_dump(mode="json"),
         )
         await self.api_handler.broadcast_websocket(event_data)
 
