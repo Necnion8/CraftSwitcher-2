@@ -9,6 +9,7 @@ from dncore.extensions.craftswitcher.files.archive import abc as aabc
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
+    from dncore.extensions.craftswitcher.database import model as db
 
 
 class Server(BaseModel):
@@ -186,3 +187,34 @@ class ArchiveFile(BaseModel):
             size=archive_file.size,
             compressed_size=archive_file.compressed_size,
         )
+
+
+class User(BaseModel):
+    id: int
+    name: str
+    last_login: datetime.datetime | None
+    last_address: str | None
+    permission: int
+
+    @classmethod
+    def create(cls, user: "db.User"):
+        return cls(
+            id=user.id,
+            name=user.name,
+            last_login=user.last_login,
+            last_address=user.last_address,
+            permission=user.permission,
+        )
+
+
+class UserOperationResult(BaseModel):
+    result: bool
+    user_id: int
+
+    @classmethod
+    def success(cls, user_id: int):
+        return cls(result=True, user_id=user_id)
+
+    @classmethod
+    def failed(cls, user_id: int):
+        return cls(result=False, user_id=user_id)

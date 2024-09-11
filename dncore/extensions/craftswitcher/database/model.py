@@ -11,6 +11,10 @@ Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {
+        "sqlite_autoincrement": True,
+    }
+
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     password = Column(String, nullable=False)

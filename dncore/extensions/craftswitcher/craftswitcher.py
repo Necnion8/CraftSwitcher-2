@@ -378,7 +378,7 @@ class CraftSwitcher(EventListener):
 
     # user
 
-    async def add_user(self, name: str, unhashed_password: str, **kwargs):
+    async def add_user(self, name: str, unhashed_password: str, **kwargs) -> int:
 
         users = {u.name: u for u in await self.database.get_users()}
         if name in users:
@@ -386,8 +386,7 @@ class CraftSwitcher(EventListener):
 
         password = self.database.generate_hash(unhashed_password)
         user = User(name=name, password=password, **kwargs)
-        await self.database.add_user(user)
-        return user
+        return await self.database.add_user(user)
 
     async def create_user(self, name: str, password: str):
         pass

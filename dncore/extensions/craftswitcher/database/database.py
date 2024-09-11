@@ -107,7 +107,11 @@ class SwitcherDatabase(object):
         async with self._commit_lock:
             async with self.session() as db:
                 db.add(user)
+                await db.flush()
+                await db.refresh(user)
+                user_id = str(user.id)
                 await db.commit()
+                return user_id
 
     async def remove_user(self, user: User | int):
         async with self._commit_lock:

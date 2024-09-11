@@ -46,6 +46,10 @@ class APIErrorCode(IntEnum):
     INVALID_AUTHENTICATION_CREDENTIALS = 400
     INCORRECT_USERNAME_OR_PASSWORD = auto()
 
+    # user
+    ALREADY_EXISTS_USER_NAME = 500
+    NOT_EXISTS_USER = auto()
+
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
 

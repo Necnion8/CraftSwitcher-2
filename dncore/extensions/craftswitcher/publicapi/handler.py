@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
+from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
@@ -35,10 +36,10 @@ class PairPath(NamedTuple):
 
 class OAuth2PasswordRequestForm:
     def __init__(
-        self,
-        *,
-        username: str = Form(),
-        password: str = Form(),
+            self,
+            *,
+            username: str = Form(),
+            password: str = Form(),
     ):
         self.username = username
         self.password = password
@@ -190,13 +191,14 @@ class APIHandler(object):
                             try:
                                 server.wrapper.write(write_data)
                             except Exception as e:
-                                server.log.warning("Exception in write to server process by WS#%s", client.id, exc_info=e)
+                                server.log.warning("Exception in write to server process by WS#%s", client.id,
+                                                   exc_info=e)
 
             finally:
                 self._websocket_clients.discard(client)
                 call_event(WebSocketClientDisconnectEvent(client))
                 log.debug("Disconnect WebSocket Client #%s", client.id)
-                
+
         return api
 
     def _user(self):
@@ -204,6 +206,12 @@ class APIHandler(object):
         api = APIRouter(
             tags=["User", ],
         )
+
+        async def getuser(user_id: int):
+            user = await self.database.get_user_by_id(user_id)
+            if not user:
+                raise APIErrorCode.NOT_EXISTS_USER.of("Unknown user id", 404)
+            return user
 
         @api.post(
             "/login",
@@ -228,7 +236,34 @@ class APIHandler(object):
                 max_age=expires.total_seconds(),
             )
             return dict(result=True)
-        
+
+        @api.get(
+            "/users",
+            dependencies=[Depends(self.get_authorized_user)],
+        )
+        async def _users() -> list[model.User]:
+            return [model.User.create(u) for u in await self.database.get_users()]
+
+        @api.post(
+            "/user/add",
+            dependencies=[Depends(self.get_authorized_user)],
+        )
+        async def _user_add(form_data: OAuth2PasswordRequestForm = Depends()) -> model.UserOperationResult:
+            try:
+                user_id = await self.inst.add_user(form_data.username, form_data.password)
+            except ValueError:
+                raise APIErrorCode.ALREADY_EXISTS_USER_NAME.of("Already exists name")
+
+            return model.UserOperationResult.success(user_id)
+
+        @api.delete(
+            "/user/remove",
+            dependencies=[Depends(self.get_authorized_user)],
+        )
+        async def _user_remove(user: User = Depends(getuser)) -> model.UserOperationResult:
+            await self.database.remove_user(user)
+            return model.UserOperationResult.success(user.id)
+
         return api
 
     def _server(self):
@@ -238,7 +273,7 @@ class APIHandler(object):
             tags=["Server", ],
             dependencies=[Depends(self.get_authorized_user), ],
         )
-        
+
         def getserver(server_id: str):
             try:
                 server = servers[server_id.lower()]
@@ -454,7 +489,7 @@ class APIHandler(object):
 
             server._config.save(force=True)
             return await _get_config(server_id)
-        
+
         return api
 
     def _file(self):
@@ -520,9 +555,11 @@ class APIHandler(object):
                 elif exists and not p.real.exists():
                     raise APIErrorCode.NOT_EXISTS_PATH.of(f"Not exists: {name!r}", 404)
                 return p
+
             return check
 
-        def get_path_of_server_root(query: str | Query = None, *, is_dir=False, is_file=False, exists=False, no_exists=False):
+        def get_path_of_server_root(query: str | Query = None, *, is_dir=False, is_file=False, exists=False,
+                                    no_exists=False):
             if query is None or isinstance(query, Query):
                 name = query and query.alias or "path"
             else:
@@ -540,6 +577,7 @@ class APIHandler(object):
                 elif exists and not p.real.exists():
                     raise APIErrorCode.NOT_EXISTS_PATH.of(f"Not exists: {name!r}", 404)
                 return p
+
             return check
 
         # method
@@ -633,7 +671,7 @@ class APIHandler(object):
         )
         async def _mkdir(
                 path: PairPath = Depends(get_path_of_root(no_exists=True)),
-                
+
         ) -> model.FileOperationResult:
             try:
                 await self.files.mkdir(path.real)
@@ -714,10 +752,11 @@ class APIHandler(object):
         )
         async def _archive_extract(
                 path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", is_file=True)),
-                output_dir: PairPath = Depends(get_path_of_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
+                output_dir: PairPath = Depends(
+                    get_path_of_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
                 password: str | None = Form(None),
                 ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
-                
+
         ) -> model.FileOperationResult:
 
             if not output_dir.real.parent.is_dir():
@@ -739,7 +778,8 @@ class APIHandler(object):
         )
         async def _archive_make(
                 path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", no_exists=True)),
-                files_root: PairPath = Depends(get_path_of_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
+                files_root: PairPath = Depends(
+                    get_path_of_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
                 include_files: list[str] = Query(description="格納するファイルのパス"),
         ) -> model.FileOperationResult:
 
@@ -854,7 +894,8 @@ class APIHandler(object):
         )
         async def _server_archive_extract(
                 path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", is_file=True)),
-                output_dir: PairPath = Depends(get_path_of_server_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
+                output_dir: PairPath = Depends(
+                    get_path_of_server_root(Query(alias="output_dir", description="解凍先のフォルダパス"))),
                 password: str | None = Form(None),
                 ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
 
@@ -868,7 +909,8 @@ class APIHandler(object):
         )
         async def _server_archive_make(
                 path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", no_exists=True)),
-                files_root: PairPath = Depends(get_path_of_server_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
+                files_root: PairPath = Depends(
+                    get_path_of_server_root(Query(alias="files_root", description="格納するファイルのルートパス"))),
                 include_files: list[str] = Query(description="格納するファイルのパス"),
         ) -> model.FileOperationResult:
             return await _archive_make(path, files_root, include_files)
