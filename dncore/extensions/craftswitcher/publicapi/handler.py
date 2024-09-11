@@ -268,9 +268,7 @@ class APIHandler(object):
             summary="サーバーを起動",
             description="サーバーを起動します",
         )
-        async def _start(server_id: str, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _start(server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.start()
             except errors.AlreadyRunningError:
@@ -289,9 +287,7 @@ class APIHandler(object):
             summary="サーバーを停止",
             description="サーバーを停止します",
         )
-        async def _stop(server_id: str, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _stop(server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.stop()
             except errors.NotRunningError:
@@ -306,9 +302,7 @@ class APIHandler(object):
             summary="サーバーを再起動",
             description="サーバーを再起動します",
         )
-        async def _restart(server_id: str, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _restart(server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.restart()
             except errors.NotRunningError:
@@ -323,9 +317,7 @@ class APIHandler(object):
             summary="サーバーを強制終了",
             description="サーバーを強制終了します",
         )
-        async def _kill(server_id: str, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _kill(server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.kill()
             except errors.NotRunningError:
