@@ -43,7 +43,8 @@ class ProjectBuildsInfo(BaseModel):
 
 class ProjectBuild(ServerBuild):
     def __init__(self, builds: "ProjectBuildsInfo", build: str):
-        super().__init__(builds.version, build)
+        dl_url = f"https://api.purpurmc.org/v2/{builds.project}/{builds.version}/{self.build}/download"
+        super().__init__(builds.version, build, download_url=dl_url)
         self.builds = builds
 
     def is_loaded_info(self):
@@ -54,8 +55,6 @@ class ProjectBuild(ServerBuild):
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
             info = ProjectBuildInfo.model_validate_json(await res.json())
-
-            self.download_url = url + "/download"
             self.updated_datetime = info.timestamp
             return True
 
