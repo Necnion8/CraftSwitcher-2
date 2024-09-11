@@ -334,6 +334,18 @@ class APIHandler(object):
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
+            "/server/{server_id/send_line",
+            summary="サーバープロセスに送信",
+            description="コマンド文などの文字列をサーバープロセスへ書き込みます",
+        )
+        async def _send_line(line: str, server: "ServerProcess" = Depends(getserver), ):
+            try:
+                await server.send_command(line)
+            except errors.NotRunningError:
+                raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
+            return model.ServerOperationResult.success(server.id)
+
+        @api.post(
             "/server/{server_id}/import",
             summary="構成済みのサーバーを追加",
             description="構成済みのサーバーを登録します",
