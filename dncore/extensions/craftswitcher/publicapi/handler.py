@@ -549,7 +549,7 @@ class APIHandler(object):
         def _get_file(
                 path: PairPath = Depends(get_path_of_root(is_file=True)),
         ):
-            return FileResponse(path.real)
+            return FileResponse(path.real, filename=path.real.name)
 
         @api.post(
             "/file",
