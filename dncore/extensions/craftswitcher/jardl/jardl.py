@@ -40,8 +40,8 @@ class ServerBuild(object):
             self._loaded = await self._fetch_info()
         return self._loaded
 
-    async def _fetch_info(self):
-        pass
+    async def _fetch_info(self) -> bool:
+        return False
 
 
 SB = TypeVar("SB", bound=ServerBuild)
