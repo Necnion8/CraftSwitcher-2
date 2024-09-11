@@ -157,8 +157,30 @@ class APIHandler(object):
             self._websocket_clients.add(client)
 
             try:
-                async for data in websocket.iter_json():  # TODO: handle data
-                    log.debug("WS#%s -> %s", client.id, data)
+                async for data in websocket.iter_json():
+                    log.debug("WS#%s -> %s", client.id, data)  # TODO: remove debug
+
+                    try:
+                        request_type = data["type"]
+                    except KeyError:
+                        continue
+
+                    if request_type == "server_process_write":
+                        try:
+                            server_id = data["server"]
+                            write_data = data["data"]
+                        except KeyError:
+                            continue
+
+                        try:
+                            server = inst.servers[server_id]
+                        except KeyError:
+                            continue
+                        if server and server.state.is_running:
+                            try:
+                                server.wrapper.write(write_data)
+                            except Exception as e:
+                                server.log.warning("Exception in write to server process by WS#%s", client.id, exc_info=e)
 
             finally:
                 self._websocket_clients.discard(client)

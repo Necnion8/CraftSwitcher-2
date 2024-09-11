@@ -1,11 +1,15 @@
 import asyncio
 import asyncio.subprocess as subprocess
 import logging
+import os
 import shlex
 import signal
+import sys
+import threading
 import time
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Awaitable
 from typing import Callable
 
 from . import errors
@@ -15,31 +19,6 @@ from .event import *
 from .utils import *
 
 _log = logging.getLogger(__name__)
-
-
-# noinspection PyMethodMayBeStatic
-class ProcessReader:
-    def subprocess_args(self, **kwargs) -> dict[str, Any]:
-        raise NotImplemented
-
-    async def loop_read(self, process: subprocess.Process):
-        raise NotImplemented
-
-
-class TextProcessReader(ProcessReader):
-    def subprocess_args(self, **kwargs) -> dict[str, Any]:
-        return dict(
-            kwargs,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-
-    async def loop_read(self, process: subprocess.Process):
-        reader = process.stdout
-        while line := await reader.readline():
-            line = line.rstrip()
-            _log.info(f"[OUTPUT] %s", line.decode("utf-8"))
 
 
 class ServerProcess(object):
@@ -162,21 +141,15 @@ class ServerProcess(object):
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
 
-        self.process_reader_type = TextProcessReader  # type: Callable[[], ProcessReader]
+        self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
-        self._process = None  # type: subprocess.Process | None
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
-        self._process_read_loop_task = None  # type: asyncio.Task | None
         #
         self.shutdown_to_restart = False
 
     @property
-    def process(self):
-        return self._process
-
-    @property
     def _is_running(self):
-        return self.process and self.process.returncode is None
+        return self.wrapper and self.wrapper.exit_status is None
 
     @property
     def state(self):
@@ -219,13 +192,12 @@ class ServerProcess(object):
         self.log.debug(f"Memory check -> Available:{round(mem_available, 1):,}MB, Require:{round(required, 1):,}MB")
         return mem_available > required
 
-    async def _process_read_loop(self, process: subprocess.Process, reader: ProcessReader):
-        try:
-            await reader.loop_read(process)
-        finally:
-            ret = await process.wait()
-            self.log.info("Stopped server process (ret: %s)", ret)
-            self.state = ServerState.STOPPED
+    async def _term_read(self, data: str):
+        data = data.lstrip()
+        self.log.info(f"[OUTPUT]: {data!r}")
+
+        if data:
+            call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
 
     async def _build_arguments(self):
         generated_arguments = False
@@ -252,40 +224,42 @@ class ServerProcess(object):
         _event = await call_event(ServerLaunchOptionBuildEvent(self, args, is_generated=generated_arguments))
         return _event.args
 
-    async def _start_subprocess(self, args: list[str], reader: ProcessReader):
-        return await subprocess.create_subprocess_exec(
-            args[0], *args[1:], **reader.subprocess_args(
-                cwd=self.directory,
-                start_new_session=True,
-            )
+    # noinspection PyMethodMayBeStatic
+    async def _start_subprocess(
+            self, args: list[str], term_size: tuple[int, int],
+            *, read_handler: Callable[[str], Awaitable[None]],
+    ):
+        return await PtyProcessWrapper.spawn(
+            args=args,
+            cwd=self.directory,
+            term_size=term_size,
+            read_handler=read_handler,
         )
 
     async def start(self):
         if self._is_running:
             raise errors.AlreadyRunningError
 
-        if self._process_read_loop_task and not self._process_read_loop_task.done():
-            try:
-                await self._process_read_loop_task
-            except (Exception,):
-                pass
-
         self.log.info(f"Starting {self.id} server process")
         _event = await call_event(ServerPreStartEvent(self))
         if _event.cancelled:
             raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
+
+        def _end(_):
+            ret_ = wrapper.exit_status
+            self.log.info("Stopped server process (ret: %s)", ret_)
+            self.state = ServerState.STOPPED
 
         try:
             if not self.check_free_memory():
                 raise errors.OutOfMemoryError
 
             args = await self._build_arguments()
-            reader = self.process_reader_type()
-            p = self._process = await self._start_subprocess(args, reader)
 
-            self._process_read_loop_task = self.loop.create_task(self._process_read_loop(p, reader))
+            wrapper = self.wrapper = await self._start_subprocess(args, term_size=(80, 25), read_handler=self._term_read)
+            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
             try:
-                await asyncio.wait_for(p.wait(), timeout=1)
+                await asyncio.wait_for(wrapper.wait(), timeout=1)
             except asyncio.TimeoutError:
                 pass
 
@@ -293,15 +267,16 @@ class ServerProcess(object):
             self.log.exception("Exception in pre start", exc_info=e)
             raise errors.ServerLaunchError from e
 
-        if p.returncode is None:
+        ret = wrapper.exit_status
+        if ret is None:
             self.state = ServerState.RUNNING
 
         else:
-            self.log.warning("Exited process: return code: %s", p.returncode)
-            raise errors.ServerLaunchError(f"Failed to launch: process exited {p.returncode}")
+            self.log.warning("Exited process: return code: %s", ret)
+            raise errors.ServerLaunchError(f"Failed to launch: process exited {ret}")
 
         try:
-            self._perf_mon = ProcessPerformanceMonitor(p.pid)
+            self._perf_mon = ProcessPerformanceMonitor(wrapper.pid)
         except Exception as e:
             self.log.warning("Exception in init perf.mon", exc_info=e)
 
@@ -310,8 +285,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Sending command to {self.id} server: {command}")
-        self._process.stdin.write(command.encode("utf-8") + b"\n")
-        await self._process.stdin.drain()
+        self.wrapper.write(command + "\n")
 
     async def stop(self):
         if not self._is_running:
@@ -333,7 +307,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Killing {self.id} server process...")
-        self._process.send_signal(signal.SIGKILL)
+        self.wrapper.kill(signal.SIGKILL)
 
     async def wait_for_shutdown(self, *, timeout: int = None):
         if timeout is None:
@@ -373,3 +347,182 @@ class ServerProcessList(dict[str, ServerProcess | None]):
         if server_id is None:
             return None
         return dict.get(self, server_id.lower())
+
+
+# wrapper
+
+
+class ProcessWrapper:
+    def __init__(self, pid: int, cwd: Path, args: list[str]):
+        self._read_queue = asyncio.Queue()
+        self.pid = pid
+        self.cwd = cwd
+        self.args = args
+
+    @classmethod
+    async def spawn(
+            cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+            *, read_handler: Callable[[str], Awaitable[None]],
+    ) -> "ProcessWrapper":
+        raise NotImplementedError
+
+    async def _loop_read_handler(self, read_handler: Callable[[str], Awaitable[None]]):
+        while data := await self._read_queue.get():
+            if data is EOFError:
+                break
+            try:
+                await read_handler(data)
+            except Exception as e:
+                _log.exception("Exception in read_handler", exc_info=e)
+
+    def write(self, data: str):
+        raise NotImplementedError
+
+    async def flush(self):
+        raise NotImplementedError
+
+    @property
+    def exit_status(self) -> int | None:
+        raise NotImplementedError
+
+    async def wait(self) -> int:
+        raise NotImplementedError
+
+    def kill(self, sig: signal.Signals = signal.SIGTERM):
+        os.kill(self.pid, sig)
+
+
+if sys.platform == "win32":
+    import winpty
+
+    class WinPtyProcessWrapper(ProcessWrapper):
+        def __init__(self, pid: int, cwd: Path, args: list[str], pty: winpty.PTY):
+            super().__init__(pid, cwd, args)
+            self.pty = pty
+
+        @classmethod
+        async def spawn(
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                *, read_handler: Callable[[str], Awaitable[None]],
+        ) -> "WinPtyProcessWrapper":
+            pty = winpty.PTY(*term_size)
+            # noinspection PyTypeChecker
+            _appname: bytes = args[0]
+            # noinspection PyTypeChecker
+            _cmdline: bytes = shlex.join(args[1:])
+            # noinspection PyTypeChecker
+            _cwd: bytes = str(cwd)
+
+            func = partial(pty.spawn, _appname, _cmdline, _cwd, )
+            loop = asyncio.get_running_loop()
+
+            if not loop.run_in_executor(None, func):
+                raise RuntimeError("Unable to pty.spawn")
+
+            wrapper = cls(pty.pid, cwd, args, pty)
+            loop.create_task(wrapper._loop_read_handler(read_handler))
+            # loop.run_in_executor(None, wrapper._loop_reader)
+            threading.Thread(target=wrapper._loop_reader, daemon=True).start()  # ExecutorだとなぜかdnCoreが落ちない
+            return wrapper
+
+        def _loop_reader(self):
+            pty_read = self.pty.read
+            pty_isalive = self.pty.isalive
+            queue_put = self._read_queue.put_nowait
+            _decode = bytes.decode
+
+            try:
+                while pty_isalive():
+                    chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
+                    queue_put(chunk)
+            except Exception as e:
+                _log.exception("Exception in pty.read", exc_info=e)
+            finally:
+                queue_put(EOFError)
+
+        def write(self, data: str):
+            # noinspection PyTypeChecker
+            self.pty.write(data)
+
+        async def flush(self):
+            pass
+
+        @property
+        def exit_status(self) -> int | None:
+            return self.pty.get_exitstatus()
+
+        async def wait(self) -> int:
+            while self.pty.isalive():
+                await asyncio.sleep(.1)
+            return self.exit_status
+
+    PtyProcessWrapper = WinPtyProcessWrapper
+
+else:
+    import pty
+
+    class UnixPtyProcessWrapper(ProcessWrapper):
+        def __init__(self, pid: int, cwd: Path, args: list[str], process: subprocess.Process, fd: int):
+            super().__init__(pid, cwd, args)
+            self.process = process
+            self.fd = fd
+
+        @classmethod
+        async def spawn(
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                *, read_handler: Callable[[str], Awaitable[None]],
+        ) -> "UnixPtyProcessWrapper":
+            master, slave = pty.openpty()
+            try:
+                p = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, close_fds=True,
+                )
+            except Exception as e:
+                raise RuntimeError("Unable to create_subprocess_exec") from e
+
+            finally:
+                os.close(slave)
+
+            loop = asyncio.get_running_loop()
+
+            wrapper = cls(p.pid, cwd, args, p, master)
+            loop.create_task(wrapper._loop_read_handler(read_handler))
+            loop.run_in_executor(None, wrapper._loop_reader)
+            return wrapper
+
+        def _loop_reader(self):
+            fd = self.fd
+            os_read = os.read
+            queue_put = self._read_queue.put_nowait
+            _decode = bytes.decode
+
+            try:
+                while True:
+                    try:
+                        data = os_read(fd, 1024 * 8)
+                    except OSError:
+                        break
+                    queue_put(_decode(data, "utf-8", errors="ignore"))
+            except Exception as e:
+                _log.exception("Exception in os.read", exc_info=e)
+            finally:
+                queue_put(EOFError)
+
+        def write(self, data: str):
+            os.write(self.fd, data.encode("utf-8"))
+
+        async def flush(self):
+            pass
+
+        @property
+        def exit_status(self) -> int | None:
+            return self.process.returncode
+
+        async def wait(self) -> int:
+            return await self.process.wait()
+
+        def kill(self, sig: signal.Signals = signal.SIGTERM):
+            self.process.send_signal(sig)
+
+    PtyProcessWrapper = UnixPtyProcessWrapper

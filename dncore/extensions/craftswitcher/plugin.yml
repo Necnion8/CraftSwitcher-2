@@ -17,3 +17,4 @@ libraries:
   - aiosqlite
   - passlib
   - bcrypt
+  - pywinpty; sys_platform == "win32"

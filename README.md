@@ -30,7 +30,7 @@ Minecraft Java サーバー 管理システム |
 ## 環境
 - Python 3.10
 - Linux (推奨)
-- Windows (一部の機能は非対応)
+- Windows
 
 ※ macOSは未確認。おそらく動作？
 
@@ -69,5 +69,17 @@ REST API は初期設定で [`http://0.0.0.0:8080/docs`](http://localhost:8080/d
 ## WebSocket
 WebSocket クライアントを `http://0.0.0.0:8080/ws` に接続することで、サーバーイベント等を JSON フォーマットで受信できます。
 
+### WS 受信
 > [craftswitcher.py](dncore%2Fextensions%2Fcraftswitcher%2Fcraftswitcher.py)<br>
 > `# events ws broadcast` このコマンド行の以下に実装があります
+
+
+### WS 送信
+> サーバープロセスへのテキストの書き込み
+> ```json
+> {
+>   "type": "server_process_write",
+>   "server": "lobby",
+>   "data": "say Hello\r\n"
+> }
+> ```
