@@ -9,7 +9,6 @@ from fastapi.exceptions import WebSocketException
 from fastapi.params import Form, Query
 from fastapi.requests import HTTPConnection
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import OAuth2PasswordRequestForm
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
@@ -32,6 +31,17 @@ class PairPath(NamedTuple):
     swi: str
     server: "ServerProcess | None"
     root_dir: Path | None
+
+
+class OAuth2PasswordRequestForm:
+    def __init__(
+        self,
+        *,
+        username: str = Form(),
+        password: str = Form(),
+    ):
+        self.username = username
+        self.password = password
 
 
 class APIHandler(object):
