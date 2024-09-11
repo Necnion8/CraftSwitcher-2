@@ -18,10 +18,30 @@ class ServerBuild(object):
         self.downloaded_path = downloaded_path
         self.java_major_version = java_major_version
         self.updated_datetime = updated_datetime
+        #
+        self._loaded = False
 
     # noinspection PyMethodMayBeStatic
     def is_require_build(self):
+        """
+        ビルドが必要ならTrue
+        """
         return False
+
+    # noinspection PyMethodMayBeStatic
+    def is_loaded_info(self):
+        """
+        全ての情報を読み込んでいるならTrue
+        """
+        return True
+
+    async def fetch_info(self) -> bool:
+        if not self._loaded:
+            self._loaded = await self._fetch_info()
+        return self._loaded
+
+    async def _fetch_info(self):
+        pass
 
 
 SB = TypeVar("SB", bound=ServerBuild)
