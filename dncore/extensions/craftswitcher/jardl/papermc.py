@@ -5,6 +5,20 @@ from pydantic import BaseModel
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SB, SV
 
+__all__ = [
+    "ProjectInfo",
+    "BuildDownload",
+    "BuildDownloads",
+    "ProjectBuildInfo",
+    "ProjectBuildsInfo",
+    "ProjectBuild",
+    "ProjectVersion",
+    "PaperServerDownloader",
+    "WaterfallServerDownloader",
+    "VelocityServerDownloader",
+    "FoliaServerDownloader",
+]
+
 
 class ProjectInfo(BaseModel):
     project_id: str
@@ -68,3 +82,15 @@ class PaperServerDownloader(ServerDownloader[ProjectVersion]):
             res.raise_for_status()
             info = ProjectInfo.model_validate_json(await res.json())
             return [ProjectVersion(self.project_id, ver) for ver in info.versions]
+
+
+class WaterfallServerDownloader(PaperServerDownloader):
+    project_id = "waterfall"
+
+
+class VelocityServerDownloader(PaperServerDownloader):
+    project_id = "velocity"
+
+
+class FoliaServerDownloader(PaperServerDownloader):
+    project_id = "folia"
