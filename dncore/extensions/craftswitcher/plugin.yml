@@ -11,6 +11,7 @@ libraries:
   - psutil
   - fastapi
   - uvicorn
+  - websockets
   - python-multipart
   - sqlalchemy
   - aiosqlite

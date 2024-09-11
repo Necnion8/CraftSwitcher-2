@@ -5,6 +5,7 @@ colorlog
 psutil
 fastapi
 uvicorn
+websockets
 python-multipart
 sqlalchemy
 aiosqlite
