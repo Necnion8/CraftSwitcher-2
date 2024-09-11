@@ -5,7 +5,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
+from fastapi.exceptions import WebSocketException
 from fastapi.params import Form, Query
+from fastapi.requests import HTTPConnection
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -82,9 +84,9 @@ class APIHandler(object):
 
     # user
 
-    async def get_authorized_user(self, request: Request):
+    async def get_authorized_user(self, connection: HTTPConnection):
         try:
-            token = request.cookies["session"]
+            token = connection.cookies["session"]
         except KeyError:
             pass
         else:
@@ -94,17 +96,23 @@ class APIHandler(object):
 
         raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
 
+    async def get_authorized_user_ws(self, websocket: WebSocket):
+        try:
+            return await self.get_authorized_user(websocket)
+        except HTTPException as e:
+            raise WebSocketException(1008) from e
+
     # api handling
 
     def _app(self):
         inst = self.inst  # type: CraftSwitcher
         api = APIRouter(
             tags=["App", ],
-            dependencies=[Depends(self.get_authorized_user), ],
         )
 
         @api.get(
             "/config/server_global",
+            dependencies=[Depends(self.get_authorized_user), ],
         )
         async def _get_config_server_global() -> model.ServerGlobalConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
@@ -120,6 +128,7 @@ class APIHandler(object):
 
         @api.put(
             "/config/server_global",
+            dependencies=[Depends(self.get_authorized_user), ],
         )
         async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
             config = inst.config.server_defaults
@@ -137,6 +146,7 @@ class APIHandler(object):
 
         @api.websocket(
             "/ws",
+            dependencies=[Depends(self.get_authorized_user_ws), ],
         )
         async def _websocket(websocket: WebSocket):
             await websocket.accept()
