@@ -32,7 +32,7 @@ class ForgeBuild(ServerBuild):
     async def _fetch_info(self) -> bool:
         async with aiohttp.request("GET", FILES_URL.format(version=self.build)) as res:
             res.raise_for_status()
-            info = VersionMetaInfo.model_validate_json(await res.json())
+            info = VersionMetaInfo.model_validate(await res.json())
 
         try:
             info["installer"]["jar"]

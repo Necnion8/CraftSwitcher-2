@@ -65,7 +65,7 @@ class ProjectBuild(ServerBuild):
         url = f"https://api.purpurmc.org/v2/{self.builds.project}/{self.builds.version}/{self.build}"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
-            info = ProjectBuildInfo.model_validate_json(await res.json())
+            info = ProjectBuildInfo.model_validate(await res.json())
             self.updated_datetime = info.timestamp
             return True
 
@@ -79,7 +79,7 @@ class ProjectVersion(ServerMCVersion[ProjectBuild]):
         url = f"https://api.purpurmc.org/v2/{self.project_id}/{self.mc_version}"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
-            info = ProjectBuildsInfo.model_validate_json(await res.json())
+            info = ProjectBuildsInfo.model_validate(await res.json())
             return [ProjectBuild(info, build) for build in info.builds.all]
 
 
@@ -89,5 +89,5 @@ class PurpurServerDownloader(ServerDownloader[ProjectVersion]):
     async def _list_versions(self) -> list[SV]:
         async with aiohttp.request("GET", f"https://api.purpurmc.org/v2/{self.project_id}") as res:
             res.raise_for_status()
-            info = ProjectInfo.model_validate_json(await res.json())
+            info = ProjectInfo.model_validate(await res.json())
             return [ProjectVersion(self.project_id, ver) for ver in info.versions]

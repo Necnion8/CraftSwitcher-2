@@ -62,7 +62,7 @@ class ProjectVersion(ServerMCVersion):
         url = f"https://mohistmc.com/api/v2/projects/{self.project_id}/{self.mc_version}/builds"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
-            builds = VersionBuildsInfo.model_validate_json(await res.json())
+            builds = VersionBuildsInfo.model_validate(await res.json())
 
         return [VersionBuild(builds.projectVersion, builds.projectName, build) for build in builds.builds]
 
@@ -73,7 +73,7 @@ class MohistServerDownloader(ServerDownloader[ProjectVersion]):
     async def _list_versions(self) -> list[SV]:
         async with aiohttp.request("GET", f"https://mohistmc.com/api/v2/projects/{self.project_id}") as res:
             res.raise_for_status()
-            vers = ProjectVersionsInfo.model_validate_json(await res.json())
+            vers = ProjectVersionsInfo.model_validate(await res.json())
 
         return [ProjectVersion(ver, self.project_id) for ver in vers.versions]
 

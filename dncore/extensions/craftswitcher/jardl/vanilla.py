@@ -47,7 +47,7 @@ class VanillaVersion(ServerMCVersion):
     async def _list_builds(self) -> "list[ServerBuild]":
         async with aiohttp.request("GET", self.info.url) as res:
             res.raise_for_status()
-            info = VersionInfo.model_validate_json(await res.json())
+            info = VersionInfo.model_validate(await res.json())
             updated = self.info.time
             dl_server = info.downloads.server
             if dl_server:
@@ -62,5 +62,5 @@ class VanillaServerDownloader(ServerDownloader[VanillaVersion]):
     async def _list_versions(self) -> list[VanillaVersion]:
         async with aiohttp.request("GET", "https://launchermeta.mojang.com/mc/game/version_manifest.json") as res:
             res.raise_for_status()
-            info = VersionManifest.model_validate_json(await res.json())
+            info = VersionManifest.model_validate(await res.json())
             return [VanillaVersion(ver.id, ver) for ver in info.versions]

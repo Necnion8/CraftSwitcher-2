@@ -79,7 +79,7 @@ class FabricServerDownloader(ServerDownloader):
 
         versions = []
         for entry in info:
-            info = VersionInfo.model_validate_json(entry)
+            info = VersionInfo.model_validate(entry)
             if info.stable:
                 versions.append(ServerVersion(info, self))
         return versions
@@ -93,7 +93,7 @@ class FabricServerDownloader(ServerDownloader):
 
             self._loaders = []
             for entry in info:
-                info = LoaderInfo.model_validate_json(entry)
+                info = LoaderInfo.model_validate(entry)
                 if info.stable:
                     self._loaders.append(info)
         return self._loaders
@@ -107,7 +107,7 @@ class FabricServerDownloader(ServerDownloader):
 
             self._installers = []
             for entry in info:
-                info = InstallerInfo.model_validate_json(entry)
+                info = InstallerInfo.model_validate(entry)
                 if info.stable:
                     self._installers.append(info)
         return self._installers

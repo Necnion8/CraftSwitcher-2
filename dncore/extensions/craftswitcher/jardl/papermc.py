@@ -70,7 +70,7 @@ class ProjectVersion(ServerMCVersion[ProjectBuild]):
         url = f"https://api.papermc.io/v2/projects/{self.project_id}/versions/{self.mc_version}/builds"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
-            info = ProjectBuildsInfo.model_validate_json(await res.json())
+            info = ProjectBuildsInfo.model_validate(await res.json())
             return [ProjectBuild(info, build) for build in info.builds]
 
 
@@ -80,7 +80,7 @@ class PaperServerDownloader(ServerDownloader[ProjectVersion]):
     async def _list_versions(self) -> list[SV]:
         async with aiohttp.request("GET", f"https://api.papermc.io/v2/projects/{self.project_id}") as res:
             res.raise_for_status()
-            info = ProjectInfo.model_validate_json(await res.json())
+            info = ProjectInfo.model_validate(await res.json())
             return [ProjectVersion(self.project_id, ver) for ver in info.versions]
 
 
