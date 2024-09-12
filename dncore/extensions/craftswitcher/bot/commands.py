@@ -1,11 +1,15 @@
 import asyncio
+from logging import getLogger
 
 import discord
 
 from dncore import DNCoreAPI
 from dncore.command import oncommand, CommandContext
 from dncore.extensions.craftswitcher import CraftSwitcher
-from dncore.extensions.craftswitcher.abc import ServerState
+from dncore.extensions.craftswitcher.abc import ServerState, ServerType
+from dncore.extensions.craftswitcher.jardl import ServerBuild
+
+log = getLogger(__name__)
 
 
 class BotCommandHandler(object):
@@ -121,3 +125,86 @@ class BotCommandHandler(object):
             embed.add_field(name=name, value=value, inline=False)
 
         await ctx.send_info(embed, title="📋  サーバー一覧")
+
+    @oncommand()
+    async def cmd_jardl(self, ctx: CommandContext):
+        """
+        {command}
+        > サーバーModのダウンローダー一覧
+
+        {command} (type)
+        > 対応するMCバージョンの一覧
+
+        {command} (type) (mcver)
+        > 対応するビルドの一覧
+
+        {command} (type) (mcver) latest/(build)
+        > 指定されたビルドのダウンロードリンクを表示 (利用可能な場合)
+        """
+
+        args = ctx.args
+        if not args:
+            # list types
+            types = []
+            for type_, downloaders in self.swi.server_downloaders.items():
+                if downloaders:
+                    types.append(type_)
+
+            ls = "\n".join(f"- {t.value}" for t in types)
+            await ctx.send_info(":information: 利用可能なダウンローダー:\n" + ls)
+            return
+
+        _server_type = args.pop(0)
+        try:
+            server_type = ServerType(_server_type.lower())
+            downloader = self.swi.server_downloaders[server_type][-1]
+        except (ValueError, KeyError, IndexError):
+            await ctx.send_warn(f":information: 指定されたサーバーが見つかりません: {_server_type.lower()}")
+            return
+
+        versions = await downloader.list_versions()
+        if not args:
+            # list mc version
+            ls = "\n".join(f"- {v.mc_version} ({len(v.builds or [])} builds)" for v in versions)
+            log.debug(ls)
+            await ctx.send_info(f":information: {server_type.value} サーバーの対応バージョン\n" + ls)
+            return
+
+        mc_version = args.pop(0)
+        for _version in versions:
+            if _version.mc_version == mc_version:
+                version = _version
+                break
+        else:
+            await ctx.send_warn(f":information: 指定されたバージョンに対応していません: {mc_version}")
+            return
+
+        builds = await version.list_builds()  # type: list[ServerBuild]
+        if not args:
+            # list build
+            ls = "\n".join(f"- {b.build}" for b in builds)
+            log.debug(ls)
+            await ctx.send_info(f":information: {server_type.value} サーバーのビルド一覧 (MC{mc_version})\n" + ls)
+            return
+
+        a_build = args.pop(0)
+        for _build in builds:
+            if _build.build == a_build:
+                build = _build
+                break
+        else:
+            await ctx.send_warn(f":information: 指定されたビルドバージョンが見つかりません: {a_build}")
+            return
+
+        if not build.is_loaded_info():
+            async with ctx.typing():
+                await build.fetch_info()
+
+        # show url
+        url = build.download_url
+        if url:
+            await ctx.send_info(f":information: {server_type.value} サーバー (MC{mc_version}, {build.build})\n"
+                                f"> {url}")
+        else:
+            await ctx.send_info(f":information: {server_type.value} サーバー (MC{mc_version}, {build.build})\n"
+                                f"> UNKNOWN")

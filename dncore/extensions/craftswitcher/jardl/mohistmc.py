@@ -27,8 +27,9 @@ class BuildInfo(BaseModel):
     def serialize_timestamp(self, timestamp: datetime.datetime) -> int:
         return int(timestamp.timestamp() * 1000)
 
+    @classmethod
     @field_validator("createdAt")
-    def validate_timestamp(self, value: int):
+    def validate_timestamp(cls, value: int):
         return datetime.datetime.fromtimestamp(value / 1000)
 
 

@@ -1,1 +1,1 @@
-from jardl import *
+from .jardl import *

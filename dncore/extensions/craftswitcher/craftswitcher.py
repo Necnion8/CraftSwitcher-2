@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -7,13 +8,14 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 
 from dncore.event import EventListener, onevent
-from .abc import ServerState
+from .abc import ServerState, ServerType
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
 from .event import *
 from .files import FileManager
 from .files.event import *
+from .jardl import ServerDownloader
 from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
@@ -37,6 +39,8 @@ class CraftSwitcher(EventListener):
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        # jardl
+        self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
         # api
         global __version__
         __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
@@ -59,6 +63,7 @@ class CraftSwitcher(EventListener):
         self._initialized = False
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
+        self.add_default_server_downloaders()
 
     def print_welcome(self):
         log.info("=" * 50)
@@ -241,6 +246,24 @@ class CraftSwitcher(EventListener):
 
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
+
+    # server downloader
+
+    def add_default_server_downloaders(self):
+        from .jardl import defaults
+        for type_, downloader in defaults().items():
+            self.add_server_downloader(type_, downloader)
+
+    def add_server_downloader(self, type_: ServerType, downloader: ServerDownloader):
+        if downloader not in self.server_downloaders[type_]:
+            self.server_downloaders[type_].append(downloader)
+
+    def remove_server_downloader(self, downloader: ServerDownloader):
+        for type_, downloaders in self.server_downloaders.items():
+            try:
+                downloaders.remove(downloader)
+            except ValueError:
+                pass
 
     # util
 

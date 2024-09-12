@@ -6,6 +6,7 @@ __all__ = [
     "ServerBuild",
     "ServerMCVersion",
     "ServerDownloader",
+    "defaults",
 ]
 
 
@@ -82,3 +83,39 @@ class ServerDownloader(Generic[SV]):
         if self.versions is None:
             self.versions = (await self._list_versions()) or []
         return self.versions
+
+
+def defaults():
+    from ..abc import ServerType
+
+    from .bungeecord import BungeeCordDownloader
+    from .fabricmc import FabricServerDownloader
+    from .minecraftforge import ForgeServerDownloader
+    from .mohistmc import MohistServerDownloader, YouerServerDownloader, BannerServerDownloader
+    from .neoforged import NeoForgeServerDownloader
+    from .papermc import (
+        PaperServerDownloader,
+        WaterfallServerDownloader,
+        FoliaServerDownloader,
+        VelocityServerDownloader,
+    )
+    from .purpurmc import PurpurServerDownloader
+    from .spigotmc import SpigotServerDownloader
+    from .vanilla import VanillaServerDownloader
+
+    return {
+        ServerType.BUNGEECORD: BungeeCordDownloader(),
+        ServerType.FABRIC: FabricServerDownloader(),
+        ServerType.FORGE: ForgeServerDownloader(),
+        ServerType.MOHIST: MohistServerDownloader(),
+        ServerType.YOUER: YouerServerDownloader(),
+        ServerType.BANNER: BannerServerDownloader(),
+        ServerType.NEO_FORGE: NeoForgeServerDownloader(),
+        ServerType.FOLIA: FoliaServerDownloader(),
+        ServerType.PAPER: PaperServerDownloader(),
+        ServerType.WATERFALL: WaterfallServerDownloader(),
+        ServerType.VELOCITY: VelocityServerDownloader(),
+        ServerType.PURPUR: PurpurServerDownloader(),
+        ServerType.SPIGOT: SpigotServerDownloader(),
+        ServerType.VANILLA: VanillaServerDownloader(),
+    }
