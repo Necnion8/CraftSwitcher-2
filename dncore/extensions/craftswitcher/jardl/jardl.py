@@ -11,13 +11,14 @@ __all__ = [
 
 class ServerBuild(object):
     def __init__(self, mc_version: str, build: str, download_url: str = None, downloaded_path: Path = None,
-                 *, java_major_version: int = None, updated_datetime: datetime.datetime = None):
+                 *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
         self.downloaded_path = downloaded_path
         self.java_major_version = java_major_version
         self.updated_datetime = updated_datetime
+        self.recommended = recommended
         #
         self._loaded = False
 
