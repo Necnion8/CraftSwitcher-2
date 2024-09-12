@@ -38,12 +38,17 @@ Minecraft Java サーバー 管理システム |
 - Vanilla
 - Spigot
 - Paper
+- Purpur
+- Folia
+- Forge
+- Mohist
+- NeoForge
+- Youer
+- Fabric
+- Banner
 - BungeeCord
 - Waterfall
 - Velocity
-- Forge
-- NeoForge
-- Fabric
 
 
 ## 導入と起動
