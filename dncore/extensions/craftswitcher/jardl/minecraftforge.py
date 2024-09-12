@@ -38,9 +38,9 @@ class ForgeBuild(ServerBuild):
             info["installer"]["jar"]
         except KeyError:
             pass
-
-        filename = f"forge-{self.build}-installer.jar"
-        self.download_url = DOWNLOAD_URL.format(version=self.build, filename=filename)
+        else:
+            filename = f"forge-{self.build}-installer.jar"
+            self.download_url = DOWNLOAD_URL.format(version=self.build, filename=filename)
         return True
 
 

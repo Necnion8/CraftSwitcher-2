@@ -29,7 +29,7 @@ class NeoForgeServerDownloader(ServerDownloader):
             except KeyError:
                 _ver = _versions[mc_ver] = ServerMCVersion(mc_ver, [])
 
-            dl_url = DOWNLOAD_URL.format(version=reversed) + f"neoforge-{version}-installer.jar"
+            dl_url = DOWNLOAD_URL.format(version=version) + f"neoforge-{version}-installer.jar"
             _ver.builds.append(NeoForgeBuild(mc_ver, version, dl_url))
 
         return list(_versions.values())

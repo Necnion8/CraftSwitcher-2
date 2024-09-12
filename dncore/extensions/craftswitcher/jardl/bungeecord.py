@@ -22,7 +22,6 @@ class BungeeCordDownloader(ServerDownloader):
         url = "https://ci.md-5.net/job/BungeeCord/api/json"
         async with aiohttp.request("GET", url) as res:
             res.raise_for_status()
-            # info = JenkinsInfo.model_validate_json(await res.content.read())
             info = JenkinsInfo.model_validate(await res.json())
 
         def get_url(b: BuildInfo):
