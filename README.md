@@ -35,20 +35,20 @@ Minecraft Java サーバー 管理システム |
 ※ macOSは未確認。おそらく動作？
 
 ## 対応予定サーバー
-- Vanilla
-- Spigot
-- Paper
-- Purpur
-- Folia
-- Forge
-- Mohist
-- NeoForge
-- Youer *?*
-- Fabric
-- Banner
-- BungeeCord
-- Waterfall
-- Velocity
+- [Vanilla](https://www.minecraft.net/ja-jp/download/server)
+- [Spigot](https://www.spigotmc.org/wiki/buildtools/)
+- [Paper](https://papermc.io/software/paper)
+- [Purpur](https://purpurmc.org/)
+- [Folia](https://papermc.io/software/folia)
+- [Forge](https://files.minecraftforge.net/)
+- [Mohist](https://mohistmc.com/software/mohist)
+- [NeoForge](https://neoforged.net/)
+- [Youer](https://mohistmc.com/software/youer)*?*
+- [Fabric](https://fabricmc.net/)
+- [Banner](https://mohistmc.com/software/banner)
+- [BungeeCord](https://www.spigotmc.org/wiki/bungeecord/)
+- [Waterfall](https://papermc.io/software/waterfall)
+- [Velocity](https://papermc.io/software/velocity)
 
 
 ## 導入と起動
