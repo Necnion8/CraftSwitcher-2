@@ -49,7 +49,7 @@ class ProjectVersionsInfo(BaseModel):
 class VersionBuild(ServerBuild):
     def __init__(self, mc_version: str, project_id: str, info: BuildInfo):
         dl_url = f"https://mohistmc.com/api/v2/projects/{project_id}/{mc_version}/builds/{info.number}/download"
-        super().__init__(mc_version, str(info.number), dl_url)
+        super().__init__(mc_version, str(info.number), dl_url, updated_datetime=info.createdAt)
         self.project_id = project_id
 
 
