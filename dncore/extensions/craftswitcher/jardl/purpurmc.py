@@ -54,7 +54,7 @@ class ProjectBuildsInfo(BaseModel):
 
 class ProjectBuild(ServerBuild):
     def __init__(self, builds: "ProjectBuildsInfo", build: str):
-        dl_url = f"https://api.purpurmc.org/v2/{builds.project}/{builds.version}/{self.build}/download"
+        dl_url = f"https://api.purpurmc.org/v2/{builds.project}/{builds.version}/{build}/download"
         super().__init__(builds.version, build, download_url=dl_url)
         self.builds = builds
 
