@@ -1,4 +1,5 @@
 import asyncio
+import re
 from logging import getLogger
 
 import discord
@@ -130,16 +131,13 @@ class BotCommandHandler(object):
     async def cmd_jardl(self, ctx: CommandContext):
         """
         {command}
-        > サーバーModのダウンローダー一覧
-
         {command} (type)
-        > 対応するMCバージョンの一覧
-
         {command} (type) (mcver)
-        > 対応するビルドの一覧
-
-        {command} (type) (mcver) latest/(build)
-        > 指定されたビルドのダウンロードリンクを表示 (利用可能な場合)
+        {command} (type) (mcver) (build)
+        サーバーModのダウンローダー一覧
+        対応するMCバージョンの一覧
+        対応するビルドの一覧
+        指定されたビルドのダウンロードリンクを表示 (利用可能な場合)
         """
 
         args = ctx.args
@@ -165,7 +163,12 @@ class BotCommandHandler(object):
         versions = await downloader.list_versions()
         if not args:
             # list mc version
-            ls = "\n".join(f"- {v.mc_version} ({len(v.builds or [])} builds)" for v in versions)
+            ls = []
+            for v in versions:
+                if not re.search(r"^\d+\.\d+", v.mc_version):  # ^x.x 以外を除外
+                    continue
+                ls.append(f"- {v.mc_version} ({'?' if v.builds is None else len(v.builds)} builds)")
+            ls = "\n".join(ls)
             log.debug(ls)
             await ctx.send_info(f":information: {server_type.value} サーバーの対応バージョン\n" + ls)
             return
@@ -182,7 +185,17 @@ class BotCommandHandler(object):
         builds = await version.list_builds()  # type: list[ServerBuild]
         if not args:
             # list build
-            ls = "\n".join(f"- {b.build}" for b in builds)
+
+            def fmt(b: ServerBuild):
+                s = f"- {b.build}"
+                if b.updated_datetime:
+                    dt = b.updated_datetime.strftime("%Y/%m/%d %H:%M")
+                    s += f" ({dt})"
+                if b.recommended:
+                    s += " ☆"
+                return s
+
+            ls = "\n".join(fmt(b) for b in builds)
             log.debug(ls)
             await ctx.send_info(f":information: {server_type.value} サーバーのビルド一覧 (MC{mc_version})\n" + ls)
             return
