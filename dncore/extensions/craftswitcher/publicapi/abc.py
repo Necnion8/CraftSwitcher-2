@@ -50,6 +50,10 @@ class APIErrorCode(IntEnum):
     ALREADY_EXISTS_USER_NAME = 500
     NOT_EXISTS_USER = auto()
 
+    # plugin
+    PLUGIN_NOT_FOUND = 600
+    NOT_EXISTS_PLUGIN_FILE = auto()
+
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
 

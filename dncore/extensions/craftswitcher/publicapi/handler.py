@@ -14,6 +14,7 @@ from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
+from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
@@ -63,6 +64,7 @@ class APIHandler(object):
         api.include_router(self._user())
         api.include_router(self._server())
         api.include_router(self._file())
+        api.include_router(self._plugins())
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):
@@ -914,5 +916,98 @@ class APIHandler(object):
                 include_files: list[str] = Query(description="格納するファイルのパス"),
         ) -> model.FileOperationResult:
             return await _archive_make(path, files_root, include_files)
+
+        return api
+
+    def _plugins(self):
+        api = APIRouter(
+            tags=["Plugins", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+
+        def getplugin(plugin_name: str):
+            try:
+                extension, info = self.inst.extensions.get_info(plugin_name)
+            except KeyError:
+                raise APIErrorCode.PLUGIN_NOT_FOUND.of("Plugin not found", 404)
+
+            return extension, info
+
+        def getfile(key: str, plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin)):
+            ext, info = plugin
+            for file in ext.editable_files:
+                if file.key == key:
+                    return file
+            raise APIErrorCode.NOT_EXISTS_PLUGIN_FILE.of("Plugin file not found", 404)
+
+        @api.get(
+            "/plugins",
+            summary="プラグイン一覧",
+        )
+        def _plugins() -> list[model.PluginInfo]:
+            return [
+                model.PluginInfo.create(info, ext.editable_files)
+                for ext, info in self.inst.extensions.extensions.items()
+            ]
+
+        @api.get(
+            "/plugin/{plugin_name}/file/{key}",
+            summary="設定ファイルを取得",
+            responses={400: {"model": model.PluginMessageResponse, }},
+        )
+        async def _plugin_file(
+                plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin),
+                file: EditableFile = Depends(getfile),
+        ) -> FileResponse:
+            ext, info = plugin
+
+            res = await ext.on_file_load(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            return FileResponse(file.path, filename=file.path.name)
+
+        @api.post(
+            "/plugin/{plugin_name}/file/{key}",
+            summary="設定ファイルを更新",
+            responses={400: {"model": model.PluginMessageResponse, }},
+        )
+        async def _plugin_file(
+                content: UploadFile,
+                plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin),
+                file: EditableFile = Depends(getfile),
+        ) -> model.FileOperationResult:
+            ext, info = plugin
+
+            res = await ext.on_file_pre_update(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            try:
+                with file.path.open("wb") as f:
+                    shutil.copyfileobj(content.file, f)
+            finally:
+                content.file.close()
+
+            res = await ext.on_file_update(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            return model.FileOperationResult.success(None, None)
 
         return api

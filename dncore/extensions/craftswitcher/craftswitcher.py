@@ -13,6 +13,7 @@ from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
 from .event import *
+from .ext import SwitcherExtensionManager
 from .files import FileManager
 from .files.event import *
 from .publicapi import UvicornServer, APIHandler
@@ -32,12 +33,14 @@ class CraftSwitcher(EventListener):
     _inst: "CraftSwitcher"
     SERVER_CONFIG_FILE_NAME = "swi.server.yml"
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *, plugin_info: "PluginInfo" = None):
+    def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *,
+                 plugin_info: "PluginInfo" = None, extensions: SwitcherExtensionManager):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.extensions = extensions
         # api
         global __version__
         __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
@@ -148,6 +151,12 @@ class CraftSwitcher(EventListener):
             await self.database.close()
         except Exception as e:
             log.warning("Exception in close database", exc_info=e)
+
+        extensions = dict(self.extensions.extensions)
+        self.extensions.extensions.clear()
+        waits = [asyncio.shield(call_event(SwitcherExtensionRemoveEvent(i))) for i in extensions.values()]
+        if waits:
+            await asyncio.wait(waits)
 
         self.unload_servers()
         AsyncCallTimer.cancel_all_timers()
@@ -551,6 +560,24 @@ class CraftSwitcher(EventListener):
             event_type="server_process_read",
             server=event.server.id,
             data=event.data
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_extension_add(self, event: SwitcherExtensionAddEvent):
+        event_data = dict(
+            type="event",
+            event_type="extension_add",
+            extension=event.extension.name,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_extension_remove(self, event: SwitcherExtensionRemoveEvent):
+        event_data = dict(
+            type="event",
+            event_type="extension_remove",
+            extension=event.extension.name,
         )
         await self.api_handler.broadcast_websocket(event_data)
 
