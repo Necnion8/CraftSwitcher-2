@@ -175,6 +175,10 @@ class ServerProcess(object):
     def players(self) -> list:
         return list()  # TODO: impl players
 
+    @property
+    def perfmon(self) -> "ProcessPerformanceMonitor | None":
+        return self._perf_mon
+
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
             # ignored
@@ -249,6 +253,7 @@ class ServerProcess(object):
             ret_ = wrapper.exit_status
             self.log.info("Stopped server process (ret: %s)", ret_)
             self.state = ServerState.STOPPED
+            self._perf_mon = None
 
         try:
             if not self.check_free_memory():

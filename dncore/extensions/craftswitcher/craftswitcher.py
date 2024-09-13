@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 from logging import getLogger
 from pathlib import Path
@@ -18,7 +19,7 @@ from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
 from .serverprocess import ServerProcessList, ServerProcess
-from .utils import call_event, datetime_now, safe_server_id, AsyncCallTimer
+from .utils import call_event, datetime_now, safe_server_id, AsyncCallTimer, system_memory, system_perf
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -59,6 +60,7 @@ class CraftSwitcher(EventListener):
         self._initialized = False
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
+        self._perfmon_broadcast_loop = AsyncCallTimer(self._perfmon_broadcast_loop, .5, .5)
 
     def print_welcome(self):
         log.info("=" * 50)
@@ -110,6 +112,7 @@ class CraftSwitcher(EventListener):
 
         await self.start_api_server()
 
+        await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
 
         if not await self.database.get_users():
@@ -401,6 +404,55 @@ class CraftSwitcher(EventListener):
             type="progress",
             progress_type="file_task",
             tasks=[FileTask.create(task).model_dump(mode="json") for task in self.files.tasks],
+        )
+        await self.api_handler.broadcast_websocket(progress_data)
+
+    async def _perfmon_broadcast_loop(self):
+        now = datetime.datetime.now()
+
+        sys_mem = system_memory(swap=True)
+        sys_perf = system_perf()
+
+        servers_info = {}
+        for server in self.servers.values():
+            if not server or not server.perfmon:
+                continue
+            servers_info[server] = server.perfmon.info()
+
+        progress_data = dict(
+            type="progress",
+            progress_type="performance",
+            time=int(now.timestamp() * 1000),
+            system=dict(
+                cpu=dict(
+                    usage=sys_perf.cpu_usage,
+                ),
+                memory=dict(
+                    total=sys_mem.total_bytes,
+                    available=sys_mem.available_bytes,
+                    swap_total=sys_mem.swap_total_bytes,
+                    swap_available=sys_mem.swap_available_bytes,
+                ),
+            ),
+            servers=[
+                dict(
+                    id=s.id,
+                    process=dict(
+                        cpu_usage=i.cpu_usage,
+                        mem_used=i.memory_used_size,
+                        mem_virtual_used=i.memory_virtual_used_size,
+                    ),
+                    jvm=dict(  # TODO: impl jvm perf info
+                        cpu_usage=-1,
+                        mem_used=-1,
+                        mem_total=-1,
+                    ),
+                    game=dict(
+                        ticks=-1,
+                    ),
+                )
+                for s, i in servers_info.items()
+            ],
         )
         await self.api_handler.broadcast_websocket(progress_data)
 

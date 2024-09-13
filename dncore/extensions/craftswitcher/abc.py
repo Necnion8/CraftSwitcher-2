@@ -5,6 +5,7 @@ __all__ = [
     "ServerState",
     "ServerType",
     "SystemMemoryInfo",
+    "SystemPerformanceInfo",
 ]
 
 
@@ -90,10 +91,16 @@ SERVER_TYPE_SPECS = {
 class SystemMemoryInfo(NamedTuple):
     total_bytes: int
     available_bytes: int
+    swap_total_bytes: int = -1
+    swap_available_bytes: int = -1
+
+
+class SystemPerformanceInfo(NamedTuple):
+    cpu_usage: float
 
 
 class ProcessInfo(NamedTuple):
     cpu_usage: float
     memory_used_size: int
-    memory_used_total_size: int
+    memory_virtual_used_size: int
 

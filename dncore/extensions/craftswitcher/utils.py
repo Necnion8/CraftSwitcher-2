@@ -9,10 +9,10 @@ from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaita
 import psutil
 
 from dncore import DNCoreAPI
-from dncore.extensions.craftswitcher.abc import SystemMemoryInfo, ProcessInfo
+from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo
 
 if TYPE_CHECKING:
-    from dncore.extensions.craftswitcher import CraftSwitcher
+    from .craftswitcher import CraftSwitcher
 
 log = getLogger(__name__)
 T = TypeVar("T")
@@ -20,6 +20,7 @@ IS_WINDOWS = platform.system() == "Windows"
 __all__ = [
     "call_event",
     "system_memory",
+    "system_perf",
     "datetime_now",
     "safe_server_id",
     "ProcessPerformanceMonitor",
@@ -33,9 +34,17 @@ def call_event(event: T) -> asyncio.Task[T]:
     return DNCoreAPI.call_event(event)
 
 
-def system_memory():
+def system_memory(swap=False):
     mem = psutil.virtual_memory()
+    if swap:
+        swap = psutil.swap_memory()
+        return SystemMemoryInfo(mem.total, mem.available, swap.total, swap.free)
     return SystemMemoryInfo(mem.total, mem.available)
+
+
+def system_perf():
+    percent = psutil.cpu_percent(interval=None, percpu=False)
+    return SystemPerformanceInfo(percent)
 
 
 def datetime_now():
@@ -53,17 +62,19 @@ class ProcessPerformanceMonitor(object):
     def __init__(self, pid: int):
         self.process = psutil.Process(pid)
         self.process.cpu_percent(interval=None)
+        self.cached_info = None  # type: ProcessInfo | None
 
     def info(self):
         mem = self.process.memory_info()
         cpu_usage = self.process.cpu_percent(interval=None)
         if IS_WINDOWS:
             cpu_usage /= psutil.cpu_count()
-        return ProcessInfo(
+        self.cached_info = info = ProcessInfo(
             cpu_usage=cpu_usage,
             memory_used_size=mem.rss,
-            memory_used_total_size=mem.vms,
+            memory_virtual_used_size=mem.vms,
         )
+        return info
 
 
 class ServerLoggerAdapter(logging.LoggerAdapter):
