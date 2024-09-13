@@ -312,7 +312,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Killing {self.id} server process...")
-        self.wrapper.kill(signal.SIGKILL)
+        self.wrapper.kill()
 
     async def wait_for_shutdown(self, *, timeout: int = None):
         if timeout is None:
