@@ -232,7 +232,7 @@ class PluginInfo(BaseModel):
     description: str | None = Field(description="説明文。複数行になることもある？")
     authors: list[str]
     #
-    editable_file_keys: list[PluginEditableFile]
+    editable_files: list[PluginEditableFile]
 
     @classmethod
     def create(cls, info: "ExtensionInfo", editable_files: "list[EditableFile]"):
@@ -241,7 +241,7 @@ class PluginInfo(BaseModel):
             version=info.version,
             description=info.description,
             authors=info.authors,
-            editable_file_keys=[
+            editable_files=[
                 PluginEditableFile(key=file.key, label=file.label)
                 for file in editable_files
             ],

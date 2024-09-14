@@ -926,11 +926,9 @@ class APIHandler(object):
         )
 
         def getplugin(plugin_name: str):
-            try:
-                extension, info = self.inst.extensions.get_info(plugin_name)
-            except KeyError:
+            extension, info = self.inst.extensions.get_info(plugin_name)
+            if not extension or not info:
                 raise APIErrorCode.PLUGIN_NOT_FOUND.of("Plugin not found", 404)
-
             return extension, info
 
         def getfile(key: str, plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin)):
