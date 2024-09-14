@@ -32,4 +32,5 @@ class SpigotServerDownloader(ServerDownloader):
             ])
             _versions.append(version)
 
+        _versions.sort(key=lambda v: [int(i) for i in re.findall(r"\d+", v.mc_version)])
         return _versions

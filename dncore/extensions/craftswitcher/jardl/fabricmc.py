@@ -41,7 +41,7 @@ class ServerVersion(ServerMCVersion):
         if not installers:
             return []
 
-        installer = installers[0]
+        installer = installers[-1]
         builds = []
 
         for loader in loaders:
@@ -78,7 +78,7 @@ class FabricServerDownloader(ServerDownloader):
             info = await res.json()
 
         versions = []
-        for entry in info:
+        for entry in reversed(info):
             info = VersionInfo.model_validate(entry)
             if info.stable:
                 versions.append(ServerVersion(info, self))
@@ -92,7 +92,7 @@ class FabricServerDownloader(ServerDownloader):
                 info = await res.json()
 
             self._loaders = []
-            for entry in info:
+            for entry in reversed(info):
                 info = LoaderInfo.model_validate(entry)
                 if info.stable:
                     self._loaders.append(info)
@@ -106,7 +106,7 @@ class FabricServerDownloader(ServerDownloader):
                 info = await res.json()
 
             self._installers = []
-            for entry in info:
+            for entry in reversed(info):
                 info = InstallerInfo.model_validate(entry)
                 if info.stable:
                     self._installers.append(info)

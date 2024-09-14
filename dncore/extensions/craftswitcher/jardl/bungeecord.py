@@ -29,5 +29,5 @@ class BungeeCordDownloader(ServerDownloader):
 
         return [ServerMCVersion("latest", [
             ServerBuild("latest", str(b.number), get_url(b))
-            for b in info.builds
+            for b in reversed(info.builds)
         ])]
