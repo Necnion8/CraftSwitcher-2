@@ -290,8 +290,12 @@ class CraftSwitcher(EventListener):
 
             self.servers[server_id] = server
             news[server_id] = server
-            log.info("Server added: %s", server_id)
-            call_event(ServerCreatedEvent(server))
+
+            if server:
+                log.info("Server created: %s", server_id)
+                call_event(ServerCreatedEvent(server))
+            else:
+                log.info("Server added: %s", server_id)
 
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersReloadedEvent(removes, updates, news))
