@@ -218,3 +218,18 @@ class UserOperationResult(BaseModel):
     @classmethod
     def failed(cls, user_id: int):
         return cls(result=False, user_id=user_id)
+
+
+class JarDLVersionInfo(BaseModel):
+    version: str = Field(description="対応バージョン。通常は Minecraft バージョンです。")
+    build_count: int | None
+
+
+class JarDLBuildInfo(BaseModel):
+    build: str
+    download_url: str | None = Field(description="サーバーJarのダウンロードURL。一部はインストーラーURLとして利用されます。")
+    java_major_version: int | None
+    updated_datetime: datetime.datetime | None
+    recommended: bool
+    is_require_build: bool
+    is_loaded_info: bool

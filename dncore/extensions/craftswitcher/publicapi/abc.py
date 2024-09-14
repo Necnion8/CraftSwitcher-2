@@ -50,6 +50,11 @@ class APIErrorCode(IntEnum):
     ALREADY_EXISTS_USER_NAME = 500
     NOT_EXISTS_USER = auto()
 
+    # jardl
+    NO_AVAILABLE_SERVER_TYPE = 700
+    NOT_EXISTS_SERVER_VERSION = auto()
+    NOT_EXISTS_SERVER_BUILD = auto()
+
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
 
