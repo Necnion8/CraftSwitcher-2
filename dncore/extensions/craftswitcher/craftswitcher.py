@@ -61,6 +61,8 @@ class CraftSwitcher(EventListener):
         self.api_handler = APIHandler(self, api, db)
         #
         self._initialized = False
+        self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
+        self._remove_servers = set()  # type: set[str]  # 停止後に削除するサーバー
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
         self._perfmon_broadcast_loop = AsyncCallTimer(self._perfmon_broadcast_loop, .5, .5)
@@ -183,7 +185,11 @@ class CraftSwitcher(EventListener):
     def load_servers(self):
         if self.servers:
             raise RuntimeError("server list is not empty")
+
         log.debug("Loading servers")
+        self._directory_changed_servers.clear()
+        self._remove_servers.clear()
+
         for server_id, _server_dir in self.config.servers.items():
             server_id = safe_server_id(server_id)
             if server_id in self.servers:
@@ -191,36 +197,104 @@ class CraftSwitcher(EventListener):
                 continue
 
             server = None  # type: ServerProcess | None
-            try:
-                server_dir = self.files.realpath(_server_dir)
-            except ValueError:
-                log.warning("Not allowed path: %s: %s", server_id, _server_dir)
-
-            else:
-                server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
-                config = ServerConfig(server_config_path)
-
-                if server_config_path.is_file():
-                    try:
-                        config.load()
-                    except Exception as e:
-                        log.error("Error in load server config: %s: %s", server_id, str(e))
-
-                    else:
-                        server = ServerProcess(
-                            self.loop,
-                            directory=server_dir,
-                            server_id=server_id,
-                            config=config,
-                            global_config=self.config.server_defaults,
-                        )
-                else:
-                    log.warning("Not exists server config: %s", server_dir)
+            server_dir, config = self._init_server_directory(server_id, _server_dir)
+            if server_dir and config:
+                server = self._init_server(server_id, server_dir, config)
 
             self.servers[server_id] = server
 
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersLoadedEvent())
+
+    def _init_server_directory(self, server_id: str, swi_directory: str):
+        try:
+            server_dir = self.files.realpath(swi_directory)
+        except ValueError:
+            log.warning("Not allowed path: %s: %s", server_id, swi_directory)
+            return None, None
+
+        server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
+        config = ServerConfig(server_config_path)
+
+        if not server_config_path.is_file():
+            log.warning("Not exists server config: %s", server_dir)
+            return None, None
+
+        try:
+            config.load()
+        except Exception as e:
+            log.error("Error in load server config: %s: %s", server_id, str(e))
+            return None, None
+
+        return server_dir, config
+
+    def _init_server(self, server_id: str, server_dir: Path, config: ServerConfig):
+        return ServerProcess(
+            self.loop,
+            directory=server_dir,
+            server_id=server_id,
+            config=config,
+            global_config=self.config.server_defaults,
+        )
+
+    def reload_servers(self):
+        log.debug("Loading servers")
+
+        new_servers = {safe_server_id(k): d for k, d in self.config.servers.items()}
+        new_ids = set(new_servers.keys())
+        old_ids = set(self.servers.keys())
+
+        # remove old
+        removes = {
+            server_id: self.servers[server_id]
+            for server_id in old_ids if server_id not in new_ids
+        }
+        for server_id, server in dict(removes).items():
+            if server and server.state.is_running:  # ignore
+                log.debug("Ignore server remove: not stopped: (%s)", server.state.name)
+                removes.pop(server_id)
+                self._remove_servers.add(server_id)
+            elif server:
+                self.delete_server(server)
+            else:  # not loaded
+                self._remove_server(server_id)
+                log.info("Server removed: %s", server_id)
+
+        # update
+        updates = {
+            server_id: self.servers[server_id]
+            for server_id in old_ids if server_id in new_ids
+        }
+        for server_id, server in updates.items():
+            if server:
+                if server.state.is_running:
+                    log.debug("Ignore server.directory update: not stopped: (%s)", server.state.name)
+                    self._directory_changed_servers.add(server_id)
+                else:
+                    _server_dir = new_servers[server_id]
+                    server_dir, config = self._init_server_directory(server_id, _server_dir)
+                    if server_dir and config:
+                        server.directory = server_dir
+                        server.config = config
+
+        # add new
+        news = {}  # type: dict[str, ServerProcess | None]
+        for server_id, _server_dir in new_servers.items():
+            if server_id in old_ids:
+                continue
+
+            server = None  # type: ServerProcess | None
+            server_dir, config = self._init_server_directory(server_id, _server_dir)
+            if server_dir and config:
+                server = self._init_server(server_id, server_dir, config)
+
+            self.servers[server_id] = server
+            news[server_id] = server
+            log.info("Server added: %s", server_id)
+            call_event(ServerCreatedEvent(server))
+
+        log.info("Loaded %s server", len(self.servers))
+        call_event(SwitcherServersReloadedEvent(removes, updates, news))
 
     async def shutdown_all_servers(self):
         async def _shutdown(s: ServerProcess):
@@ -343,6 +417,7 @@ class CraftSwitcher(EventListener):
         self.config.servers[server_id] = self.files.swipath(directory)
         self.config.save()
 
+        log.info("Server created: %s", server_id)
         call_event(ServerCreatedEvent(server))
         return server
 
@@ -353,9 +428,9 @@ class CraftSwitcher(EventListener):
         if server.state.is_running:
             raise RuntimeError("Server is running")
 
-        self.servers.pop(server.id, None)
-        self.config.servers.pop(server.id, None)
+        self._remove_server(server.id)
 
+        log.info("Server deleted: %s", server.id)
         call_event(ServerDeletedEvent(server))
 
         if delete_server_config:
@@ -367,6 +442,12 @@ class CraftSwitcher(EventListener):
                     log.warning("Failed to delete server_config: %s: %s", str(e), str(config_path))
 
         self.config.save()
+
+    def _remove_server(self, server_id: str):
+        self._directory_changed_servers.discard(server_id)
+        self._remove_servers.discard(server_id)
+        self.servers.pop(server_id, None)
+        self.config.servers.pop(server_id, None)
 
     # public api
 
@@ -470,6 +551,25 @@ class CraftSwitcher(EventListener):
     @onevent(monitor=True)
     async def on_change_state(self, event: ServerChangeStateEvent):
         server = event.server
+
+        if server.state is ServerState.STOPPED:
+            # queue removes
+            if server.id in self._remove_servers:
+                self.delete_server(server)
+                return
+
+            # queue dir update
+            elif server.id in self._directory_changed_servers:
+                self._directory_changed_servers.discard(server.id)
+                try:
+                    _server_dir = self.config.servers[server.id]
+                except KeyError:
+                    pass
+                else:
+                    server_dir, config = self._init_server_directory(server.id, _server_dir)
+                    if server_dir and config:
+                        server.directory = server_dir
+                        server.config = config
 
         # restart flag
         if server.shutdown_to_restart and server.state is ServerState.STOPPED:
@@ -578,6 +678,30 @@ class CraftSwitcher(EventListener):
             type="event",
             event_type="extension_remove",
             extension=event.extension.name,
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_switcher_config_loaded(self, _: SwitcherConfigLoadedEvent):
+        event_data = dict(
+            type="event",
+            event_type="switcher_config_loaded",
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_switcher_servers_loaded(self, _: SwitcherServersLoadedEvent):
+        event_data = dict(
+            type="event",
+            event_type="switcher_servers_loaded",
+        )
+        await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_switcher_servers_reloaded(self, _: SwitcherServersReloadedEvent):
+        event_data = dict(
+            type="event",
+            event_type="switcher_servers_reloaded",
         )
         await self.api_handler.broadcast_websocket(event_data)
 

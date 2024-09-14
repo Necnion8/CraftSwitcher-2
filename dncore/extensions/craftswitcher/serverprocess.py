@@ -136,7 +136,7 @@ class ServerProcess(object):
     ):
         self.log = ServerLoggerAdapter(_log, server_id)
         self.loop = loop
-        self.directory = directory
+        self._directory = directory
         self.id = server_id
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
@@ -146,6 +146,16 @@ class ServerProcess(object):
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
         #
         self.shutdown_to_restart = False
+
+    @property
+    def directory(self) -> Path:
+        return self._directory
+
+    @directory.setter
+    def directory(self, new_dir: Path):
+        if self._directory != new_dir:
+            self.log.debug("Update directory: %s -> %s", self._directory, new_dir)
+        self._directory = new_dir
 
     @property
     def _is_running(self):

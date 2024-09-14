@@ -83,6 +83,7 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
 
     async def on_file_update(self, editable_file: EditableFile):
         self.switcher.load_config()
+        self.switcher.reload_servers()
 
     @onevent()
     async def on_debug(self, event: DebugCommandPreExecuteEvent):

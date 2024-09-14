@@ -19,6 +19,7 @@ __all__ = [
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
     "SwitcherServersLoadedEvent",
+    "SwitcherServersReloadedEvent",
     "SwitcherServersUnloadEvent",
     "ExtensionEvent",
     "SwitcherExtensionAddEvent",
@@ -91,6 +92,17 @@ class SwitcherConfigLoadedEvent(Event):
 
 class SwitcherServersLoadedEvent(Event):
     pass
+
+
+class SwitcherServersReloadedEvent(Event):
+    def __init__(self,
+                 remove: "dict[str, ServerProcess]",
+                 update: "dict[str, ServerProcess]",
+                 new: "dict[str, ServerProcess | None]",
+                 ):
+        self.removed = remove
+        self.updated = update
+        self.added = new
 
 
 class SwitcherServersUnloadEvent(Event):
