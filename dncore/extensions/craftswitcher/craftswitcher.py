@@ -115,6 +115,7 @@ class CraftSwitcher(EventListener):
 
         self.print_welcome()
 
+        await self.files.start()
         await self.start_api_server()
 
         await self._perfmon_broadcast_loop.start()
@@ -148,6 +149,11 @@ class CraftSwitcher(EventListener):
             await self.close_api_server()
         except Exception as e:
             log.warning("Exception in close api server", exc_info=e)
+
+        try:
+            await self.files.shutdown()
+        except Exception as e:
+            log.warning("Exception in shutdown file manager", exc_info=e)
 
         try:
             await self.database.close()

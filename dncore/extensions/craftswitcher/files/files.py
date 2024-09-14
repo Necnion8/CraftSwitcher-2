@@ -2,8 +2,13 @@ import asyncio
 import os
 import re
 import shutil
+from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from watchdog.events import FileSystemEventHandler, FileSystemEvent, FileSystemMovedEvent
+from watchdog.observers import Observer
+from watchdog.observers.api import ObservedWatch
 
 from .abc import *
 from .archive import ArchiveFile, ArchiveHelper
@@ -14,6 +19,46 @@ from ..utils import call_event
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
+
+log = getLogger(__name__)
+
+
+class WatchdogEventHandler(FileSystemEventHandler):
+    def __init__(self, files: "FileManager"):
+        self.files = files
+
+    @property
+    def loop(self):
+        return self.files.loop
+
+    def on_any_event(self, event: "FileSystemEvent"):
+        try:
+            src = Path(event.src_path)
+            try:
+                swi = self.files.swipath(src)
+            except ValueError:
+                swi = None
+
+            if event.event_type == "created":
+                new_event = WatchdogCreatedEvent(swi, src, event)
+            elif event.event_type == "deleted":
+                new_event = WatchdogDeletedEvent(swi, src, event)
+            elif event.event_type == "modified":
+                new_event = WatchdogModifiedEvent(swi, src, event)
+            elif isinstance(event, FileSystemMovedEvent):
+                dst = Path(event.dest_path)
+                try:
+                    dst_swi = self.files.swipath(dst)
+                except ValueError:
+                    dst_swi = None
+                new_event = WatchdogMovedEvent(swi, src, event, dst_swi, dst)
+            else:
+                return
+
+            self.loop.call_soon_threadsafe(call_event, new_event)
+
+        except Exception as e:
+            log.warning("Exception in watchdog handler: %s", event, exc_info=e)
 
 
 class FileManager(object):
@@ -27,6 +72,59 @@ class FileManager(object):
             SevenZipHelper(),
             ZipArchiveHelper(),
         ]
+        # watchdog
+        self._wd_observer = None  # type: Observer | None
+        self._wd_watches = {}  # type: dict[str, ObservedWatch]
+        self._wd_handler = WatchdogEventHandler(self)
+
+    async def start(self):
+        self.start_watchdog()
+
+    def start_watchdog(self):
+        if not self._wd_observer or not self._wd_observer.is_alive():
+            self._wd_observer = Observer()
+            self._wd_observer.daemon = True
+            log.debug("Start watchdog")
+            self._wd_observer.start()
+
+    async def shutdown(self):
+        self.stop_watchdog()
+
+    def stop_watchdog(self):
+        self._wd_watches.clear()
+        if self._wd_observer and self._wd_observer.is_alive():
+            log.debug("Stop watchdog")
+            self._wd_observer.unschedule_all()
+            self._wd_observer.stop()
+            self._wd_observer.join(timeout=2)
+        self._wd_observer = None
+
+    def add_watch(self, path: Path):
+        if not self._wd_observer or not self._wd_observer.is_alive():
+            raise ValueError("Watchdog not started")
+        path_ = str(path.resolve())
+        if path_ in self._wd_watches:
+            return
+        log.debug("Add watchdog: %s", path_)
+        observed = self._wd_observer.schedule(self._wd_handler, path_, recursive=False)
+        self._wd_watches[path_] = observed
+
+    def remove_watch(self, path: Path | str):
+        if not self._wd_observer or not self._wd_observer.is_alive():
+            return
+        path_ = str(path.resolve()) if isinstance(path, Path) else path
+        try:
+            observed = self._wd_watches.pop(path_)
+        except KeyError:
+            return
+        log.debug("Remove watchdog: %s", path_)
+        self._wd_observer.unschedule(observed)
+
+    @property
+    def watch_files(self) -> set[str]:
+        if self._wd_observer and self._wd_observer.is_alive():
+            return set(self._wd_watches.keys())
+        return set()
 
     # util
 
