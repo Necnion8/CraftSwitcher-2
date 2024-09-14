@@ -17,6 +17,8 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
         self.ext_info = ExtensionInfo.create(self.info)
         self.switcher = CraftSwitcher(self.loop, config_path, plugin_info=self.info, extensions=self.extensions)
         self.activity = BotActivity()
+        #
+        self.editable_files.append(EditableFile(config_path, "config", "メイン設定"))
 
     @property
     def config(self):
@@ -80,8 +82,7 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
             self.unregister_listener(self.switcher)
 
     async def on_file_update(self, editable_file: EditableFile):
-        # TODO: reload switcher config
-        pass
+        self.switcher.load_config()
 
     @onevent()
     async def on_debug(self, event: DebugCommandPreExecuteEvent):
