@@ -444,9 +444,7 @@ class APIHandler(object):
             summary="サーバーを削除",
             description="サーバーを削除します",
         )
-        async def _delete(server_id: str, delete_config_file: bool = False, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _delete(server: "ServerProcess" = Depends(getserver), delete_config_file: bool = False, ) -> model.ServerOperationResult:
             if server.state.is_running:
                 raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
 
@@ -458,9 +456,7 @@ class APIHandler(object):
             summary="サーバー設定の取得",
             description="サーバーの設定を返します",
         )
-        async def _get_config(server_id: str, ) -> model.ServerConfig:
-            server = getserver(server_id)
-
+        async def _get_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
                 ls = {}
                 for key, entry in conf.get_values().items():
@@ -477,9 +473,8 @@ class APIHandler(object):
             summary="サーバー設定の更新",
             description="サーバーの設定を変更します",
         )
-        async def _put_config(server_id: str, param: model.ServerConfig, ) -> model.ServerConfig:
-            server = getserver(server_id)
-
+        async def _put_config(server: "ServerProcess" = Depends(getserver), param: model.ServerConfig = Depends(),
+                              ) -> model.ServerConfig:
             config = server._config  # type: ServerConfig
             for key, value in param.model_dump(exclude_unset=True).items():
                 conf = config
@@ -490,7 +485,16 @@ class APIHandler(object):
                 setattr(conf, key[0], value)
 
             server._config.save(force=True)
-            return await _get_config(server_id)
+            return await _get_config(server)
+
+        @api.post(
+            "/server/{server_id}/config/reload",
+            summary="サーバー設定ファイルの再読み込み",
+            description="設定ファイルを再読み込みします",
+        )
+        async def _reload_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
+            server._config.load()
+            return await _get_config(server)
 
         return api
 
