@@ -657,6 +657,15 @@ class APIHandler(object):
             )
 
         @api.get(
+            "/file/info",
+            summary="ファイル情報",
+        )
+        def _file_info(
+                path: PairPath = Depends(get_path_of_root(exists=True)),
+        ) -> model.FileInfo:
+            return create_file_info(path, path.root_dir)
+
+        @api.get(
             "/file",
             summary="ファイルデータを取得",
             description="",
@@ -852,6 +861,15 @@ class APIHandler(object):
                 path: PairPath = Depends(get_path_of_server_root(is_dir=True)),
         ) -> model.FileDirectoryInfo:
             return await _files(path)
+
+        @api.get(
+            "/server/{server_id}/file/info",
+            summary="ファイル情報",
+        )
+        def _server_file_info(
+                path: PairPath = Depends(get_path_of_server_root(exists=True)),
+        ) -> model.FileInfo:
+            return _file_info(path)
 
         @api.get(
             "/server/{server_id}/file",
