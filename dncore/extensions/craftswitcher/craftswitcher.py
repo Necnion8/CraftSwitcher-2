@@ -369,7 +369,7 @@ class CraftSwitcher(EventListener):
 
     def get_watches(self, path: Path) -> set[FileWatchInfo]:
         if path in self._watch_files:
-            return self._watch_files[path]
+            return set(self._watch_files[path])
         return set()
 
     def get_watched_paths(self) -> set[Path]:
