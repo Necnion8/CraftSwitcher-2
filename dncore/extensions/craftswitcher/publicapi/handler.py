@@ -105,23 +105,26 @@ class APIHandler(object):
 
         try:
             async for data in websocket.iter_json():
-                log.debug("WS#%s -> %s", client.id, data)  # TODO: remove debug
+                log.debug("WS#%s -> %s", client.id, data)
 
                 try:
                     request_type = data["type"]
-                except KeyError:
+                except KeyError as e:
+                    log.debug("WS#%s : No '%s' specified for data", client.id, e)
                     continue
 
                 if request_type == "server_process_write":
                     try:
                         server_id = data["server"]
                         write_data = data["data"]
-                    except KeyError:
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
                         continue
 
                     try:
                         server = self.servers[server_id]
                     except KeyError:
+                        log.debug("WS#%s : Unknown server: %s", client.id, server_id)
                         continue
                     if server and server.state.is_running:
                         try:
@@ -129,32 +132,39 @@ class APIHandler(object):
                         except Exception as e:
                             server.log.warning(
                                 "Exception in write to server process by WS#%s", client.id, exc_info=e)
+                    else:
+                        log.debug("WS#%s : Failed to write to process", client.id)
 
                 elif request_type == "add_watchdog_path":
                     try:
                         path = data["path"]
-                    except KeyError:
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
                         continue
 
                     try:
                         realpath = self.files.realpath(path)
                     except ValueError:
+                        log.debug("WS#%s : Not allowed path", client.id)
                         continue  # unsafe
                     client.watch_files[realpath] = self.inst.add_file_watch(realpath, client)
 
                 elif request_type == "remove_watchdog_path":
                     try:
                         path = data["path"]
-                    except KeyError:
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
                         continue
 
                     try:
                         realpath = self.files.realpath(path)
                     except ValueError:
+                        log.debug("WS#%s : Not allowed path", client.id)
                         continue  # unsafe
                     try:
                         watch_info = client.watch_files.pop(realpath)
                     except KeyError:
+                        log.debug("WS#%s : No watch path", client.id)
                         continue
                     self.inst.remove_file_watch(watch_info)
 
