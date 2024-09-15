@@ -2,7 +2,7 @@ import asyncio
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple
+from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
 from fastapi.exceptions import WebSocketException
@@ -86,14 +86,86 @@ class APIHandler(object):
     def ws_clients(self):
         return self._websocket_clients
 
-    async def broadcast_websocket(self, data):
+    async def broadcast_websocket(self, data, *, clients: Iterable[WebSocketClient] = None):
         tasks = [
             client.websocket.send_json(data)
-            for client in self.ws_clients
+            for client in (self.ws_clients if clients is None else clients)
         ]
 
         if tasks:
             await asyncio.gather(*tasks)
+
+    async def _ws_handler(self, websocket: WebSocket):
+        await websocket.accept()
+
+        client = WebSocketClient(websocket)
+        log.debug("Connected WebSocket Client #%s", client.id)
+        call_event(WebSocketClientConnectEvent(client))
+        self._websocket_clients.add(client)
+
+        try:
+            async for data in websocket.iter_json():
+                log.debug("WS#%s -> %s", client.id, data)  # TODO: remove debug
+
+                try:
+                    request_type = data["type"]
+                except KeyError:
+                    continue
+
+                if request_type == "server_process_write":
+                    try:
+                        server_id = data["server"]
+                        write_data = data["data"]
+                    except KeyError:
+                        continue
+
+                    try:
+                        server = self.servers[server_id]
+                    except KeyError:
+                        continue
+                    if server and server.state.is_running:
+                        try:
+                            server.wrapper.write(write_data)
+                        except Exception as e:
+                            server.log.warning(
+                                "Exception in write to server process by WS#%s", client.id, exc_info=e)
+
+                elif request_type == "add_watchdog_path":
+                    try:
+                        path = data["path"]
+                    except KeyError:
+                        continue
+
+                    try:
+                        realpath = self.files.realpath(path)
+                    except ValueError:
+                        continue  # unsafe
+                    client.watch_files[realpath] = self.inst.add_file_watch(realpath, client)
+
+                elif request_type == "remove_watchdog_path":
+                    try:
+                        path = data["path"]
+                    except KeyError:
+                        continue
+
+                    try:
+                        realpath = self.files.realpath(path)
+                    except ValueError:
+                        continue  # unsafe
+                    try:
+                        watch_info = client.watch_files.pop(realpath)
+                    except KeyError:
+                        continue
+                    self.inst.remove_file_watch(watch_info)
+
+        finally:
+            for watch in client.watch_files.values():
+                self.inst.remove_file_watch(watch)
+            client.watch_files.clear()
+
+            self._websocket_clients.discard(client)
+            call_event(WebSocketClientDisconnectEvent(client))
+            log.debug("Disconnect WebSocket Client #%s", client.id)
 
     # user
 
@@ -162,44 +234,7 @@ class APIHandler(object):
             dependencies=[Depends(self.get_authorized_user_ws), ],
         )
         async def _websocket(websocket: WebSocket):
-            await websocket.accept()
-
-            client = WebSocketClient(websocket)
-            log.debug("Connected WebSocket Client #%s", client.id)
-            call_event(WebSocketClientConnectEvent(client))
-            self._websocket_clients.add(client)
-
-            try:
-                async for data in websocket.iter_json():
-                    log.debug("WS#%s -> %s", client.id, data)  # TODO: remove debug
-
-                    try:
-                        request_type = data["type"]
-                    except KeyError:
-                        continue
-
-                    if request_type == "server_process_write":
-                        try:
-                            server_id = data["server"]
-                            write_data = data["data"]
-                        except KeyError:
-                            continue
-
-                        try:
-                            server = inst.servers[server_id]
-                        except KeyError:
-                            continue
-                        if server and server.state.is_running:
-                            try:
-                                server.wrapper.write(write_data)
-                            except Exception as e:
-                                server.log.warning("Exception in write to server process by WS#%s", client.id,
-                                                   exc_info=e)
-
-            finally:
-                self._websocket_clients.discard(client)
-                call_event(WebSocketClientDisconnectEvent(client))
-                log.debug("Disconnect WebSocket Client #%s", client.id)
+            return await self._ws_handler(websocket)
 
         return api
 

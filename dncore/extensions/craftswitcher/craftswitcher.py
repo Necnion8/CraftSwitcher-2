@@ -1,14 +1,15 @@
 import asyncio
 import datetime
 import os
+from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 
 from dncore.event import EventListener, onevent
-from .abc import ServerState
+from .abc import ServerState, FileWatchInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
@@ -16,7 +17,8 @@ from .event import *
 from .ext import SwitcherExtensionManager
 from .files import FileManager
 from .files.event import *
-from .publicapi import UvicornServer, APIHandler
+from .files.event import WatchdogEvent
+from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
 from .serverprocess import ServerProcessList, ServerProcess
@@ -63,6 +65,7 @@ class CraftSwitcher(EventListener):
         self._initialized = False
         self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
         self._remove_servers = set()  # type: set[str]  # 停止後に削除するサーバー
+        self._watch_files = defaultdict(set)  # type: dict[Path, set[FileWatchInfo]]
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
         self._perfmon_broadcast_loop = AsyncCallTimer(self._perfmon_broadcast_loop, .5, .5)
@@ -151,6 +154,7 @@ class CraftSwitcher(EventListener):
             log.warning("Exception in close api server", exc_info=e)
 
         try:
+            self.clear_file_watch()
             await self.files.shutdown()
         except Exception as e:
             log.warning("Exception in shutdown file manager", exc_info=e)
@@ -338,6 +342,39 @@ class CraftSwitcher(EventListener):
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
 
+    def add_file_watch(self, path: Path, owner: Any) -> FileWatchInfo:
+        """
+        指定されたパスをファイルシステムイベント監視リストに加えます
+        """
+        self.files.add_watch(path)
+        watches = self._watch_files[path]
+        info = FileWatchInfo(path, owner)
+        watches.add(info)
+        return info
+
+    def remove_file_watch(self, watch: FileWatchInfo):
+        """
+        指定されたパスをファイルシステムイベント監視リストから削除します
+        """
+        watches = self._watch_files[watch.path]
+        watches.discard(watch)
+        if not watches:
+            self._watch_files.pop(watch.path)
+            self.files.remove_watch(watch.path)
+
+    def clear_file_watch(self):
+        for path in self._watch_files.keys():
+            self.files.remove_watch(path)
+        self._watch_files.clear()
+
+    def get_watches(self, path: Path) -> set[FileWatchInfo]:
+        if path in self._watch_files:
+            return self._watch_files[path]
+        return set()
+
+    def get_watched_paths(self) -> set[Path]:
+        return set(self._watch_files.keys())
+
     # util
 
     def create_file_info(self, realpath: Path, *, root_dir: Path = None):
@@ -377,6 +414,17 @@ class CraftSwitcher(EventListener):
         rootDirが変更されているか、rootDir元に属さないサーバーである場合は :class:`ValueError` を発生させます
         """
         return self.files.swipath(server.directory)
+
+    def get_ws_clients_by_watchdog_event(self, event: WatchdogEvent):
+        clients = set()
+        for watches in self._watch_files.values():
+            for watch in watches:
+                if isinstance(watch.owner, WebSocketClient) and (
+                        watch.path == event.real_path.parent
+                        or (isinstance(event, WatchdogMovedEvent) and watch.path == event.dst_real_path.parent)
+                ):
+                    clients.add(watch.owner)
+        return clients
 
     # server api
 
@@ -714,6 +762,74 @@ class CraftSwitcher(EventListener):
             event_type="switcher_servers_reloaded",
         )
         await self.api_handler.broadcast_websocket(event_data)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_created(self, event: WatchdogCreatedEvent):
+        if not event.swi_path:
+            return
+
+        clients = self.get_ws_clients_by_watchdog_event(event)
+        if not clients:
+            return
+
+        event_data = dict(
+            type="event",
+            event_type="file_created",
+            src=event.swi_path,
+            file_info=self.create_file_info(event.real_path).model_dump_json(),
+        )
+        await self.api_handler.broadcast_websocket(event_data, clients=clients)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_deleted(self, event: WatchdogDeletedEvent):
+        if not event.swi_path:
+            return
+
+        clients = self.get_ws_clients_by_watchdog_event(event)
+        if not clients:
+            return
+
+        event_data = dict(
+            type="event",
+            event_type="file_deleted",
+            src=event.swi_path,
+        )
+        await self.api_handler.broadcast_websocket(event_data, clients=clients)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_modified(self, event: WatchdogModifiedEvent):
+        if not event.swi_path:
+            return
+
+        clients = self.get_ws_clients_by_watchdog_event(event)
+        if not clients:
+            return
+
+        event_data = dict(
+            type="event",
+            event_type="file_modified",
+            src=event.swi_path,
+            file_info=self.create_file_info(event.real_path).model_dump_json(),
+        )
+        await self.api_handler.broadcast_websocket(event_data, clients=clients)
+
+    @onevent(monitor=True)
+    async def _ws_on_file_moved(self, event: WatchdogMovedEvent):
+        if event.swi_path is None and event.dst_swi_path is None:
+            return
+
+        clients = self.get_ws_clients_by_watchdog_event(event)
+        if not clients:
+            return
+
+        event_data = dict(
+            type="event",
+            event_type="file_moved",
+            src=event.swi_path or None,
+            dst=event.dst_swi_path or None,
+            file_info=self.create_file_info(event.dst_real_path).model_dump_json(),
+        )
+        await self.api_handler.broadcast_websocket(event_data, clients=clients)
 
 
 def getinst() -> "CraftSwitcher":
