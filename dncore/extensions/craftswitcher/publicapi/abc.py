@@ -41,6 +41,7 @@ class APIErrorCode(IntEnum):
     NOT_ALLOWED_PATH = auto()
     NOT_FILE = auto()
     NO_SUPPORTED_ARCHIVE_FORMAT = auto()
+    NO_AVAILABLE_DOWNLOAD = auto()
 
     # auth
     INVALID_AUTHENTICATION_CREDENTIALS = 400

@@ -15,6 +15,7 @@ from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.abc import ServerType
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
+from dncore.extensions.craftswitcher.errors import NoDownloadFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
@@ -529,7 +530,10 @@ class APIHandler(object):
                 server: "ServerProcess" = Depends(getserver),
                 build: ServerBuild = Depends(getbuild),
         ) -> model.FileOperationResult:
-            task = await self.inst.download_server_jar(server, build, server_type)
+            try:
+                task = await self.inst.download_server_jar(server, build, server_type)
+            except NoDownloadFile as e:
+                raise APIErrorCode.NO_AVAILABLE_DOWNLOAD.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
         return api
