@@ -9,6 +9,7 @@ from dncore.extensions.craftswitcher.files.archive import abc as aabc
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
+    from dncore.extensions.craftswitcher.ext import ExtensionInfo, EditableFile
     from dncore.extensions.craftswitcher.database import model as db
 
 
@@ -233,3 +234,35 @@ class JarDLBuildInfo(BaseModel):
     recommended: bool
     is_require_build: bool
     is_loaded_info: bool
+
+class PluginEditableFile(BaseModel):
+    key: str
+    label: str | None = Field(description="表示名")
+
+
+class PluginInfo(BaseModel):
+    name: str
+    version: str
+    description: str | None = Field(description="説明文。複数行になることもある？")
+    authors: list[str]
+    #
+    editable_files: list[PluginEditableFile]
+
+    @classmethod
+    def create(cls, info: "ExtensionInfo", editable_files: "list[EditableFile]"):
+        return cls(
+            name=info.name,
+            version=info.version,
+            description=info.description,
+            authors=info.authors,
+            editable_files=[
+                PluginEditableFile(key=file.key, label=file.label)
+                for file in editable_files
+            ],
+        )
+
+
+class PluginMessageResponse(BaseModel):
+    caption: str | None
+    content: str = Field(description="メッセージ内容。複数行")
+    errors: bool = Field(description="エラーメッセージか")

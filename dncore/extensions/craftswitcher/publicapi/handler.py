@@ -2,7 +2,7 @@ import asyncio
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple
+from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
 from fastapi.exceptions import WebSocketException
@@ -16,6 +16,7 @@ from dncore.extensions.craftswitcher.abc import ServerType
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile
+from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
@@ -67,6 +68,7 @@ class APIHandler(object):
         api.include_router(self._server())
         api.include_router(self._file())
         api.include_router(self._jardl())
+        api.include_router(self._plugins())
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):
@@ -88,14 +90,96 @@ class APIHandler(object):
     def ws_clients(self):
         return self._websocket_clients
 
-    async def broadcast_websocket(self, data):
+    async def broadcast_websocket(self, data, *, clients: Iterable[WebSocketClient] = None):
         tasks = [
             client.websocket.send_json(data)
-            for client in self.ws_clients
+            for client in (self.ws_clients if clients is None else clients)
         ]
 
         if tasks:
             await asyncio.gather(*tasks)
+
+    async def _ws_handler(self, websocket: WebSocket):
+        await websocket.accept()
+
+        client = WebSocketClient(websocket)
+        log.debug("Connected WebSocket Client #%s", client.id)
+        call_event(WebSocketClientConnectEvent(client))
+        self._websocket_clients.add(client)
+
+        try:
+            async for data in websocket.iter_json():
+                log.debug("WS#%s -> %s", client.id, data)
+
+                try:
+                    request_type = data["type"]
+                except KeyError as e:
+                    log.debug("WS#%s : No '%s' specified for data", client.id, e)
+                    continue
+
+                if request_type == "server_process_write":
+                    try:
+                        server_id = data["server"]
+                        write_data = data["data"]
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
+                        continue
+
+                    try:
+                        server = self.servers[server_id]
+                    except KeyError:
+                        log.debug("WS#%s : Unknown server: %s", client.id, server_id)
+                        continue
+                    if server and server.state.is_running:
+                        try:
+                            server.wrapper.write(write_data)
+                        except Exception as e:
+                            server.log.warning(
+                                "Exception in write to server process by WS#%s", client.id, exc_info=e)
+                    else:
+                        log.debug("WS#%s : Failed to write to process", client.id)
+
+                elif request_type == "add_watchdog_path":
+                    try:
+                        path = data["path"]
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
+                        continue
+
+                    try:
+                        realpath = self.files.realpath(path)
+                    except ValueError:
+                        log.debug("WS#%s : Not allowed path", client.id)
+                        continue  # unsafe
+                    client.watch_files[realpath] = self.inst.add_file_watch(realpath, client)
+
+                elif request_type == "remove_watchdog_path":
+                    try:
+                        path = data["path"]
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
+                        continue
+
+                    try:
+                        realpath = self.files.realpath(path)
+                    except ValueError:
+                        log.debug("WS#%s : Not allowed path", client.id)
+                        continue  # unsafe
+                    try:
+                        watch_info = client.watch_files.pop(realpath)
+                    except KeyError:
+                        log.debug("WS#%s : No watch path", client.id)
+                        continue
+                    self.inst.remove_file_watch(watch_info)
+
+        finally:
+            for watch in client.watch_files.values():
+                self.inst.remove_file_watch(watch)
+            client.watch_files.clear()
+
+            self._websocket_clients.discard(client)
+            call_event(WebSocketClientDisconnectEvent(client))
+            log.debug("Disconnect WebSocket Client #%s", client.id)
 
     # user
 
@@ -164,44 +248,7 @@ class APIHandler(object):
             dependencies=[Depends(self.get_authorized_user_ws), ],
         )
         async def _websocket(websocket: WebSocket):
-            await websocket.accept()
-
-            client = WebSocketClient(websocket)
-            log.debug("Connected WebSocket Client #%s", client.id)
-            call_event(WebSocketClientConnectEvent(client))
-            self._websocket_clients.add(client)
-
-            try:
-                async for data in websocket.iter_json():
-                    log.debug("WS#%s -> %s", client.id, data)  # TODO: remove debug
-
-                    try:
-                        request_type = data["type"]
-                    except KeyError:
-                        continue
-
-                    if request_type == "server_process_write":
-                        try:
-                            server_id = data["server"]
-                            write_data = data["data"]
-                        except KeyError:
-                            continue
-
-                        try:
-                            server = inst.servers[server_id]
-                        except KeyError:
-                            continue
-                        if server and server.state.is_running:
-                            try:
-                                server.wrapper.write(write_data)
-                            except Exception as e:
-                                server.log.warning("Exception in write to server process by WS#%s", client.id,
-                                                   exc_info=e)
-
-            finally:
-                self._websocket_clients.discard(client)
-                call_event(WebSocketClientDisconnectEvent(client))
-                log.debug("Disconnect WebSocket Client #%s", client.id)
+            return await self._ws_handler(websocket)
 
         return api
 
@@ -472,9 +519,7 @@ class APIHandler(object):
             summary="サーバーを削除",
             description="サーバーを削除します",
         )
-        async def _delete(server_id: str, delete_config_file: bool = False, ) -> model.ServerOperationResult:
-            server = getserver(server_id)
-
+        async def _delete(server: "ServerProcess" = Depends(getserver), delete_config_file: bool = False, ) -> model.ServerOperationResult:
             if server.state.is_running:
                 raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
 
@@ -486,9 +531,7 @@ class APIHandler(object):
             summary="サーバー設定の取得",
             description="サーバーの設定を返します",
         )
-        async def _get_config(server_id: str, ) -> model.ServerConfig:
-            server = getserver(server_id)
-
+        async def _get_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
                 ls = {}
                 for key, entry in conf.get_values().items():
@@ -505,9 +548,8 @@ class APIHandler(object):
             summary="サーバー設定の更新",
             description="サーバーの設定を変更します",
         )
-        async def _put_config(server_id: str, param: model.ServerConfig, ) -> model.ServerConfig:
-            server = getserver(server_id)
-
+        async def _put_config(server: "ServerProcess" = Depends(getserver), param: model.ServerConfig = Depends(),
+                              ) -> model.ServerConfig:
             config = server._config  # type: ServerConfig
             for key, value in param.model_dump(exclude_unset=True).items():
                 conf = config
@@ -518,7 +560,16 @@ class APIHandler(object):
                 setattr(conf, key[0], value)
 
             server._config.save(force=True)
-            return await _get_config(server_id)
+            return await _get_config(server)
+
+        @api.post(
+            "/server/{server_id}/config/reload",
+            summary="サーバー設定ファイルの再読み込み",
+            description="設定ファイルを再読み込みします",
+        )
+        async def _reload_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
+            server._config.load()
+            return await _get_config(server)
 
         @api.post(
             "/server/{server_id}/install",
@@ -660,6 +711,15 @@ class APIHandler(object):
                 path=self.files.swipath(path.real.parent, force=True),
                 children=file_list,
             )
+
+        @api.get(
+            "/file/info",
+            summary="ファイル情報",
+        )
+        def _file_info(
+                path: PairPath = Depends(get_path_of_root(exists=True)),
+        ) -> model.FileInfo:
+            return create_file_info(path, path.root_dir)
 
         @api.get(
             "/file",
@@ -859,6 +919,15 @@ class APIHandler(object):
             return await _files(path)
 
         @api.get(
+            "/server/{server_id}/file/info",
+            summary="ファイル情報",
+        )
+        def _server_file_info(
+                path: PairPath = Depends(get_path_of_server_root(exists=True)),
+        ) -> model.FileInfo:
+            return _file_info(path)
+
+        @api.get(
             "/server/{server_id}/file",
             summary="ファイルデータを取得",
             description="",
@@ -1043,5 +1112,94 @@ class APIHandler(object):
                 is_require_build=build.is_require_build(),
                 is_loaded_info=build.is_loaded_info(),
             )
+
+    def _plugins(self):
+        api = APIRouter(
+            tags=["Plugins", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+
+        def getplugin(plugin_name: str):
+            extension, info = self.inst.extensions.get_info(plugin_name)
+            if not extension or not info:
+                raise APIErrorCode.PLUGIN_NOT_FOUND.of("Plugin not found", 404)
+            return extension, info
+
+        def getfile(key: str, plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin)):
+            ext, info = plugin
+            for file in ext.editable_files:
+                if file.key == key:
+                    return file
+            raise APIErrorCode.NOT_EXISTS_PLUGIN_FILE.of("Plugin file not found", 404)
+
+        @api.get(
+            "/plugins",
+            summary="プラグイン一覧",
+        )
+        def _plugins() -> list[model.PluginInfo]:
+            return [
+                model.PluginInfo.create(info, ext.editable_files)
+                for ext, info in self.inst.extensions.extensions.items()
+            ]
+
+        @api.get(
+            "/plugin/{plugin_name}/file/{key}",
+            summary="設定ファイルを取得",
+            responses={400: {"model": model.PluginMessageResponse, }},
+        )
+        async def _plugin_file(
+                plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin),
+                file: EditableFile = Depends(getfile),
+        ) -> FileResponse:
+            ext, info = plugin
+
+            res = await ext.on_file_load(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            return FileResponse(file.path, filename=file.path.name)
+
+        @api.post(
+            "/plugin/{plugin_name}/file/{key}",
+            summary="設定ファイルを更新",
+            responses={400: {"model": model.PluginMessageResponse, }},
+        )
+        async def _plugin_file(
+                content: UploadFile,
+                plugin: tuple[SwitcherExtension, ExtensionInfo] = Depends(getplugin),
+                file: EditableFile = Depends(getfile),
+        ) -> model.FileOperationResult:
+            ext, info = plugin
+
+            res = await ext.on_file_pre_update(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            try:
+                with file.path.open("wb") as f:
+                    shutil.copyfileobj(content.file, f)
+            finally:
+                content.file.close()
+
+            res = await ext.on_file_update(file)
+            if res:
+                # noinspection PyTypeChecker
+                return JSONResponse(status_code=400, content=model.PluginMessageResponse(
+                    caption=res.caption,
+                    content=res.content,
+                    errors=res.errors,
+                ).model_dump_json())
+
+            return model.FileOperationResult.success(None, None)
 
         return api

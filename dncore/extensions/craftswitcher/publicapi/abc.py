@@ -1,6 +1,10 @@
 from enum import IntEnum, auto
+from typing import TYPE_CHECKING
 
 from fastapi import WebSocket, HTTPException
+
+if TYPE_CHECKING:
+    from ..abc import FileWatchInfo
 
 __all__ = [
     "WebSocketClient",
@@ -16,6 +20,7 @@ class WebSocketClient(object):
         self.websocket = websocket
         self.id = WebSocketClient._id
         WebSocketClient._id += 1
+        self.watch_files = dict()  # type: dict[str, FileWatchInfo]
 
 
 class APIErrorCode(IntEnum):
@@ -50,6 +55,10 @@ class APIErrorCode(IntEnum):
     # user
     ALREADY_EXISTS_USER_NAME = 500
     NOT_EXISTS_USER = auto()
+
+    # plugin
+    PLUGIN_NOT_FOUND = 600
+    NOT_EXISTS_PLUGIN_FILE = auto()
 
     # jardl
     NO_AVAILABLE_SERVER_TYPE = 700

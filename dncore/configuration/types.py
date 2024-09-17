@@ -184,9 +184,10 @@ class EnumType(ObjectType[T]):
     def deserialize(self, serialized: Any | None) -> VT | None:
         if serialized is None:
             return
-        try:
-            return self.type(serialized)
-        except ValueError:
+        for entry in self.type:
+            if entry.name == serialized:
+                return entry
+        else:
             return self.default()  # try default enum value
 
     def clone(self, obj):
