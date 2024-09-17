@@ -335,7 +335,7 @@ class CraftSwitcher(EventListener):
 
         既に存在するIDの場合は :class:`ValueError` を。
 
-        directoryが存在しない場合は :class:`NotADirectoryError` を発生させます。
+        親ディレクトリが存在しない場合は :class:`NotADirectoryError` を発生させます。
         """
         server_id = safe_server_id(server_id)
         if server_id in self.servers:
@@ -343,7 +343,9 @@ class CraftSwitcher(EventListener):
 
         directory = Path(directory)
         if not directory.is_dir():
-            raise NotADirectoryError(str(directory))
+            if not directory.parent.is_dir():
+                raise NotADirectoryError(str(directory))
+            directory.mkdir()
         server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
 
         if set_creation_date:

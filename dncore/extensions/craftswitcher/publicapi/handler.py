@@ -287,6 +287,12 @@ class APIHandler(object):
                 raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
 
+        def realpath(swi_path: str, root_dir: Path = None):
+            try:
+                return self.files.realpath(swi_path, root_dir=root_dir)
+            except ValueError:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swi_path}")
+
         @api.get(
             "/servers",
             summary="登録サーバーの一覧",
@@ -395,7 +401,7 @@ class APIHandler(object):
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
-            server_dir = self.inst.files.realpath(param.directory)
+            server_dir = realpath(param.directory)
             if not server_dir.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
 
@@ -417,9 +423,9 @@ class APIHandler(object):
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
-            server_dir = self.inst.files.realpath(param.directory)
-            if not server_dir.is_dir():
-                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
+            server_dir = realpath(param.directory)
+            if not server_dir.parent.is_dir():
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists parent directory")
 
             config = inst.create_server_config(server_dir)
             config.name = param.name
