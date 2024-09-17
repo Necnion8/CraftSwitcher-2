@@ -1,18 +1,24 @@
 from dncore.discord.events import DebugCommandPreExecuteEvent
 from dncore.event import onevent
-from dncore.extensions.craftswitcher import CraftSwitcher
+from dncore.extensions.craftswitcher import CraftSwitcher, SwitcherExtension, EditableFile, ExtensionInfo
 from dncore.extensions.craftswitcher.abc import ServerState
 from dncore.extensions.craftswitcher.bot import BotCommandHandler, BotActivity
 from dncore.extensions.craftswitcher.event import ServerChangeStateEvent
+from dncore.extensions.craftswitcher.ext import SwitcherExtensionManager
 from dncore.plugin import Plugin
 
 
-class CraftSwitcherPlugin(Plugin):
+class CraftSwitcherPlugin(Plugin, SwitcherExtension):
     def __init__(self):
+        super().__init__()
         # config_path = DNCoreAPI.core().config_dir / "switcher.yml"
         config_path = self.data_dir / "config.yml"
-        self.switcher = CraftSwitcher(self.loop, config_path, plugin_info=self.info)
+        self.extensions = SwitcherExtensionManager()
+        self.ext_info = ExtensionInfo.create(self.info)
+        self.switcher = CraftSwitcher(self.loop, config_path, plugin_info=self.info, extensions=self.extensions)
         self.activity = BotActivity()
+        #
+        self.editable_files.append(EditableFile(config_path, "config", "メイン設定"))
 
     @property
     def config(self):
@@ -65,13 +71,19 @@ class CraftSwitcherPlugin(Plugin):
         self.register_commands(BotCommandHandler(self.switcher))
         self.register_activity(self.activity)
         await self.switcher.init()
+        self.extensions.add(self, self.ext_info)
 
     async def on_disable(self):
+        self.extensions.remove(self)
         try:
             await self.switcher.shutdown()
         finally:
             self.unregister_commands()
             self.unregister_listener(self.switcher)
+
+    async def on_file_update(self, editable_file: EditableFile):
+        self.switcher.load_config()
+        self.switcher.reload_servers()
 
     @onevent()
     async def on_debug(self, event: DebugCommandPreExecuteEvent):

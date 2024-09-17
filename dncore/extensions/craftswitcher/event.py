@@ -4,6 +4,7 @@ from dncore.event import Event, Cancellable
 from dncore.extensions.craftswitcher.abc import ServerState
 
 if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher.ext import ExtensionInfo
     from dncore.extensions.craftswitcher.serverprocess import ServerProcess
 
 __all__ = [
@@ -18,7 +19,11 @@ __all__ = [
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
     "SwitcherServersLoadedEvent",
+    "SwitcherServersReloadedEvent",
     "SwitcherServersUnloadEvent",
+    "ExtensionEvent",
+    "SwitcherExtensionAddEvent",
+    "SwitcherExtensionRemoveEvent",
 ]
 
 
@@ -89,5 +94,29 @@ class SwitcherServersLoadedEvent(Event):
     pass
 
 
+class SwitcherServersReloadedEvent(Event):
+    def __init__(self,
+                 remove: "dict[str, ServerProcess]",
+                 update: "dict[str, ServerProcess]",
+                 new: "dict[str, ServerProcess | None]",
+                 ):
+        self.removed = remove
+        self.updated = update
+        self.added = new
+
+
 class SwitcherServersUnloadEvent(Event):
+    pass
+
+
+class ExtensionEvent:
+    def __init__(self, extension: "ExtensionInfo"):
+        self.extension = extension
+
+
+class SwitcherExtensionAddEvent(Event, ExtensionEvent):
+    pass
+
+
+class SwitcherExtensionRemoveEvent(Event, ExtensionEvent):
     pass

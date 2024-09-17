@@ -9,7 +9,7 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
-from typing import Awaitable
+from typing import Awaitable, Any
 from typing import Callable
 
 from . import errors
@@ -136,7 +136,7 @@ class ServerProcess(object):
     ):
         self.log = ServerLoggerAdapter(_log, server_id)
         self.loop = loop
-        self.directory = directory
+        self._directory = directory
         self.id = server_id
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
@@ -146,6 +146,16 @@ class ServerProcess(object):
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
         #
         self.shutdown_to_restart = False
+
+    @property
+    def directory(self) -> Path:
+        return self._directory
+
+    @directory.setter
+    def directory(self, new_dir: Path):
+        if self._directory != new_dir:
+            self.log.debug("Update directory: %s -> %s", self._directory, new_dir)
+        self._directory = new_dir
 
     @property
     def _is_running(self):
@@ -174,6 +184,10 @@ class ServerProcess(object):
     @property
     def players(self) -> list:
         return list()  # TODO: impl players
+
+    @property
+    def perfmon(self) -> "ProcessPerformanceMonitor | None":
+        return self._perf_mon
 
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
@@ -226,13 +240,14 @@ class ServerProcess(object):
 
     # noinspection PyMethodMayBeStatic
     async def _start_subprocess(
-            self, args: list[str], term_size: tuple[int, int],
+            self, args: list[str], term_size: tuple[int, int], env: dict[str, Any] = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ):
         return await PtyProcessWrapper.spawn(
             args=args,
             cwd=self.directory,
             term_size=term_size,
+            env=env,
             read_handler=read_handler,
         )
 
@@ -249,14 +264,19 @@ class ServerProcess(object):
             ret_ = wrapper.exit_status
             self.log.info("Stopped server process (ret: %s)", ret_)
             self.state = ServerState.STOPPED
+            self._perf_mon = None
 
         try:
             if not self.check_free_memory():
                 raise errors.OutOfMemoryError
 
             args = await self._build_arguments()
+            env = {
+                "SWITCHER_SERVER_NAME": self.id,
+            }
 
-            wrapper = self.wrapper = await self._start_subprocess(args, term_size=(80, 25), read_handler=self._term_read)
+            wrapper = self.wrapper = await self._start_subprocess(
+                args, term_size=(80, 25), env=env, read_handler=self._term_read)
             self.loop.create_task(wrapper.wait()).add_done_callback(_end)
             try:
                 await asyncio.wait_for(wrapper.wait(), timeout=1)
@@ -307,7 +327,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Killing {self.id} server process...")
-        self.wrapper.kill(signal.SIGKILL)
+        self.wrapper.kill()
 
     async def wait_for_shutdown(self, *, timeout: int = None):
         if timeout is None:
@@ -402,7 +422,7 @@ if sys.platform == "win32":
 
         @classmethod
         async def spawn(
-                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
                 *, read_handler: Callable[[str], Awaitable[None]],
         ) -> "WinPtyProcessWrapper":
             pty = winpty.PTY(*term_size)
@@ -413,7 +433,9 @@ if sys.platform == "win32":
             # noinspection PyTypeChecker
             _cwd: bytes = str(cwd)
 
-            func = partial(pty.spawn, _appname, _cmdline, _cwd, )
+            _env = "\0".join(map(str, env)) if env else None
+
+            func = partial(pty.spawn, _appname, _cmdline, _cwd, _env)
             loop = asyncio.get_running_loop()
 
             if not loop.run_in_executor(None, func):
@@ -469,14 +491,14 @@ else:
 
         @classmethod
         async def spawn(
-                cls, args: list[str], cwd: Path, term_size: tuple[int, int],
+                cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
                 *, read_handler: Callable[[str], Awaitable[None]],
         ) -> "UnixPtyProcessWrapper":
             master, slave = pty.openpty()
             try:
                 p = await asyncio.create_subprocess_exec(
                     *args,
-                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, close_fds=True,
+                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, env=env, close_fds=True,
                 )
             except Exception as e:
                 raise RuntimeError("Unable to create_subprocess_exec") from e
