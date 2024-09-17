@@ -13,6 +13,7 @@ from .abc import ServerState, FileWatchInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
+from .errors import ServerProcessingError
 from .event import *
 from .ext import SwitcherExtensionManager
 from .files import FileManager
@@ -170,7 +171,11 @@ class CraftSwitcher(EventListener):
         if waits:
             await asyncio.wait(waits)
 
-        self.unload_servers()
+        try:
+            self.unload_servers()
+        except ValueError as e:
+            log.warning(f"Failed to unload_Servers: {e}")
+
         AsyncCallTimer.cancel_all_timers()
 
     def load_config(self):
@@ -314,7 +319,10 @@ class CraftSwitcher(EventListener):
         async def _shutdown(s: ServerProcess):
             if s.state.is_running:
                 try:
-                    await s.stop()
+                    try:
+                        await s.stop()
+                    except ServerProcessingError:
+                        await s.kill()
                 except Exception as e:
                     log.exception("Exception in server shutdown (ignored)", exc_info=e)
                 try:
