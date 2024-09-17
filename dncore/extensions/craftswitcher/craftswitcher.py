@@ -12,10 +12,11 @@ from .abc import ServerState, ServerType
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
+from .errors import NoDownloadFile
 from .event import *
 from .files import FileManager
 from .files.event import *
-from .jardl import ServerDownloader
+from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
@@ -380,6 +381,61 @@ class CraftSwitcher(EventListener):
                     log.warning("Failed to delete server_config: %s: %s", str(e), str(config_path))
 
         self.config.save()
+
+    async def download_server_jar(self, server: ServerProcess, jar_build: ServerBuild, server_type: ServerType,
+                                  ) -> FileTask:
+        """
+        ビルド情報を元に、サーバーファイルまたはインストールファイルをダウンロードします。
+
+        ビルドが必要なときのみ、指定されたサーバーにビルダーオブジェクトを設定されます。
+
+        ダウンロードURLが見つからない場合は :class:`NoDownloadFile` エラーが発生します
+        """
+        try:
+            if not jar_build.download_url:
+                if not jar_build.is_loaded_info():
+                    await jar_build.fetch_info()
+        except Exception as e:
+            raise NoDownloadFile("No available download url: fetch error") from e
+
+        if not jar_build.download_url:
+            raise NoDownloadFile("No available download url")
+
+        filename = jar_build.download_filename
+
+        if not filename:
+            filename = await self.files.fetch_download_filename(jar_build.download_url)
+        if not filename:
+            filename = "builder.jar" if jar_build.is_require_build() else "server.jar"
+
+        dst = server.directory / filename
+        _loop = 0
+        while dst.exists():
+            _loop += 1
+            name, *suf = filename.rsplit(".", 1)
+            dst = server.directory / ".".join([f"{name}-{_loop}", *suf])
+
+        dst_swi = self.files.swipath(dst, root_dir=server.directory)
+        task = self.files.download(jar_build.download_url, dst, server, dst_swi_path=dst_swi)
+
+        async def _callback(f: asyncio.Future):
+            exc = f.exception()
+            if exc:
+                log.warning("Failed to download server", exc_info=exc)
+                return
+
+            jar_build.downloaded_path = dst
+            if jar_build.is_require_build():
+                await jar_build.setup_builder(server, dst)  # TODO: ビルダー処理を実装
+
+            else:
+                config = server._config
+                config.type = server_type
+                config.launch_option.jar_file = dst.name
+                config.save()
+
+        task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))
+        return task
 
     # public api
 

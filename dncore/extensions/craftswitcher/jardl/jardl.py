@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, TYPE_CHECKING
 
 __all__ = [
     "ServerBuild",
@@ -9,13 +9,18 @@ __all__ = [
     "defaults",
 ]
 
+if TYPE_CHECKING:
+    from dncore.extensions.craftswitcher import ServerProcess
+
 
 class ServerBuild(object):
-    def __init__(self, mc_version: str, build: str, download_url: str = None, downloaded_path: Path = None,
+    def __init__(self, mc_version: str, build: str, download_url: str = None, download_filename: str = None,
+                 downloaded_path: Path = None,
                  *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
+        self.download_filename = download_filename
         self.downloaded_path = downloaded_path
         self.java_major_version = java_major_version
         self.updated_datetime = updated_datetime
@@ -44,6 +49,9 @@ class ServerBuild(object):
 
     async def _fetch_info(self) -> bool:
         return False
+
+    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path):
+        pass
 
 
 SB = TypeVar("SB", bound=ServerBuild)

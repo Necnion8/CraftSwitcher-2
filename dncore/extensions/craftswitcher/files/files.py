@@ -2,8 +2,11 @@ import asyncio
 import os
 import re
 import shutil
+import urllib.parse
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import aiohttp
 
 from .abc import *
 from .archive import ArchiveFile, ArchiveHelper
@@ -178,6 +181,47 @@ class FileManager(object):
             src.mkdir()
 
         await self.loop.run_in_executor(None, _do)
+
+    @staticmethod
+    async def fetch_download_filename(url: str):
+        filename = None
+        async with aiohttp.request("HEAD", url) as res:
+            res.raise_for_status()
+            disposition = res.content_disposition
+            if disposition:
+                filename = disposition.filename
+        if not filename:
+            filename = urllib.parse.urlparse(url).path.rsplit("/", 1)[-1]
+        return filename
+
+    def download(self, src_url: str, dst: Path,
+                 server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None):
+
+        async def _download():
+            async with aiohttp.request("GET", src_url) as res:
+                res.raise_for_status()
+
+                total_bytes = res.content_length
+                total_read = 0
+
+                try:
+                    with dst.open("wb") as f:
+                        while data := await res.content.read(1024 * 512):
+                            f.write(data)
+                            total_read += len(data)
+                            if 0 < total_bytes:
+                                task.progress = total_read / total_bytes
+                except Exception:
+                    try:
+                        os.remove(dst)
+                    except (Exception,):
+                        pass
+                    raise
+
+        task = self.create_task(  # TODO: srcがPathしか受け入れられないために、ソースURLが設定できない
+            FileEventType.DOWNLOAD, dst, dst, asyncio.create_task(_download()),
+            server, src_swi_path, dst_swi_path, )
+        return task
 
     # archive
 

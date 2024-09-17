@@ -293,6 +293,26 @@ class APIHandler(object):
             except ValueError:
                 raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swi_path}")
 
+        downloaders = self.inst.server_downloaders
+
+        def getdownloader(server_type: ServerType):
+            try:
+                return downloaders[server_type][-1]
+            except (KeyError, IndexError):
+                raise APIErrorCode.NO_AVAILABLE_SERVER_TYPE.of("Not available downloader", 404)
+
+        async def getversion(version: str, downloader: ServerDownloader = Depends(getdownloader)):
+            for ver in await downloader.list_versions():
+                if ver.mc_version == version:
+                    return ver
+            raise APIErrorCode.NOT_EXISTS_SERVER_VERSION.of("No found version", 404)
+
+        async def getbuild(build: str, version: ServerMCVersion = Depends(getversion)):
+            for b in await version.list_builds():
+                if b.build == build:
+                    return b
+            raise APIErrorCode.NOT_EXISTS_SERVER_BUILD.of("No found build", 404)
+
         @api.get(
             "/servers",
             summary="登録サーバーの一覧",
@@ -498,6 +518,19 @@ class APIHandler(object):
 
             server._config.save(force=True)
             return await _get_config(server_id)
+
+        @api.post(
+            "/server/{server_id}/install",
+            summary="サーバーJarのインストール",
+            description="ビルドが必要な場合は、サーバーの初回起動時に実行されます。"
+        )
+        async def _post_install(
+                server_type: ServerType,
+                server: "ServerProcess" = Depends(getserver),
+                build: ServerBuild = Depends(getbuild),
+        ) -> model.FileOperationResult:
+            task = await self.inst.download_server_jar(server, build, server_type)
+            return model.FileOperationResult.pending(task.id)
 
         return api
 
