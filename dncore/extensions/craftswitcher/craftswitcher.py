@@ -9,15 +9,16 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 
 from dncore.event import EventListener, onevent
-from .abc import ServerState, FileWatchInfo
+from .abc import ServerState, ServerType, FileWatchInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
-from .errors import ServerProcessingError
+from .errors import ServerProcessingError, NoDownloadFile
 from .event import *
 from .ext import SwitcherExtensionManager
 from .files import FileManager
 from .files.event import *
+from .jardl import ServerDownloader, ServerBuild
 from .files.event import WatchdogEvent
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
@@ -44,6 +45,8 @@ class CraftSwitcher(EventListener):
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         self.extensions = extensions
+        # jardl
+        self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
         # api
         global __version__
         __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
@@ -70,6 +73,7 @@ class CraftSwitcher(EventListener):
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
         self._perfmon_broadcast_loop = AsyncCallTimer(self._perfmon_broadcast_loop, .5, .5)
+        self.add_default_server_downloaders()
 
     def print_welcome(self):
         log.info("=" * 50)
@@ -350,39 +354,24 @@ class CraftSwitcher(EventListener):
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
 
-    def add_file_watch(self, path: Path, owner: Any) -> FileWatchInfo:
-        """
-        指定されたパスをファイルシステムイベント監視リストに加えます
-        """
-        self.files.add_watch(path)
-        watches = self._watch_files[path]
-        info = FileWatchInfo(path, owner)
-        watches.add(info)
-        return info
+    # server downloader
 
-    def remove_file_watch(self, watch: FileWatchInfo):
-        """
-        指定されたパスをファイルシステムイベント監視リストから削除します
-        """
-        watches = self._watch_files[watch.path]
-        watches.discard(watch)
-        if not watches:
-            self._watch_files.pop(watch.path)
-            self.files.remove_watch(watch.path)
+    def add_default_server_downloaders(self):
+        from .jardl import defaults
+        for type_, downloader in defaults().items():
+            self.add_server_downloader(type_, downloader)
 
-    def clear_file_watch(self):
-        for path in self._watch_files.keys():
-            self.files.remove_watch(path)
-        self._watch_files.clear()
+    def add_server_downloader(self, type_: ServerType, downloader: ServerDownloader):
+        if downloader not in self.server_downloaders[type_]:
+            self.server_downloaders[type_].append(downloader)
 
-    def get_watches(self, path: Path) -> set[FileWatchInfo]:
-        if path in self._watch_files:
-            return set(self._watch_files[path])
-        return set()
-
-    def get_watched_paths(self) -> set[Path]:
-        return set(self._watch_files.keys())
-
+    def remove_server_downloader(self, downloader: ServerDownloader):
+        for type_, downloaders in self.server_downloaders.items():
+            try:
+                downloaders.remove(downloader)
+            except ValueError:
+                pass
+    
     # util
 
     def create_file_info(self, realpath: Path, *, root_dir: Path = None):
@@ -434,6 +423,39 @@ class CraftSwitcher(EventListener):
                     clients.add(watch.owner)
         return clients
 
+    def add_file_watch(self, path: Path, owner: Any) -> FileWatchInfo:
+        """
+        指定されたパスをファイルシステムイベント監視リストに加えます
+        """
+        self.files.add_watch(path)
+        watches = self._watch_files[path]
+        info = FileWatchInfo(path, owner)
+        watches.add(info)
+        return info
+
+    def remove_file_watch(self, watch: FileWatchInfo):
+        """
+        指定されたパスをファイルシステムイベント監視リストから削除します
+        """
+        watches = self._watch_files[watch.path]
+        watches.discard(watch)
+        if not watches:
+            self._watch_files.pop(watch.path)
+            self.files.remove_watch(watch.path)
+
+    def clear_file_watch(self):
+        for path in self._watch_files.keys():
+            self.files.remove_watch(path)
+        self._watch_files.clear()
+
+    def get_watches(self, path: Path) -> set[FileWatchInfo]:
+        if path in self._watch_files:
+            return set(self._watch_files[path])
+        return set()
+
+    def get_watched_paths(self) -> set[Path]:
+        return set(self._watch_files.keys())
+
     # server api
 
     def create_server_config(self, server_directory: str | Path, jar_file=""):
@@ -464,7 +486,7 @@ class CraftSwitcher(EventListener):
 
         既に存在するIDの場合は :class:`ValueError` を。
 
-        directoryが存在しない場合は :class:`NotADirectoryError` を発生させます。
+        親ディレクトリが存在しない場合は :class:`NotADirectoryError` を発生させます。
         """
         server_id = safe_server_id(server_id)
         if server_id in self.servers:
@@ -472,7 +494,9 @@ class CraftSwitcher(EventListener):
 
         directory = Path(directory)
         if not directory.is_dir():
-            raise NotADirectoryError(str(directory))
+            if not directory.parent.is_dir():
+                raise NotADirectoryError(str(directory))
+            directory.mkdir()
         server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
 
         if set_creation_date:
@@ -514,6 +538,61 @@ class CraftSwitcher(EventListener):
         self._remove_servers.discard(server_id)
         self.servers.pop(server_id, None)
         self.config.servers.pop(server_id, None)
+
+    async def download_server_jar(self, server: ServerProcess, jar_build: ServerBuild, server_type: ServerType,
+                                  ) -> FileTask:
+        """
+        ビルド情報を元に、サーバーファイルまたはインストールファイルをダウンロードします。
+
+        ビルドが必要なときのみ、指定されたサーバーにビルダーオブジェクトを設定されます。
+
+        ダウンロードURLが見つからない場合は :class:`NoDownloadFile` エラーが発生します
+        """
+        try:
+            if not jar_build.download_url:
+                if not jar_build.is_loaded_info():
+                    await jar_build.fetch_info()
+        except Exception as e:
+            raise NoDownloadFile("No available download url: jar_build.fetch_info() error") from e
+
+        if not jar_build.download_url:
+            raise NoDownloadFile("No available download url")
+
+        filename = jar_build.download_filename
+
+        if not filename:
+            filename = await self.files.fetch_download_filename(jar_build.download_url)
+        if not filename:
+            filename = "builder.jar" if jar_build.is_require_build() else "server.jar"
+
+        dst = server.directory / filename
+        _loop = 0
+        while dst.exists():
+            _loop += 1
+            name, *suf = filename.rsplit(".", 1)
+            dst = server.directory / ".".join([f"{name}-{_loop}", *suf])
+
+        dst_swi = self.files.swipath(dst, root_dir=server.directory)
+        task = self.files.download(jar_build.download_url, dst, server, dst_swi_path=dst_swi)
+
+        async def _callback(f: asyncio.Future):
+            exc = f.exception()
+            if exc:
+                log.warning("Failed to download server", exc_info=exc)
+                return
+
+            jar_build.downloaded_path = dst
+            if jar_build.is_require_build():
+                await jar_build.setup_builder(server, dst)  # TODO: ビルダー処理を実装
+
+            else:
+                config = server._config
+                config.type = server_type
+                config.launch_option.jar_file = dst.name
+                config.save()
+
+        task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))
+        return task
 
     # public api
 

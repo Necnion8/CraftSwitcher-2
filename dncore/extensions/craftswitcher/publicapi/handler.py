@@ -12,10 +12,13 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
+from dncore.extensions.craftswitcher.abc import ServerType
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
+from dncore.extensions.craftswitcher.errors import NoDownloadFile
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
+from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
 from dncore.extensions.craftswitcher.utils import call_event, datetime_now
@@ -64,6 +67,7 @@ class APIHandler(object):
         api.include_router(self._user())
         api.include_router(self._server())
         api.include_router(self._file())
+        api.include_router(self._jardl())
         api.include_router(self._plugins())
 
         @api.exception_handler(HTTPException)
@@ -331,6 +335,32 @@ class APIHandler(object):
                 raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
 
+        def realpath(swi_path: str, root_dir: Path = None):
+            try:
+                return self.files.realpath(swi_path, root_dir=root_dir)
+            except ValueError:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"Unable to access: {swi_path}")
+
+        downloaders = self.inst.server_downloaders
+
+        def getdownloader(server_type: ServerType):
+            try:
+                return downloaders[server_type][-1]
+            except (KeyError, IndexError):
+                raise APIErrorCode.NO_AVAILABLE_SERVER_TYPE.of("Not available downloader", 404)
+
+        async def getversion(version: str, downloader: ServerDownloader = Depends(getdownloader)):
+            for ver in await downloader.list_versions():
+                if ver.mc_version == version:
+                    return ver
+            raise APIErrorCode.NOT_EXISTS_SERVER_VERSION.of("No found version", 404)
+
+        async def getbuild(build: str, version: ServerMCVersion = Depends(getversion)):
+            for b in await version.list_builds():
+                if b.build == build:
+                    return b
+            raise APIErrorCode.NOT_EXISTS_SERVER_BUILD.of("No found build", 404)
+
         @api.get(
             "/servers",
             summary="登録サーバーの一覧",
@@ -439,7 +469,7 @@ class APIHandler(object):
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
-            server_dir = self.inst.files.realpath(param.directory)
+            server_dir = realpath(param.directory)
             if not server_dir.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
 
@@ -461,9 +491,9 @@ class APIHandler(object):
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
-            server_dir = self.inst.files.realpath(param.directory)
-            if not server_dir.is_dir():
-                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists directory")
+            server_dir = realpath(param.directory)
+            if not server_dir.parent.is_dir():
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists parent directory")
 
             config = inst.create_server_config(server_dir)
             config.name = param.name
@@ -540,6 +570,22 @@ class APIHandler(object):
         async def _reload_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
             server._config.load()
             return await _get_config(server)
+
+        @api.post(
+            "/server/{server_id}/install",
+            summary="サーバーJarのインストール",
+            description="ビルドが必要な場合は、サーバーの初回起動時に実行されます。"
+        )
+        async def _post_install(
+                server_type: ServerType,
+                server: "ServerProcess" = Depends(getserver),
+                build: ServerBuild = Depends(getbuild),
+        ) -> model.FileOperationResult:
+            try:
+                task = await self.inst.download_server_jar(server, build, server_type)
+            except NoDownloadFile as e:
+                raise APIErrorCode.NO_AVAILABLE_DOWNLOAD.of(str(e))
+            return model.FileOperationResult.pending(task.id)
 
         return api
 
@@ -985,6 +1031,87 @@ class APIHandler(object):
             return await _archive_make(path, files_root, include_files)
 
         return api
+
+    def _jardl(self):
+        api = APIRouter(
+            prefix="/jardl",
+            tags=["Server Installer", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+        downloaders = self.inst.server_downloaders
+
+        def getdownloader(server_type: ServerType):
+            try:
+                return downloaders[server_type][-1]
+            except (KeyError, IndexError):
+                raise APIErrorCode.NO_AVAILABLE_SERVER_TYPE.of("Not available downloader", 404)
+
+        async def getversion(version: str, downloader: ServerDownloader = Depends(getdownloader)):
+            for ver in await downloader.list_versions():
+                if ver.mc_version == version:
+                    return ver
+            raise APIErrorCode.NOT_EXISTS_SERVER_VERSION.of("No found version", 404)
+
+        async def getbuild(build: str, version: ServerMCVersion = Depends(getversion)):
+            for b in await version.list_builds():
+                if b.build == build:
+                    return b
+            raise APIErrorCode.NOT_EXISTS_SERVER_BUILD.of("No found build", 404)
+
+        # handler
+
+        @api.get(
+            "/types",
+            summary="利用可能なサーバーのタイプ",
+        )
+        def __lists() -> list[ServerType]:
+            return [typ for typ, ls in downloaders.items() if ls]
+
+        @api.get(
+            "/{server_type}/versions",
+            summary="対応バージョンの一覧"
+        )
+        async def __versions(downloader: ServerDownloader = Depends(getdownloader)) -> list[model.JarDLVersionInfo]:
+            versions = await downloader.list_versions()
+
+            return [model.JarDLVersionInfo(
+                version=v.mc_version,
+                build_count=None if v.builds is None else len(v.builds)
+            ) for v in versions]
+
+        @api.get(
+            "/{server_type}/version/{version}/builds",
+            summary="ビルドの一覧",
+        )
+        async def __builds(version: ServerMCVersion = Depends(getversion)) -> list[model.JarDLBuildInfo]:
+            builds = await version.list_builds()
+
+            return [model.JarDLBuildInfo(
+                build=b.build,
+                download_url=b.download_url,
+                java_major_version=b.java_major_version,
+                updated_datetime=b.updated_datetime,
+                recommended=b.recommended,
+                is_require_build=b.is_require_build(),
+                is_loaded_info=b.is_loaded_info(),
+            ) for b in builds]
+
+        @api.get(
+            "/{server_type}/version/{version}/build/{build}",
+            summary="ビルドの情報",
+            description="ビルドの追加情報を取得して返します。"
+        )
+        async def __build_info(build: ServerBuild = Depends(getbuild)) -> model.JarDLBuildInfo:
+            await build.fetch_info()
+            return model.JarDLBuildInfo(
+                build=build.build,
+                download_url=build.download_url,
+                java_major_version=build.java_major_version,
+                updated_datetime=build.updated_datetime,
+                recommended=build.recommended,
+                is_require_build=build.is_require_build(),
+                is_loaded_info=build.is_loaded_info(),
+            )
 
     def _plugins(self):
         api = APIRouter(

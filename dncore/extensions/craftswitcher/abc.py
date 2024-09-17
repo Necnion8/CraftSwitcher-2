@@ -54,11 +54,20 @@ class ServerType(Enum):
     UNKNOWN = "unknown"
     CUSTOM = "custom"
     VANILLA = "vanilla"
+    # bukkit
     SPIGOT = "spigot"
     PAPER = "paper"
+    PURPUR = "purpur"
+    FOLIA = "folia"
+    # forge
     FORGE = "forge"
     NEO_FORGE = "neo_forge"
+    MOHIST = "mohist"
+    YOUER = "youer"
+    # fabric
     FABRIC = "fabric"
+    BANNER = "banner"
+    # proxy
     BUNGEECORD = "bungeecord"
     WATERFALL = "waterfall"
     VELOCITY = "velocity"
@@ -82,9 +91,14 @@ SERVER_TYPE_SPECS = {
     ServerType.VANILLA: _ServerType("vanilla", "stop", False, False),
     ServerType.SPIGOT: _ServerType("spigot", "stop", False, False),
     ServerType.PAPER: _ServerType("paper", "stop", False, False),
+    ServerType.PURPUR: _ServerType("purpur", "stop", False, False),
+    ServerType.FOLIA: _ServerType("folia", "stop", False, False),
     ServerType.FORGE: _ServerType("forge", "stop", False, True),
     ServerType.NEO_FORGE: _ServerType("neo_forge", "stop", False, True),
+    ServerType.MOHIST: _ServerType("mohist", "stop", False, True),
+    ServerType.YOUER: _ServerType("youer", "stop", False, True),
     ServerType.FABRIC: _ServerType("fabric", "stop", False, True),
+    ServerType.BANNER: _ServerType("banner", "stop", False, True),
     ServerType.BUNGEECORD: _ServerType("bungeecord", "end", True, False),
     ServerType.WATERFALL: _ServerType("waterfall", "end", True, False),
     ServerType.VELOCITY: _ServerType("velocity", "end", True, False),

@@ -46,6 +46,7 @@ class APIErrorCode(IntEnum):
     NOT_ALLOWED_PATH = auto()
     NOT_FILE = auto()
     NO_SUPPORTED_ARCHIVE_FORMAT = auto()
+    NO_AVAILABLE_DOWNLOAD = auto()
 
     # auth
     INVALID_AUTHENTICATION_CREDENTIALS = 400
@@ -58,6 +59,11 @@ class APIErrorCode(IntEnum):
     # plugin
     PLUGIN_NOT_FOUND = 600
     NOT_EXISTS_PLUGIN_FILE = auto()
+
+    # jardl
+    NO_AVAILABLE_SERVER_TYPE = 700
+    NOT_EXISTS_SERVER_VERSION = auto()
+    NOT_EXISTS_SERVER_BUILD = auto()
 
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)

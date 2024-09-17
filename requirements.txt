@@ -12,4 +12,6 @@ aiosqlite
 passlib
 bcrypt
 pywinpty; sys_platform == "win32"
+pydantic
+aiohttp
 watchdog
