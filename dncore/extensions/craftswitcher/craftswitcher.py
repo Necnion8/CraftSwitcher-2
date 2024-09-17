@@ -18,8 +18,8 @@ from .event import *
 from .ext import SwitcherExtensionManager
 from .files import FileManager
 from .files.event import *
-from .jardl import ServerDownloader, ServerBuild
 from .files.event import WatchdogEvent
+from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask

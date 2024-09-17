@@ -2,8 +2,8 @@ import asyncio
 import os
 import re
 import shutil
-from logging import getLogger
 import urllib.parse
+from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
 
