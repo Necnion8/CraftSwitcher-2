@@ -396,7 +396,7 @@ class CraftSwitcher(EventListener):
                 if not jar_build.is_loaded_info():
                     await jar_build.fetch_info()
         except Exception as e:
-            raise NoDownloadFile("No available download url: fetch error") from e
+            raise NoDownloadFile("No available download url: jar_build.fetch_info() error") from e
 
         if not jar_build.download_url:
             raise NoDownloadFile("No available download url")
