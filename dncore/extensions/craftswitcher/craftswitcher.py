@@ -568,12 +568,17 @@ class CraftSwitcher(EventListener):
         if not filename:
             filename = "builder.jar" if jar_build.is_require_build() else "server.jar"
 
-        dst = server.directory / filename
-        _loop = 0
-        while dst.exists():
-            _loop += 1
-            name, *suf = filename.rsplit(".", 1)
-            dst = server.directory / ".".join([f"{name}-{_loop}", *suf])
+        download_dir = jar_build.work_dir
+        cwd = server.directory / download_dir if download_dir else server.directory
+        dst = cwd / filename
+        if cwd.exists():
+            _loop = 0
+            while dst.exists():
+                _loop += 1
+                name, *suf = filename.rsplit(".", 1)
+                dst = cwd / ".".join([f"{name}-{_loop}", *suf])
+        else:
+            cwd.mkdir(exist_ok=True, parents=True)
 
         dst_swi = self.files.swipath(dst, root_dir=server.directory)
         task = self.files.download(jar_build.download_url, dst, server, dst_swi_path=dst_swi)
