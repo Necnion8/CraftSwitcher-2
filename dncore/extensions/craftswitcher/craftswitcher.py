@@ -333,7 +333,10 @@ class CraftSwitcher(EventListener):
                     await s.wait_for_shutdown()
                 except asyncio.TimeoutError:
                     log.warning("Shutdown expired: %s", s.id)
-                    # await s.kill()
+                    try:
+                        await s.kill()
+                    except Exception as e:
+                        log.warning("Exception in server.kill()", exc_info=e)
 
         if self.servers:
             log.info("Shutdown server all!")

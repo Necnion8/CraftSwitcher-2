@@ -266,6 +266,8 @@ class ServerProcess(object):
             self, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ):
+        self.log.debug("directory: %s", str(cwd))
+        self.log.debug("start process: %s", shlex.join(args))
         return await PtyProcessWrapper.spawn(
             args=args,
             cwd=cwd,
@@ -312,15 +314,19 @@ class ServerProcess(object):
                 asyncio.create_task(_do_on_exited())
 
         try:
-            env = {
-                "SWITCHER_SERVER_NAME": self.id,
-            }
+            cwd = self.directory
+            env = dict(os.environ)
+            env["SWITCHER_SERVER_NAME"] = self.id
 
             if builder:
-                args = await builder.build_arguments()
-                _env = builder.build_environ()
-                if _env:
-                    env.update(_env)
+                params = ServerBuilder.Parameters(cwd, env)
+                await builder.on_call(params)
+                args = params.args
+                env = params.env
+                cwd = params.cwd
+
+                if not args:
+                    raise ValueError("Empty params.args")
 
             else:
                 if not self.check_free_memory():
@@ -328,8 +334,8 @@ class ServerProcess(object):
                 args = await self._build_arguments()
 
             wrapper = self.wrapper = await self._start_subprocess(
-                args, self.directory, term_size=self.term_size, env=env, read_handler=self._term_read)
-            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+                args, cwd, term_size=self.term_size, env=env, read_handler=self._term_read)
+
             try:
                 await asyncio.wait_for(wrapper.wait(), timeout=1)
             except asyncio.TimeoutError:
@@ -339,11 +345,12 @@ class ServerProcess(object):
             self.log.exception("Exception in pre start", exc_info=e)
             if builder:
                 await builder.on_error(e)
-            raise errors.ServerLaunchError from e
+            raise errors.ServerLaunchError(str(e)) from e
 
         ret = wrapper.exit_status
         if ret is None:
             self.state = ServerState.BUILD if builder else ServerState.RUNNING
+            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
 
         else:
             self.log.warning("Exited process: return code: %s", ret)
@@ -487,12 +494,12 @@ if sys.platform == "win32":
             # noinspection PyTypeChecker
             _cwd: bytes = str(cwd)
 
-            _env = "\0".join(map(str, env)) if env else None
+            _env = ("\0".join([f"{k}={v}" for k, v in env.items()]) + "\0") if env else None
 
             func = partial(pty.spawn, _appname, _cmdline, _cwd, _env)
             loop = asyncio.get_running_loop()
 
-            if not loop.run_in_executor(None, func):
+            if not await loop.run_in_executor(None, func):
                 raise RuntimeError("Unable to pty.spawn")
 
             wrapper = cls(pty.pid, cwd, args, pty)
@@ -509,7 +516,12 @@ if sys.platform == "win32":
 
             try:
                 while pty_isalive():
-                    chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
+                    try:
+                        chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
+                    except winpty.WinptyError as e:
+                        if str(e).endswith("EOF"):
+                            break
+                        raise e
                     queue_put(chunk)
             except Exception as e:
                 _log.exception("Exception in pty.read", exc_info=e)
