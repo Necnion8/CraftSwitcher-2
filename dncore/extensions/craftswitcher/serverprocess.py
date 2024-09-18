@@ -416,8 +416,12 @@ class ServerProcess(object):
         if ServerState.BUILD == self.state:
             raise ValueError("Already running build")
         if self.builder:
-            await self.builder._clean()
-        self.builder = None
+            try:
+                await self.builder._clean()
+            except FileNotFoundError:
+                pass
+            finally:
+                self.builder = None
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):

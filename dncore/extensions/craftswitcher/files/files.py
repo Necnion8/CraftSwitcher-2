@@ -259,9 +259,28 @@ class FileManager(object):
         """
         ファイルを削除するタスクを作成し、実行します。
         """
+        def onerror(func, path, exc_info):
+            """
+            https://stackoverflow.com/a/2656405
+
+            Error handler for ``shutil.rmtree``.
+
+            If the error is due to an access error (read only file)
+            it attempts to add write permission and then retries.
+
+            If the error is for another reason it re-raises the error.
+            """
+            import stat
+            # Is the error an access error?
+            if not os.access(path, os.W_OK):
+                os.chmod(path, stat.S_IWUSR)
+                func(path)
+            else:
+                raise
+
         def _do():
             if src.is_dir():
-                shutil.rmtree(src)
+                shutil.rmtree(src, onerror=onerror)
             else:
                 os.remove(src)
 
