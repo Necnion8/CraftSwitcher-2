@@ -1113,6 +1113,8 @@ class APIHandler(object):
                 is_loaded_info=build.is_loaded_info(),
             )
 
+        return api
+
     def _plugins(self):
         api = APIRouter(
             tags=["Plugins", ],

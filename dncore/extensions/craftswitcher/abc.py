@@ -30,7 +30,7 @@ class ServerState(Enum):
         return self not in (ServerState.STOPPED, ServerState.UNKNOWN, )
 
     def __lt__(self, other: "ServerState"):
-        return _SERVER_STATE_VALUE[self] < _SERVER_STATE_VALUE[other]
+        return _SERVER_STATE_VALUE.get(self, -1) < _SERVER_STATE_VALUE.get(other, -1)
 
 
 _SERVER_STATE_VALUE = {

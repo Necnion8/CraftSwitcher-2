@@ -586,7 +586,7 @@ class CraftSwitcher(EventListener):
 
             jar_build.downloaded_path = dst
             if jar_build.is_require_build():
-                await jar_build.setup_builder(server, dst)  # TODO: ビルダー処理を実装
+                server.builder = await jar_build.setup_builder(server, dst)
 
             else:
                 config = server._config
