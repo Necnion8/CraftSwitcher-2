@@ -143,44 +143,46 @@ class CraftSwitcher(EventListener):
         await call_event(SwitcherShutdownEvent())
 
         try:
-            del CraftSwitcher._inst
-        except AttributeError:
-            pass
-        self._initialized = False
+            try:
+                await self.shutdown_all_servers()
+            except Exception as e:
+                log.warning("Exception in shutdown servers", exc_info=e)
 
-        try:
-            await self.shutdown_all_servers()
-        except Exception as e:
-            log.warning("Exception in shutdown servers", exc_info=e)
+            try:
+                await self.close_api_server()
+            except Exception as e:
+                log.warning("Exception in close api server", exc_info=e)
 
-        try:
-            await self.close_api_server()
-        except Exception as e:
-            log.warning("Exception in close api server", exc_info=e)
+            try:
+                self.clear_file_watch()
+                await self.files.shutdown()
+            except Exception as e:
+                log.warning("Exception in shutdown file manager", exc_info=e)
 
-        try:
-            self.clear_file_watch()
-            await self.files.shutdown()
-        except Exception as e:
-            log.warning("Exception in shutdown file manager", exc_info=e)
+            try:
+                await self.database.close()
+            except Exception as e:
+                log.warning("Exception in close database", exc_info=e)
 
-        try:
-            await self.database.close()
-        except Exception as e:
-            log.warning("Exception in close database", exc_info=e)
+            extensions = dict(self.extensions.extensions)
+            self.extensions.extensions.clear()
+            waits = [asyncio.shield(call_event(SwitcherExtensionRemoveEvent(i))) for i in extensions.values()]
+            if waits:
+                await asyncio.wait(waits)
 
-        extensions = dict(self.extensions.extensions)
-        self.extensions.extensions.clear()
-        waits = [asyncio.shield(call_event(SwitcherExtensionRemoveEvent(i))) for i in extensions.values()]
-        if waits:
-            await asyncio.wait(waits)
+            try:
+                self.unload_servers()
+            except ValueError as e:
+                log.warning(f"Failed to unload_Servers: {e}")
 
-        try:
-            self.unload_servers()
-        except ValueError as e:
-            log.warning(f"Failed to unload_Servers: {e}")
+            AsyncCallTimer.cancel_all_timers()
 
-        AsyncCallTimer.cancel_all_timers()
+        finally:
+            try:
+                del CraftSwitcher._inst
+            except AttributeError:
+                pass
+            self._initialized = False
 
     def load_config(self):
         log.debug("Loading config")
