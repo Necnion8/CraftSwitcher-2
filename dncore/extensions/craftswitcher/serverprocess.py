@@ -227,7 +227,7 @@ class ServerProcess(object):
         data = data.lstrip()
         self.log.info(f"[OUTPUT]: {data!r}")
 
-        if self.builder and ServerState.BUILD == self.state:
+        if self.builder and self.builder.state == ServerBuildStatus.PENDING:
             try:
                 await self.builder._read(data)
             except Exception as e:
