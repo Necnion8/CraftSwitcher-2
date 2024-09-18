@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from dncore.extensions.craftswitcher import abc
 from dncore.extensions.craftswitcher.files import abc as fabc
 from dncore.extensions.craftswitcher.files.archive import abc as aabc
+from dncore.extensions.craftswitcher.jardl import ServerBuildStatus
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
@@ -20,7 +21,7 @@ class Server(BaseModel):
     state: abc.ServerState = Field(description="状態")
     directory: str | None = Field(description="サーバーがある場所のパス。rootDirに属さないサーバーは null")
     is_loaded: bool = Field(description="サーバー設定がロードされているか")
-    build_status: "ServerBuildStatus | None" = Field(description="ビルドステータス")
+    build_status: ServerBuildStatus | None = Field(description="ビルドステータス")
 
     @classmethod
     def create(cls, server: "ServerProcess", directory: str | None):
