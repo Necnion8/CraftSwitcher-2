@@ -548,7 +548,7 @@ class APIHandler(object):
             summary="サーバー設定の更新",
             description="サーバーの設定を変更します",
         )
-        async def _put_config(server: "ServerProcess" = Depends(getserver), param: model.ServerConfig = Depends(),
+        async def _put_config(param: model.ServerConfig, server: "ServerProcess" = Depends(getserver),
                               ) -> model.ServerConfig:
             config = server._config  # type: ServerConfig
             for key, value in param.model_dump(exclude_unset=True).items():
