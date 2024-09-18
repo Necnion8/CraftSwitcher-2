@@ -1,8 +1,11 @@
 import re
+from logging import getLogger
+from pathlib import Path
 
 import aiohttp
 
-from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SV
+from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV
+from ..abc import ServerType
 
 __all__ = [
     "SpigotBuild",
@@ -10,11 +13,43 @@ __all__ = [
 ]
 VERSIONS_URL = "https://hub.spigotmc.org/versions/"
 VERSION_PATTERN = re.compile(rb"<a href=\"(?P<v>\d+\.\d+(\.\d+)?)\.json\">")
+BUILD_SAVED_PATTERN = re.compile(r"^\r?\n? *- Saved as (.*\.jar)\r?\n?$")
+log = getLogger(__name__)
+
+
+class SpigotBuilder(ServerBuilder):
+    _saved_name: str | None
+
+    async def _call(self, params: ServerBuilder.Parameters):
+        self.jar_filename = None
+        params.cwd = self.build.downloaded_path.parent
+        params.args = [
+            str(self.server.config.launch_option.java_executable),
+            "-jar",
+            str(self.build.downloaded_path.name),
+            "--compile", "SPIGOT",
+            "--rev", self.build.mc_version,
+            # "--output-dir", str(self.server.directory),  # なぜか最後でエラーになるので
+            "--output-dir", "..",
+        ]
+
+    async def _read(self, data: str):
+        m = BUILD_SAVED_PATTERN.search(data)
+        if m:
+            self.jar_filename = Path(m.group(1)).name
+
+    async def _exited(self, return_code: int):
+        if return_code == 0 and not self.jar_filename:
+            log.warning("Output jar file name not found in build log: bug?")
+        return await super()._exited(return_code)
 
 
 class SpigotBuild(ServerBuild):
     def is_require_build(self):
         return True
+
+    async def setup_builder(self, server, downloaded_path) -> SpigotBuilder:
+        return SpigotBuilder(ServerType.SPIGOT, self, server)
 
 
 class SpigotServerDownloader(ServerDownloader):
@@ -28,7 +63,7 @@ class SpigotServerDownloader(ServerDownloader):
         for match in VERSION_PATTERN.finditer(content):
             ver = match.group("v").decode("utf-8")
             version = ServerMCVersion(ver, [
-                SpigotBuild(ver, "latest", download_url=dl_url),
+                SpigotBuild(ver, "latest", download_url=dl_url, work_dir=".spigot-builder"),
             ])
             _versions.append(version)
 
