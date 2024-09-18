@@ -229,7 +229,7 @@ class ServerProcess(object):
 
         if self.builder and ServerState.BUILD == self.state:
             try:
-                await self.builder.on_read(data)
+                await self.builder._read(data)
             except Exception as e:
                 self.log.warning("Exception in builder.on_read", exc_info=e)
 
@@ -306,7 +306,7 @@ class ServerProcess(object):
 
             if builder:
                 async def _do_on_exited():
-                    result = await builder.on_exited(ret_)
+                    result = await builder._exited(ret_)
                     self.log.info("Build Result: %s", result.name)
                     if ServerBuildStatus.SUCCESS == result:
                         if builder.apply_server_jar(self._config):
@@ -322,7 +322,7 @@ class ServerProcess(object):
 
             if builder:
                 params = ServerBuilder.Parameters(cwd, env)
-                await builder.on_call(params)
+                await builder._call(params)
                 args = params.args
                 env = params.env
                 cwd = params.cwd
@@ -348,7 +348,7 @@ class ServerProcess(object):
         except Exception as e:
             self.log.exception("Exception in pre start", exc_info=e)
             if builder:
-                await builder.on_error(e)
+                await builder._error(e)
             raise errors.ServerLaunchError(str(e)) from e
 
         ret = wrapper.exit_status

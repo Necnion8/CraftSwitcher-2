@@ -51,20 +51,20 @@ class ServerBuilder(object):
     def state(self, new_state: ServerBuildStatus):
         self._state = new_state
 
-    async def on_call(self, params: Parameters):
+    async def _call(self, params: Parameters):
         raise NotImplementedError
 
-    async def on_read(self, data: str):
+    async def _read(self, data: str):
         pass
 
-    async def on_error(self, exception: Exception):
+    async def _error(self, exception: Exception):
         self.state = ServerBuildStatus.FAILED
 
-    async def on_exited(self, return_code: int) -> ServerBuildStatus:
+    async def _exited(self, return_code: int) -> ServerBuildStatus:
         self.state = state = ServerBuildStatus.SUCCESS if return_code == 0 else ServerBuildStatus.FAILED
         return state
 
-    async def on_clean(self):
+    async def _clean(self):
         if self.work_dir:
             getinst().files.delete(self.work_dir, self.server)
 
