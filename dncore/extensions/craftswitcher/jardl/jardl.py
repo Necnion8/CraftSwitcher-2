@@ -1,16 +1,74 @@
 import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Generic, TYPE_CHECKING
 
 __all__ = [
+    "ServerBuildStatus",
+    "ServerBuilder",
     "ServerBuild",
     "ServerMCVersion",
     "ServerDownloader",
     "defaults",
 ]
 
+from dncore.extensions.craftswitcher.abc import ServerType
+
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
+    from dncore.extensions.craftswitcher.config import ServerConfig
+
+
+
+class ServerBuildStatus(Enum):
+    STANDBY = "standby"
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+# noinspection PyMethodMayBeStatic
+class ServerBuilder(object):
+    def __init__(self, server_type: ServerType, build: "ServerBuild", server: "ServerProcess"):
+        self.server_type = server_type
+        self.build = build
+        self.server = server
+        self._state = ServerBuildStatus.STANDBY
+        self.jar_filename = None  # type: str | None
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_state: ServerBuildStatus):
+        self._state = new_state
+
+    def build_environ(self) -> dict[str, str]:
+        return dict()
+
+    async def build_arguments(self) -> list[str]:
+        raise NotImplementedError
+
+    async def on_read(self, data: str):
+        pass
+
+    async def on_error(self, exception: Exception):
+        pass
+
+    async def on_exited(self, return_code: int) -> ServerBuildStatus:
+        self.state = state = ServerBuildStatus.SUCCESS if return_code == 0 else ServerBuildStatus.FAILED
+        return state
+
+    def apply_server_jar(self, config: "ServerConfig") -> bool:
+        jar_filename = self.jar_filename
+        if jar_filename:
+            config.type = self.server_type
+            config.enable_launch_command = False
+            config.launch_option.jar_file = jar_filename
+            config.save()
+            return True
+        return False
 
 
 class ServerBuild(object):
@@ -50,7 +108,7 @@ class ServerBuild(object):
     async def _fetch_info(self) -> bool:
         return False
 
-    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path):
+    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path) -> ServerBuilder:
         pass
 
 

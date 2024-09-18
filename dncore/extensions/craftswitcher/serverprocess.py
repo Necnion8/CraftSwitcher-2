@@ -9,13 +9,13 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
-from typing import Awaitable, Any
-from typing import Callable
+from typing import Awaitable, Any, Callable
 
 from . import errors
 from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
 from .event import *
+from .jardl import ServerBuilder, ServerBuildStatus
 from .utils import *
 
 _log = logging.getLogger(__name__)
@@ -145,6 +145,7 @@ class ServerProcess(object):
         self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
+        self._builder = None  # type: ServerBuilder | None
         #
         self.shutdown_to_restart = False
 
@@ -157,6 +158,21 @@ class ServerProcess(object):
         if self._directory != new_dir:
             self.log.debug("Update directory: %s -> %s", self._directory, new_dir)
         self._directory = new_dir
+
+    @property
+    def builder(self):
+        return self._builder
+
+    @builder.setter
+    def builder(self, new_builder: ServerBuilder | None):
+        if self._builder is not new_builder:
+            self.log.debug("Set builder: %s", new_builder)
+        self._builder = new_builder
+
+    @property
+    def build_status(self) -> ServerBuildStatus | None:
+        if self._builder:
+            return self._builder.state
 
     @property
     def _is_running(self):
@@ -211,6 +227,12 @@ class ServerProcess(object):
         data = data.lstrip()
         self.log.info(f"[OUTPUT]: {data!r}")
 
+        if self.builder and ServerState.BUILD == self.state:
+            try:
+                await self.builder.on_read(data)
+            except Exception as e:
+                self.log.warning("Exception in builder.on_read", exc_info=e)
+
         if data:
             call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
 
@@ -252,29 +274,53 @@ class ServerProcess(object):
             read_handler=read_handler,
         )
 
-    async def start(self):
+    async def start(self, *, no_build=False):
         if self._is_running:
             raise errors.AlreadyRunningError
 
-        self.log.info(f"Starting {self.id} server process")
-        _event = await call_event(ServerPreStartEvent(self))
-        if _event.cancelled:
-            raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
+        builder = self._builder
+        if no_build or (builder and ServerBuildStatus.STANDBY != builder.state):
+            builder = None
+
+        if builder:
+            self.log.info("Starting build process")
+            await call_event(ServerBuildPreStartEvent(self))
+        else:
+            self.log.info(f"Starting server process")
+            _event = await call_event(ServerPreStartEvent(self))
+            if _event.cancelled:
+                raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
 
         def _end(_):
             ret_ = wrapper.exit_status
-            self.log.info("Stopped server process (ret: %s)", ret_)
+            self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
             self.state = ServerState.STOPPED
             self._perf_mon = None
 
-        try:
-            if not self.check_free_memory():
-                raise errors.OutOfMemoryError
+            if builder:
+                async def _do_on_exited():
+                    result = await builder.on_exited(ret_)
+                    self.log.info("Build Result: %s", result.name)
+                    if ServerBuildStatus.SUCCESS == result and builder.apply_server_jar(self._config):
+                        self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
 
-            args = await self._build_arguments()
+                asyncio.create_task(_do_on_exited())
+
+        try:
             env = {
                 "SWITCHER_SERVER_NAME": self.id,
             }
+
+            if builder:
+                args = await builder.build_arguments()
+                _env = builder.build_environ()
+                if _env:
+                    env.update(_env)
+
+            else:
+                if not self.check_free_memory():
+                    raise errors.OutOfMemoryError
+                args = await self._build_arguments()
 
             wrapper = self.wrapper = await self._start_subprocess(
                 args, self.directory, term_size=self.term_size, env=env, read_handler=self._term_read)
@@ -286,11 +332,13 @@ class ServerProcess(object):
 
         except Exception as e:
             self.log.exception("Exception in pre start", exc_info=e)
+            if builder:
+                await builder.on_error(e)
             raise errors.ServerLaunchError from e
 
         ret = wrapper.exit_status
         if ret is None:
-            self.state = ServerState.RUNNING
+            self.state = ServerState.BUILD if builder else ServerState.RUNNING
 
         else:
             self.log.warning("Exited process: return code: %s", ret)

@@ -588,6 +588,7 @@ class CraftSwitcher(EventListener):
             else:
                 config = server._config
                 config.type = server_type
+                config.enable_launch_command = False
                 config.launch_option.jar_file = dst.name
                 config.save()
 

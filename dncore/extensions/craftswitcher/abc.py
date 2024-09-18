@@ -19,6 +19,7 @@ class ServerState(Enum):
     STARTING = "starting"
     STOPPING = "stopping"
     RUNNING = "running"
+    BUILD = "build"
 
     @classmethod
     def _missing_(cls, value):
