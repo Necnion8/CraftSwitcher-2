@@ -340,6 +340,8 @@ class CraftSwitcher(EventListener):
                     except Exception as e:
                         log.warning("Exception in server.kill()", exc_info=e)
 
+            await s.clean_builder()
+
         if self.servers:
             log.info("Shutdown server all!")
             await asyncio.wait([_shutdown(s) for s in self.servers.values() if s])

@@ -66,7 +66,7 @@ class ServerBuilder(object):
 
     async def _clean(self):
         if self.work_dir:
-            getinst().files.delete(self.work_dir, self.server)
+            await getinst().files.delete(self.work_dir, self.server)
 
     def apply_server_jar(self, config: "ServerConfig") -> bool:
         jar_filename = self.jar_filename

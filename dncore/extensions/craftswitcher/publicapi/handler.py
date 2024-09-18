@@ -599,7 +599,7 @@ class APIHandler(object):
             if ServerState.BUILD == server.state:
                 return model.ServerOperationResult.failed(server)
 
-            server.builder = None
+            await server.clean_builder()
             return model.ServerOperationResult.success(server)
 
         return api

@@ -311,7 +311,8 @@ class ServerProcess(object):
                     if ServerBuildStatus.SUCCESS == result:
                         if builder.apply_server_jar(self._config):
                             self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
-                        self.builder = None
+                        await asyncio.sleep(1)
+                        await self.clean_builder()
 
                 asyncio.create_task(_do_on_exited())
 
@@ -358,7 +359,7 @@ class ServerProcess(object):
 
         else:
             self.log.warning("Exited process: return code: %s", ret)
-            raise errors.ServerLaunchError(f"Failed to launch: process exited {ret}")
+            raise errors.ServerLaunchError(f"process exited {ret}")
 
         try:
             self._perf_mon = ProcessPerformanceMonitor(wrapper.pid)
@@ -410,6 +411,13 @@ class ServerProcess(object):
     async def restart(self):
         await self.stop()
         self.shutdown_to_restart = True
+
+    async def clean_builder(self):
+        if ServerState.BUILD == self.state:
+            raise ValueError("Already running build")
+        if self.builder:
+            await self.builder._clean()
+        self.builder = None
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):
