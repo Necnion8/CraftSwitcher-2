@@ -335,6 +335,8 @@ class ServerProcess(object):
 
             wrapper = self.wrapper = await self._start_subprocess(
                 args, cwd, term_size=self.term_size, env=env, read_handler=self._term_read)
+            if builder:
+                builder.state = ServerBuildStatus.PENDING
 
             try:
                 await asyncio.wait_for(wrapper.wait(), timeout=1)

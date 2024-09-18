@@ -20,6 +20,7 @@ class Server(BaseModel):
     state: abc.ServerState = Field(description="状態")
     directory: str | None = Field(description="サーバーがある場所のパス。rootDirに属さないサーバーは null")
     is_loaded: bool = Field(description="サーバー設定がロードされているか")
+    build_status: "ServerBuildStatus | None" = Field(description="ビルドステータス")
 
     @classmethod
     def create(cls, server: "ServerProcess", directory: str | None):
@@ -30,6 +31,7 @@ class Server(BaseModel):
             state=server.state,
             directory=directory,
             is_loaded=True,
+            build_status=server.build_status,
         )
 
     @classmethod
@@ -41,6 +43,7 @@ class Server(BaseModel):
             state=abc.ServerState.UNKNOWN,
             directory=directory,
             is_loaded=False,
+            build_status=None,
         )
 
 
@@ -51,6 +54,10 @@ class ServerOperationResult(BaseModel):
     @classmethod
     def success(cls, server: "str | ServerProcess"):
         return cls(result=True, server_id=server if isinstance(server, str) else server.id)
+
+    @classmethod
+    def failed(cls, server: "str | ServerProcess"):
+        return cls(result=False, server_id=server if isinstance(server, str) else server.id)
 
 
 class CreateServerParam(BaseModel):
@@ -234,6 +241,7 @@ class JarDLBuildInfo(BaseModel):
     recommended: bool
     is_require_build: bool
     is_loaded_info: bool
+
 
 class PluginEditableFile(BaseModel):
     key: str

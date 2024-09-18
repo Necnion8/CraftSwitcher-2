@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
-from dncore.extensions.craftswitcher.abc import ServerType
+from dncore.extensions.craftswitcher.abc import ServerType, ServerState
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile
@@ -388,11 +388,13 @@ class APIHandler(object):
         @api.post(
             "/server/{server_id}/start",
             summary="サーバーを起動",
-            description="サーバーを起動します",
+            description="サーバーを起動します。\nbuild_status が STANDBY の場合はサーバーを起動せず、代わりにビルダーを実行します。",
         )
-        async def _start(server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
+        async def _start(server: "ServerProcess" = Depends(getserver),
+                         no_build: bool = Query(False, description="ビルダーが設定されていてもビルドを実行しません"),
+                         ) -> model.ServerOperationResult:
             try:
-                await server.start()
+                await server.start(no_build=no_build)
             except errors.AlreadyRunningError:
                 raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
             except errors.OutOfMemoryError:
@@ -586,6 +588,19 @@ class APIHandler(object):
             except NoDownloadFile as e:
                 raise APIErrorCode.NO_AVAILABLE_DOWNLOAD.of(str(e))
             return model.FileOperationResult.pending(task.id)
+
+        @api.delete(
+            "/server/{server_id}/build",
+            summary="ビルダーを削除します",
+        )
+        async def _delete_build(
+                server: "ServerProcess" = Depends(getserver),
+        ) -> model.ServerOperationResult:
+            if ServerState.BUILD == server.state:
+                return model.ServerOperationResult.failed(server)
+
+            server.builder = None
+            return model.ServerOperationResult.success(server)
 
         return api
 
