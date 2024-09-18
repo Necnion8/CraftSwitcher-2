@@ -141,6 +141,7 @@ class ServerProcess(object):
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
 
+        self.term_size = 80, 25
         self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
@@ -240,12 +241,12 @@ class ServerProcess(object):
 
     # noinspection PyMethodMayBeStatic
     async def _start_subprocess(
-            self, args: list[str], term_size: tuple[int, int], env: dict[str, Any] = None,
+            self, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ):
         return await PtyProcessWrapper.spawn(
             args=args,
-            cwd=self.directory,
+            cwd=cwd,
             term_size=term_size,
             env=env,
             read_handler=read_handler,
@@ -276,7 +277,7 @@ class ServerProcess(object):
             }
 
             wrapper = self.wrapper = await self._start_subprocess(
-                args, term_size=(80, 25), env=env, read_handler=self._term_read)
+                args, self.directory, term_size=self.term_size, env=env, read_handler=self._term_read)
             self.loop.create_task(wrapper.wait()).add_done_callback(_end)
             try:
                 await asyncio.wait_for(wrapper.wait(), timeout=1)
