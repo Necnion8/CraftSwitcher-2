@@ -286,7 +286,7 @@ class ServerProcess(object):
             raise errors.AlreadyRunningError
 
         builder = self._builder
-        if no_build or (builder and ServerBuildStatus.STANDBY != builder.state):
+        if no_build:
             builder = None
 
         if builder:
@@ -308,8 +308,10 @@ class ServerProcess(object):
                 async def _do_on_exited():
                     result = await builder.on_exited(ret_)
                     self.log.info("Build Result: %s", result.name)
-                    if ServerBuildStatus.SUCCESS == result and builder.apply_server_jar(self._config):
-                        self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
+                    if ServerBuildStatus.SUCCESS == result:
+                        if builder.apply_server_jar(self._config):
+                            self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
+                        self.builder = None
 
                 asyncio.create_task(_do_on_exited())
 
