@@ -275,6 +275,11 @@ class ServerProcess(object):
         )
 
     async def start(self, *, no_build=False):
+        """
+        サーバーを起動します
+
+        準備が完了しているビルダーが設定されている場合は、no_buildが真でない限りビルドを実行します
+        """
         if self._is_running:
             raise errors.AlreadyRunningError
 
