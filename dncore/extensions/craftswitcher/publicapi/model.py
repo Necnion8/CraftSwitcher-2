@@ -106,7 +106,7 @@ class ServerConfig(BaseModel):
 class ServerGlobalConfig(BaseModel):
     launch_option__java_executable: str = Field("java", description="Javaコマンド、もしくはパス")
     launch_option__java_options: str = Field("-Dfile.encoding=UTF-8", description="Java オプション")
-    launch_option__server_options: str = Field("--nogui", description="サーバーオプション")
+    launch_option__server_options: str = Field("nogui", description="サーバーオプション")
     launch_option__max_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")
     launch_option__min_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")
     launch_option__enable_free_memory_check: bool = Field(True, description="起動時に空きメモリを確認する")
@@ -234,6 +234,7 @@ class JarDLBuildInfo(BaseModel):
     recommended: bool
     is_require_build: bool
     is_loaded_info: bool
+
 
 class PluginEditableFile(BaseModel):
     key: str

@@ -99,7 +99,7 @@ class LaunchGlobalOption(ConfigValues):
     # Java オプション
     java_options = "-Dfile.encoding=UTF-8"
     # サーバーオプション
-    server_options = "--nogui"
+    server_options = "nogui"
     # メモリ割り当て量 (単位: MB)
     max_heap_memory = 2048
     min_heap_memory = 2048
