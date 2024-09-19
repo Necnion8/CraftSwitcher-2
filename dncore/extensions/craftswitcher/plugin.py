@@ -38,7 +38,7 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
         players = sum(len(s.players) for s in servers)
 
         if not servers:
-            setting = conf.no_server.activity
+            setting = conf.no_server
             priority = conf.no_server_priority
         else:
             status = servers[-1].state
