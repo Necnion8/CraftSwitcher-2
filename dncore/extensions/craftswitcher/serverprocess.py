@@ -311,7 +311,10 @@ class ServerProcess(object):
                     self.log.info("Build Result: %s", result.name)
                     if ServerBuildStatus.SUCCESS == result:
                         if builder.apply_server_jar(self._config):
-                            self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
+                            if self.config.enable_launch_command:
+                                self.log.debug("Updated config: '%s' (command)", self.config.launch_command)
+                            else:
+                                self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
                         await asyncio.sleep(1)
                         await self.clean_builder()
 
