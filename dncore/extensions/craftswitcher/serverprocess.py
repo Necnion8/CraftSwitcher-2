@@ -349,6 +349,7 @@ class ServerProcess(object):
         except Exception as e:
             self.log.exception("Exception in pre start", exc_info=e)
             if builder:
+                builder.state = ServerBuildStatus.FAILED
                 await builder._error(e)
             raise errors.ServerLaunchError(str(e)) from e
 
@@ -358,6 +359,8 @@ class ServerProcess(object):
             self.loop.create_task(wrapper.wait()).add_done_callback(_end)
 
         else:
+            if builder:
+                builder.state = ServerBuildStatus.FAILED
             self.log.warning("Exited process: return code: %s", ret)
             raise errors.ServerLaunchError(f"process exited {ret}")
 
