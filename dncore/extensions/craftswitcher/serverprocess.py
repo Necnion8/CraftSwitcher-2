@@ -9,6 +9,7 @@ import threading
 import time
 from functools import partial
 from pathlib import Path
+from shutil import which
 from typing import Awaitable, Any, Callable
 
 from . import errors
@@ -494,6 +495,7 @@ class ProcessWrapper:
 
 if sys.platform == "win32":
     import winpty
+    from subprocess import list2cmdline
 
     class WinPtyProcessWrapper(ProcessWrapper):
         def __init__(self, pid: int, cwd: Path, args: list[str], pty: winpty.PTY):
@@ -506,14 +508,16 @@ if sys.platform == "win32":
                 *, read_handler: Callable[[str], Awaitable[None]],
         ) -> "WinPtyProcessWrapper":
             pty = winpty.PTY(*term_size)
+            env = env or os.environ
+
             # noinspection PyTypeChecker
-            _appname: bytes = args[0]
+            _appname: bytes = which(args[0], path=env.get("PATH", os.defpath)) or args[0]
             # noinspection PyTypeChecker
-            _cmdline: bytes = shlex.join(args[1:])
+            _cmdline: bytes = list2cmdline(args[1:])
             # noinspection PyTypeChecker
             _cwd: bytes = str(cwd)
 
-            _env = ("\0".join([f"{k}={v}" for k, v in env.items()]) + "\0") if env else None
+            _env = ("\0".join([f"{k}={v}" for k, v in env.items()]) + "\0")
 
             func = partial(pty.spawn, _appname, _cmdline, _cwd, _env)
             loop = asyncio.get_running_loop()
