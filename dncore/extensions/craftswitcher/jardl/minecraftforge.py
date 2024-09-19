@@ -74,9 +74,9 @@ class ForgeBuilder(ServerBuilder):
                 win_bat_filename = "run.bat"
 
             if platform.system() == "Windows":  # TODO: ビルド環境に依存するのではなく、鯖を起動する環境に依存するべき
-                config.launch_command = f"cmd.exe /C {win_bat_filename}"
+                config.launch_command = f"cmd.exe /C {win_bat_filename} $SERVER_ARGS"
             else:
-                config.launch_command = "bash run.sh"
+                config.launch_command = "bash run.sh $SERVER_ARGS"
 
             config.save()
             return True

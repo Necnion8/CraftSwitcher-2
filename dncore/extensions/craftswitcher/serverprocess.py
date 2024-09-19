@@ -4,6 +4,7 @@ import logging
 import os
 import shlex
 import signal
+import string
 import sys
 import threading
 import time
@@ -240,7 +241,15 @@ class ServerProcess(object):
     async def _build_arguments(self):
         generated_arguments = False
         if self.config.enable_launch_command and self.config.launch_command:
-            args = shlex.split(self.config.launch_command)
+            args = shlex.split(string.Template(self.config.launch_command).safe_substitute(
+                JAVA_EXE=self.config.launch_option.java_executable,
+                JAVA_MEM_ARGS=f"-Xms{self.config.launch_option.min_heap_memory}M "
+                              f"-Xmx{self.config.launch_option.max_heap_memory}M",
+                JAVA_ARGS=self.config.launch_option.java_options,
+                SERVER_ID=self.id,
+                SERVER_JAR=self.config.launch_option.jar_file,
+                SERVER_ARGS=self.config.launch_option.server_options,
+            ))
 
         else:
             generated_arguments = True
