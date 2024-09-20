@@ -8,23 +8,24 @@ Minecraft Java サーバー 管理システム |
 ## 開発中
 - [x] DNC6プラグイン化
 - [x] サーバープロセスの操作ラッパー
-- [x] REST API
-- [x] WebSocket
-- [x] 非同期ファイル操作マネージャ
-- [x] アーカイブファイルの操作
-- [x] サーバーJarのインストール
+- [x] REST API + WebSocketイベント
+- [x] ファイル管理
+- [x] アーカイブファイルの対応
+- [x] サーバーのインストール
+- [ ] バックアップ
+- [ ] スケジューラー
 - [ ] サーバー内連携モジュール
-- [ ] Discordからの操作コマンド (仮コマンド済み)
+- [ ] Discordコマンド
 - [ ] リリース！
 
 ---
 ## 主な機能
-- Webパネル
+- Web UI
 - Discord ボット (オプション)
 - サーバー内 連携API
 - ファイル操作
 - パフォーマンスモニター
-- DNC6プラグインによる機能の拡張
+- バックアップとスケジュール機能
 
 
 ## 環境
@@ -34,22 +35,25 @@ Minecraft Java サーバー 管理システム |
 
 ※ macOSは未確認。おそらく動作？
 
-## 対応予定サーバー
-- [Vanilla](https://www.minecraft.net/ja-jp/download/server)
-- [Spigot](https://www.spigotmc.org/wiki/buildtools/)
-- [Paper](https://papermc.io/software/paper)
-- [Purpur](https://purpurmc.org/)
-- [Folia](https://papermc.io/software/folia)
-- [Forge](https://files.minecraftforge.net/)
-- [Mohist](https://mohistmc.com/software/mohist)
-- [NeoForge](https://neoforged.net/)
-- [Youer](https://mohistmc.com/software/youer)*?*
-- [Fabric](https://fabricmc.net/)
-- [Banner](https://mohistmc.com/software/banner)
-- [BungeeCord](https://www.spigotmc.org/wiki/bungeecord/)
-- [Waterfall](https://papermc.io/software/waterfall)
-- [Velocity](https://papermc.io/software/velocity)
-
+## 対応サーバー
+| サーバー          | 基本操作 | 連携 | ダウンロード | ビルド |                             URL                              |
+|:--------------|:----:|:--:|:------:|:---:|:------------------------------------------------------------:|
+| Vanilla       |  ?   | ✕  |   〇    |  -  | [Minecraft](https://www.minecraft.net/ja-jp/download/server) |     |     |
+| Spigot        |  ?   | ✕  |   〇    |  〇  |    [SpigotMC](https://www.spigotmc.org/wiki/buildtools/)     |     |     |
+| Paper         |  ?   | ✕  |   〇    |  -  |         [PaperMC](https://papermc.io/software/paper)         |     |     |
+| Purpur        |  ?   | ✕  |   〇    |  -  |              [PurpurMC](https://purpurmc.org/)               |     |     |
+| Folia         |  ?   | ✕  |   〇    |  -  |         [PaperMC](https://papermc.io/software/folia)         |     |     |
+| # ***mod***   |
+| Forge         |  ?   | ✕  |   〇    |  〇  |     [Minecraft Forge](https://files.minecraftforge.net/)     |     |     |
+| Mohist        |  ?   | ✕  |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/mohist)       |     |     |
+| NeoForge      |  ?   | ✕  |   〇    |  〇  |             [NeoForged](https://neoforged.net/)              |     |     |
+| Youer         |  ?   | ✕  |   ?    |  ?  |       [MohistMC](https://mohistmc.com/software/youer)        |     |     |
+| Fabric        |  ?   | ✕  |   〇    |  -  |              [FabricMC](https://fabricmc.net/)               |     |     |
+| Banner        |  ?   | ✕  |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/banner)       |     |     |
+| # ***proxy*** |
+| BungeeCord    |  ?   | ✕  |   〇    |  -  |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |     |     |
+| Waterfall     |  ?   | ✕  |   〇    |  -  |       [PaperMC](https://papermc.io/software/waterfall)       |     |     |
+| Velocity      |  ?   | ✕  |   〇    |  -  |       [PaperMC](https://papermc.io/software/velocity)        |     |     |
 
 ## 導入と起動
 ```bash
