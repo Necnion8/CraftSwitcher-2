@@ -11,6 +11,7 @@ __all__ = [
     "ServerEvent",
     "ServerChangeStateEvent",
     "ServerPreStartEvent",
+    "ServerBuildPreStartEvent",
     "ServerLaunchOptionBuildEvent",
     "ServerCreatedEvent",
     "ServerDeletedEvent",
@@ -50,6 +51,10 @@ class ServerPreStartEvent(Event, ServerEvent, Cancellable):
     def cancelled_reason(self, reason: str):
         setattr(self, "_cancelled_reason", reason)
         self.cancelled = True
+
+
+class ServerBuildPreStartEvent(Event, ServerEvent):
+    pass
 
 
 class ServerLaunchOptionBuildEvent(Event, ServerEvent):

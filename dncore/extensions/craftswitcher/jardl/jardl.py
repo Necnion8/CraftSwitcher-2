@@ -1,8 +1,14 @@
 import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Generic, TYPE_CHECKING
 
+from dncore.extensions.craftswitcher.abc import ServerType
+from dncore.extensions.craftswitcher.utils import getinst
+
 __all__ = [
+    "ServerBuildStatus",
+    "ServerBuilder",
     "ServerBuild",
     "ServerMCVersion",
     "ServerDownloader",
@@ -11,12 +17,73 @@ __all__ = [
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
+    from dncore.extensions.craftswitcher.config import ServerConfig
+
+
+class ServerBuildStatus(Enum):
+    STANDBY = "standby"
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+# noinspection PyMethodMayBeStatic
+class ServerBuilder(object):
+    class Parameters(object):
+        def __init__(self, cwd: Path, env: dict[str, str], ):
+            self.cwd = cwd
+            self.env = env
+            self.args = []  # type: list[str]
+
+    def __init__(self, server_type: ServerType, build: "ServerBuild", server: "ServerProcess"):
+        self.server_type = server_type
+        self.build = build
+        self.server = server
+        self._state = ServerBuildStatus.STANDBY
+        self.jar_filename = None  # type: str | None
+        self.work_dir = server.directory / build.work_dir if build.work_dir else None
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_state: ServerBuildStatus):
+        self._state = new_state
+
+    async def _call(self, params: Parameters):
+        raise NotImplementedError
+
+    async def _read(self, data: str):
+        pass
+
+    async def _error(self, exception: Exception):
+        self.state = ServerBuildStatus.FAILED
+
+    async def _exited(self, return_code: int) -> ServerBuildStatus:
+        self.state = state = ServerBuildStatus.SUCCESS if return_code == 0 else ServerBuildStatus.FAILED
+        return state
+
+    async def _clean(self):
+        if self.work_dir:
+            await getinst().files.delete(self.work_dir, self.server)
+
+    def apply_server_jar(self, config: "ServerConfig") -> bool:
+        jar_filename = self.jar_filename
+        if jar_filename:
+            config.type = self.server_type
+            config.enable_launch_command = False
+            config.launch_option.jar_file = jar_filename
+            config.save()
+            return True
+        return False
 
 
 class ServerBuild(object):
     def __init__(self, mc_version: str, build: str, download_url: str = None, download_filename: str = None,
                  downloaded_path: Path = None,
-                 *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False):
+                 *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False,
+                 work_dir: str = None, ):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
@@ -25,6 +92,7 @@ class ServerBuild(object):
         self.java_major_version = java_major_version
         self.updated_datetime = updated_datetime
         self.recommended = recommended
+        self.work_dir = work_dir
         #
         self._loaded = False
 
@@ -50,7 +118,7 @@ class ServerBuild(object):
     async def _fetch_info(self) -> bool:
         return False
 
-    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path):
+    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path) -> ServerBuilder:
         pass
 
 

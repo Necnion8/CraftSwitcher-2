@@ -4,18 +4,20 @@ import logging
 import os
 import shlex
 import signal
+import string
 import sys
 import threading
 import time
 from functools import partial
 from pathlib import Path
-from typing import Awaitable, Any
-from typing import Callable
+from shutil import which
+from typing import Awaitable, Any, Callable
 
 from . import errors
 from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
 from .event import *
+from .jardl import ServerBuilder, ServerBuildStatus
 from .utils import *
 
 _log = logging.getLogger(__name__)
@@ -145,6 +147,7 @@ class ServerProcess(object):
         self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
+        self._builder = None  # type: ServerBuilder | None
         #
         self.shutdown_to_restart = False
 
@@ -157,6 +160,21 @@ class ServerProcess(object):
         if self._directory != new_dir:
             self.log.debug("Update directory: %s -> %s", self._directory, new_dir)
         self._directory = new_dir
+
+    @property
+    def builder(self):
+        return self._builder
+
+    @builder.setter
+    def builder(self, new_builder: ServerBuilder | None):
+        if self._builder is not new_builder:
+            self.log.debug("Set builder: %s", new_builder)
+        self._builder = new_builder
+
+    @property
+    def build_status(self) -> ServerBuildStatus | None:
+        if self._builder:
+            return self._builder.state
 
     @property
     def _is_running(self):
@@ -211,13 +229,27 @@ class ServerProcess(object):
         data = data.lstrip()
         self.log.info(f"[OUTPUT]: {data!r}")
 
+        if self.builder and self.builder.state == ServerBuildStatus.PENDING:
+            try:
+                await self.builder._read(data)
+            except Exception as e:
+                self.log.warning("Exception in builder.on_read", exc_info=e)
+
         if data:
             call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
 
     async def _build_arguments(self):
         generated_arguments = False
         if self.config.enable_launch_command and self.config.launch_command:
-            args = shlex.split(self.config.launch_command)
+            args = shlex.split(string.Template(self.config.launch_command).safe_substitute(
+                JAVA_EXE=self.config.launch_option.java_executable,
+                JAVA_MEM_ARGS=f"-Xms{self.config.launch_option.min_heap_memory}M "
+                              f"-Xmx{self.config.launch_option.max_heap_memory}M",
+                JAVA_ARGS=self.config.launch_option.java_options,
+                SERVER_ID=self.id,
+                SERVER_JAR=self.config.launch_option.jar_file,
+                SERVER_ARGS=self.config.launch_option.server_options,
+            ))
 
         else:
             generated_arguments = True
@@ -244,6 +276,8 @@ class ServerProcess(object):
             self, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ):
+        self.log.debug("directory: %s", str(cwd))
+        self.log.debug("start process: %s", shlex.join(args))
         return await PtyProcessWrapper.spawn(
             args=args,
             cwd=cwd,
@@ -252,33 +286,74 @@ class ServerProcess(object):
             read_handler=read_handler,
         )
 
-    async def start(self):
+    async def start(self, *, no_build=False):
+        """
+        サーバーを起動します
+
+        準備が完了しているビルダーが設定されている場合は、no_buildが真でない限りビルドを実行します
+        """
         if self._is_running:
             raise errors.AlreadyRunningError
 
-        self.log.info(f"Starting {self.id} server process")
-        _event = await call_event(ServerPreStartEvent(self))
-        if _event.cancelled:
-            raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
+        builder = self._builder
+        if no_build:
+            builder = None
+
+        if builder:
+            self.log.info("Starting build process")
+            await call_event(ServerBuildPreStartEvent(self))
+        else:
+            self.log.info(f"Starting server process")
+            _event = await call_event(ServerPreStartEvent(self))
+            if _event.cancelled:
+                raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
 
         def _end(_):
             ret_ = wrapper.exit_status
-            self.log.info("Stopped server process (ret: %s)", ret_)
+            self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
             self.state = ServerState.STOPPED
             self._perf_mon = None
 
-        try:
-            if not self.check_free_memory():
-                raise errors.OutOfMemoryError
+            if builder:
+                async def _do_on_exited():
+                    result = await builder._exited(ret_)
+                    self.log.info("Build Result: %s", result.name)
+                    if ServerBuildStatus.SUCCESS == result:
+                        if builder.apply_server_jar(self._config):
+                            if self.config.enable_launch_command:
+                                self.log.debug("Updated config: '%s' (command)", self.config.launch_command)
+                            else:
+                                self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
+                        await asyncio.sleep(1)
+                        await self.clean_builder()
 
-            args = await self._build_arguments()
-            env = {
-                "SWITCHER_SERVER_NAME": self.id,
-            }
+                asyncio.create_task(_do_on_exited())
+
+        try:
+            cwd = self.directory
+            env = dict(os.environ)
+            env["SWITCHER_SERVER_NAME"] = self.id
+
+            if builder:
+                params = ServerBuilder.Parameters(cwd, env)
+                await builder._call(params)
+                args = params.args
+                env = params.env
+                cwd = params.cwd
+
+                if not args:
+                    raise ValueError("Empty params.args")
+
+            else:
+                if not self.check_free_memory():
+                    raise errors.OutOfMemoryError
+                args = await self._build_arguments()
 
             wrapper = self.wrapper = await self._start_subprocess(
-                args, self.directory, term_size=self.term_size, env=env, read_handler=self._term_read)
-            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+                args, cwd, term_size=self.term_size, env=env, read_handler=self._term_read)
+            if builder:
+                builder.state = ServerBuildStatus.PENDING
+
             try:
                 await asyncio.wait_for(wrapper.wait(), timeout=1)
             except asyncio.TimeoutError:
@@ -286,15 +361,21 @@ class ServerProcess(object):
 
         except Exception as e:
             self.log.exception("Exception in pre start", exc_info=e)
-            raise errors.ServerLaunchError from e
+            if builder:
+                builder.state = ServerBuildStatus.FAILED
+                await builder._error(e)
+            raise errors.ServerLaunchError(str(e)) from e
 
         ret = wrapper.exit_status
         if ret is None:
-            self.state = ServerState.RUNNING
+            self.state = ServerState.BUILD if builder else ServerState.RUNNING
+            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
 
         else:
+            if builder:
+                builder.state = ServerBuildStatus.FAILED
             self.log.warning("Exited process: return code: %s", ret)
-            raise errors.ServerLaunchError(f"Failed to launch: process exited {ret}")
+            raise errors.ServerLaunchError(f"process exited {ret}")
 
         try:
             self._perf_mon = ProcessPerformanceMonitor(wrapper.pid)
@@ -346,6 +427,17 @@ class ServerProcess(object):
     async def restart(self):
         await self.stop()
         self.shutdown_to_restart = True
+
+    async def clean_builder(self):
+        if ServerState.BUILD == self.state:
+            raise ValueError("Already running build")
+        if self.builder:
+            try:
+                await self.builder._clean()
+            except FileNotFoundError:
+                pass
+            finally:
+                self.builder = None
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):
@@ -415,6 +507,7 @@ class ProcessWrapper:
 
 if sys.platform == "win32":
     import winpty
+    from subprocess import list2cmdline
 
     class WinPtyProcessWrapper(ProcessWrapper):
         def __init__(self, pid: int, cwd: Path, args: list[str], pty: winpty.PTY):
@@ -427,19 +520,21 @@ if sys.platform == "win32":
                 *, read_handler: Callable[[str], Awaitable[None]],
         ) -> "WinPtyProcessWrapper":
             pty = winpty.PTY(*term_size)
+            env = env or os.environ
+
             # noinspection PyTypeChecker
-            _appname: bytes = args[0]
+            _appname: bytes = which(args[0], path=env.get("PATH", os.defpath)) or args[0]
             # noinspection PyTypeChecker
-            _cmdline: bytes = shlex.join(args[1:])
+            _cmdline: bytes = list2cmdline(args[1:])
             # noinspection PyTypeChecker
             _cwd: bytes = str(cwd)
 
-            _env = "\0".join(map(str, env)) if env else None
+            _env = ("\0".join([f"{k}={v}" for k, v in env.items()]) + "\0")
 
             func = partial(pty.spawn, _appname, _cmdline, _cwd, _env)
             loop = asyncio.get_running_loop()
 
-            if not loop.run_in_executor(None, func):
+            if not await loop.run_in_executor(None, func):
                 raise RuntimeError("Unable to pty.spawn")
 
             wrapper = cls(pty.pid, cwd, args, pty)
@@ -456,7 +551,12 @@ if sys.platform == "win32":
 
             try:
                 while pty_isalive():
-                    chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
+                    try:
+                        chunk = pty_read(1024 * 8, blocking=True)  # EOFにならず、ブロックし続ける。バグ？
+                    except winpty.WinptyError as e:
+                        if str(e).endswith("EOF"):
+                            break
+                        raise e
                     queue_put(chunk)
             except Exception as e:
                 _log.exception("Exception in pty.read", exc_info=e)

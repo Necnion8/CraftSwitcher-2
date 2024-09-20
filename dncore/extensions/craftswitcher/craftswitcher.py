@@ -143,44 +143,46 @@ class CraftSwitcher(EventListener):
         await call_event(SwitcherShutdownEvent())
 
         try:
-            del CraftSwitcher._inst
-        except AttributeError:
-            pass
-        self._initialized = False
+            try:
+                await self.shutdown_all_servers()
+            except Exception as e:
+                log.warning("Exception in shutdown servers", exc_info=e)
 
-        try:
-            await self.shutdown_all_servers()
-        except Exception as e:
-            log.warning("Exception in shutdown servers", exc_info=e)
+            try:
+                await self.close_api_server()
+            except Exception as e:
+                log.warning("Exception in close api server", exc_info=e)
 
-        try:
-            await self.close_api_server()
-        except Exception as e:
-            log.warning("Exception in close api server", exc_info=e)
+            try:
+                self.clear_file_watch()
+                await self.files.shutdown()
+            except Exception as e:
+                log.warning("Exception in shutdown file manager", exc_info=e)
 
-        try:
-            self.clear_file_watch()
-            await self.files.shutdown()
-        except Exception as e:
-            log.warning("Exception in shutdown file manager", exc_info=e)
+            try:
+                await self.database.close()
+            except Exception as e:
+                log.warning("Exception in close database", exc_info=e)
 
-        try:
-            await self.database.close()
-        except Exception as e:
-            log.warning("Exception in close database", exc_info=e)
+            extensions = dict(self.extensions.extensions)
+            self.extensions.extensions.clear()
+            waits = [asyncio.shield(call_event(SwitcherExtensionRemoveEvent(i))) for i in extensions.values()]
+            if waits:
+                await asyncio.wait(waits)
 
-        extensions = dict(self.extensions.extensions)
-        self.extensions.extensions.clear()
-        waits = [asyncio.shield(call_event(SwitcherExtensionRemoveEvent(i))) for i in extensions.values()]
-        if waits:
-            await asyncio.wait(waits)
+            try:
+                self.unload_servers()
+            except ValueError as e:
+                log.warning(f"Failed to unload_Servers: {e}")
 
-        try:
-            self.unload_servers()
-        except ValueError as e:
-            log.warning(f"Failed to unload_Servers: {e}")
+            AsyncCallTimer.cancel_all_timers()
 
-        AsyncCallTimer.cancel_all_timers()
+        finally:
+            try:
+                del CraftSwitcher._inst
+            except AttributeError:
+                pass
+            self._initialized = False
 
     def load_config(self):
         log.debug("Loading config")
@@ -333,7 +335,12 @@ class CraftSwitcher(EventListener):
                     await s.wait_for_shutdown()
                 except asyncio.TimeoutError:
                     log.warning("Shutdown expired: %s", s.id)
-                    # await s.kill()
+                    try:
+                        await s.kill()
+                    except Exception as e:
+                        log.warning("Exception in server.kill()", exc_info=e)
+
+            await s.clean_builder()
 
         if self.servers:
             log.info("Shutdown server all!")
@@ -565,12 +572,17 @@ class CraftSwitcher(EventListener):
         if not filename:
             filename = "builder.jar" if jar_build.is_require_build() else "server.jar"
 
-        dst = server.directory / filename
-        _loop = 0
-        while dst.exists():
-            _loop += 1
-            name, *suf = filename.rsplit(".", 1)
-            dst = server.directory / ".".join([f"{name}-{_loop}", *suf])
+        download_dir = jar_build.work_dir
+        cwd = server.directory / download_dir if download_dir else server.directory
+        dst = cwd / filename
+        if cwd.exists():
+            _loop = 0
+            while dst.exists():
+                _loop += 1
+                name, *suf = filename.rsplit(".", 1)
+                dst = cwd / ".".join([f"{name}-{_loop}", *suf])
+        else:
+            cwd.mkdir(exist_ok=True, parents=True)
 
         dst_swi = self.files.swipath(dst, root_dir=server.directory)
         task = self.files.download(jar_build.download_url, dst, server, dst_swi_path=dst_swi)
@@ -583,11 +595,12 @@ class CraftSwitcher(EventListener):
 
             jar_build.downloaded_path = dst
             if jar_build.is_require_build():
-                await jar_build.setup_builder(server, dst)  # TODO: ビルダー処理を実装
+                server.builder = await jar_build.setup_builder(server, dst)
 
             else:
                 config = server._config
                 config.type = server_type
+                config.enable_launch_command = False
                 config.launch_option.jar_file = dst.name
                 config.save()
 
