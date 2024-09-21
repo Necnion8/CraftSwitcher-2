@@ -73,6 +73,7 @@ class CraftSwitcher(EventListener):
         self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
         self._remove_servers = set()  # type: set[str]  # 停止後に削除するサーバー
         self._watch_files = defaultdict(set)  # type: dict[Path, set[FileWatchInfo]]
+        self._scan_java_task = None  # type: asyncio.Task | None
         #
         self._files_task_broadcast_loop = AsyncCallTimer(self._files_task_broadcast_loop, .5, .5)
         self._perfmon_broadcast_loop = AsyncCallTimer(self._perfmon_broadcast_loop, .5, .5)
@@ -469,6 +470,12 @@ class CraftSwitcher(EventListener):
         return set(self._watch_files.keys())
 
     async def scan_java_executables(self):
+        task = self._scan_java_task
+        if not task or task.done():
+            self._scan_java_task = task = asyncio.create_task(self._scan_java_executables())
+        return await asyncio.shield(task)
+
+    async def _scan_java_executables(self):
         log.debug("Scan java executables")
         exe_name = "java.exe" if is_windows() else "java"
         exe_files = []  # type: list[Path]
