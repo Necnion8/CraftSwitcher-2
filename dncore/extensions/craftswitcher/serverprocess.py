@@ -334,6 +334,18 @@ class ServerProcess(object):
             env = dict(os.environ)
             env["SWITCHER_SERVER_NAME"] = self.id
 
+            # Add java home to environ
+            try:
+                exe_path = which(self.config.launch_option.java_executable)
+                if exe_path:
+                    java_home_dir = await get_java_home(Path(exe_path))
+                    if java_home_dir:
+                        java_home_dir += os.sep + "bin"
+                        env["PATH"] = java_home_dir + os.pathsep + env["PATH"]
+                        self.log.debug("java path: %s", java_home_dir)
+            except Exception as e:
+                self.log.warning(f"Exception in add to java home path to environ: {e}")
+
             if builder:
                 params = ServerBuilder.Parameters(cwd, env)
                 await builder._call(params)

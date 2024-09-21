@@ -28,6 +28,7 @@ __all__ = [
     "datetime_now",
     "safe_server_id",
     "check_java_executable",
+    "get_java_home",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "AsyncCallTimer",
@@ -151,6 +152,11 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
             java_major_version=parse_java_major_version(runtime_version),
         )
     return None
+
+
+async def get_java_home(exe_path: Path) -> str | None:
+    info = await check_java_executable(exe_path)
+    return info and info.java_home_path or None
 
 
 class ProcessPerformanceMonitor(object):
