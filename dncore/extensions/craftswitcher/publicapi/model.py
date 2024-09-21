@@ -284,3 +284,4 @@ class JavaExecutableInfo(BaseModel):
     specification_version: str | None = None
     class_version: int | None = None
     vendor: str | None = None
+    vendor_version: str | None = None

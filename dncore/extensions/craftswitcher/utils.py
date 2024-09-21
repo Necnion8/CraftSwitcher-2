@@ -103,6 +103,7 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
             ["java.class.version =", None],
             ["java.runtime.version =", None],
             ["java.vendor =", None],
+            ["java.vendor.version =", None],
         ]
 
         while line := await p.stdout.readline():
@@ -127,6 +128,7 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
             class_version=float(data_values[2][1] or 0) or None,
             runtime_version=runtime_version,
             vendor=data_values[4][1] or None,
+            vendor_version=data_values[5][1] or None,
         )
 
     p = await asyncio.create_subprocess_exec(

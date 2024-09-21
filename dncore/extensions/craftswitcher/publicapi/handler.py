@@ -256,6 +256,7 @@ class APIHandler(object):
                     specification_version=i.specification_version,
                     class_version=i.class_version,
                     vendor=i.vendor,
+                    vendor_version=i.vendor_version,
                 ) for i in self.inst.java_executables
             ]
         
