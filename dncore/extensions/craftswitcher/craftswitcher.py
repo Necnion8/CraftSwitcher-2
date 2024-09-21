@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import os
 import shutil
+import time
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
@@ -476,9 +477,10 @@ class CraftSwitcher(EventListener):
         return await asyncio.shield(task)
 
     async def _scan_java_executables(self):
-        log.debug("Scan java executables")
+        log.debug("Checking java executables")
         exe_name = "java.exe" if is_windows() else "java"
         exe_files = []  # type: list[Path]
+        perf_time = time.perf_counter()
 
         # include default java
         _default_java = shutil.which("java")
@@ -507,13 +509,23 @@ class CraftSwitcher(EventListener):
         self.java_executables.clear()
         executables = set()
 
-        for path in exe_files:
-            info = await check_java_executable(path)
-            if info and info.executable not in executables:
-                self.java_executables.append(info)
-                executables.add(info.executable)
+        if exe_files:
+            sem = asyncio.Semaphore(3)
 
-        log.debug("%s Java executables found", len(self.java_executables))
+            async def _check(p):
+                async with sem:
+                    return await check_java_executable(p)
+
+            for info in await asyncio.gather(*[_check(p) for p in exe_files]):
+                if info and info.executable not in executables:
+                    self.java_executables.append(info)
+                    executables.add(info.executable)
+
+        perf_time = round((time.perf_counter() - perf_time) * 1000)
+        major_vers = sorted(set(i.java_major_version for i in self.java_executables))
+        log.info("Java versions found (total %s java files): %s",
+                 len(self.java_executables), ", ".join(map(str, major_vers)))
+        log.debug("processing time: %sms", perf_time)
 
     # server api
 
