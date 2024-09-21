@@ -257,6 +257,14 @@ class APIHandler(object):
                     vendor=i.vendor,
                 ) for i in self.inst.java_executables
             ]
+        
+        @api.post(
+            "/java/rescan",
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+        async def _post_java_rescan() -> list[model.JavaExecutableInfo]:
+            await self.inst.scan_java_executables()
+            return _get_java_list()
 
         @api.websocket(
             "/ws",
