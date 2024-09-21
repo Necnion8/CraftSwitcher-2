@@ -275,3 +275,11 @@ class PluginMessageResponse(BaseModel):
     caption: str | None
     content: str = Field(description="メッセージ内容。複数行")
     errors: bool = Field(description="エラーメッセージか")
+
+
+class JavaExecutableInfo(BaseModel):
+    specification_version: str
+    java_home_path: str | None
+    class_version: int | None = None
+    runtime_version: str | None = None
+    vendor: str | None = None

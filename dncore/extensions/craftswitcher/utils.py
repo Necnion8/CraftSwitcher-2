@@ -93,6 +93,7 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
                     continue
 
         return JavaExecutableInfo(
+            executable=path,
             specification_version=data_values[0][1],
             java_home_path=data_values[1][1] or java_home,
             class_version=float(data_values[2][1] or 0) or None,

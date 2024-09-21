@@ -243,6 +243,21 @@ class APIHandler(object):
             inst.config.save(force=True)
             return await _get_config_server_global()
 
+        @api.get(
+            "/java/list",
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+        def _get_java_list() -> list[model.JavaExecutableInfo]:
+            return [
+                model.JavaExecutableInfo(
+                    specification_version=i.specification_version,
+                    java_home_path=i.java_home_path,
+                    class_version=i.class_version,
+                    runtime_version=i.runtime_version,
+                    vendor=i.vendor,
+                ) for i in self.inst.java_executables
+            ]
+
         @api.websocket(
             "/ws",
             dependencies=[Depends(self.get_authorized_user_ws), ],
