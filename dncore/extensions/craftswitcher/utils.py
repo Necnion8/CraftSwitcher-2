@@ -68,6 +68,7 @@ def safe_server_id(s: str):
 
 
 async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
+    path = path.resolve()
     p = await asyncio.create_subprocess_exec(
         path, "-XshowSettings:properties", "-version",
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -105,14 +106,17 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
         path, "-version",
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
-    m = None
+    match = None
     while line := await p.stdout.readline():
         line = line.strip().decode()
         m = re.search("version \"(.+)\"", line)
+        if m:
+            match = m
 
-    if m:  # last
+    if match:  # last
         return JavaExecutableInfo(
-            specification_version=m.group(1),
+            executable=path,
+            runtime_version=match.group(1),
             java_home_path=java_home,
         )
     return None

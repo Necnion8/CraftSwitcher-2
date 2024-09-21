@@ -250,10 +250,10 @@ class APIHandler(object):
         def _get_java_list() -> list[model.JavaExecutableInfo]:
             return [
                 model.JavaExecutableInfo(
-                    specification_version=i.specification_version,
-                    java_home_path=i.java_home_path,
-                    class_version=i.class_version,
                     runtime_version=i.runtime_version,
+                    java_home_path=i.java_home_path,
+                    specification_version=i.specification_version,
+                    class_version=i.class_version,
                     vendor=i.vendor,
                 ) for i in self.inst.java_executables
             ]
