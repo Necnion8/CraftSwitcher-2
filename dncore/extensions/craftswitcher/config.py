@@ -177,10 +177,10 @@ class SwitcherConfig(FileConfigValues):
     # サーバーの保管に使うパス (※ 通常は変更する必要はありません)
     servers_location: str = "/"
 
-    # Java リスト
-    java_executables: list[JavaExecutable]
+    # 実行可能なJavaのパスリスト。システムパスで指定してください。
+    java_executables: list[str]
 
-    # Javaを自動検出するディレクトリ
+    # Javaを自動検出するディレクトリ。システムパスで指定してください。
     java_auto_detect_locations: list[str] = [
         "/usr/lib/jvm",
         "C:\\Program Files\\Java",

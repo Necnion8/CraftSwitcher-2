@@ -22,10 +22,12 @@ T = TypeVar("T")
 IS_WINDOWS = platform.system() == "Windows"
 __all__ = [
     "call_event",
+    "is_windows",
     "system_memory",
     "system_perf",
     "datetime_now",
     "safe_server_id",
+    "check_java_executable",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "AsyncCallTimer",
@@ -35,6 +37,10 @@ __all__ = [
 
 def call_event(event: T) -> asyncio.Task[T]:
     return DNCoreAPI.call_event(event)
+
+
+def is_windows():
+    return IS_WINDOWS
 
 
 def system_memory(swap=False):

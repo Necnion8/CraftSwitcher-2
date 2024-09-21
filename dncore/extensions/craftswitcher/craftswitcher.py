@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 
 from dncore.event import EventListener, onevent
-from .abc import ServerState, ServerType, FileWatchInfo
+from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
@@ -24,7 +24,7 @@ from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
 from .serverprocess import ServerProcessList, ServerProcess
-from .utils import call_event, datetime_now, safe_server_id, AsyncCallTimer, system_memory, system_perf
+from .utils import *
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
@@ -47,6 +47,8 @@ class CraftSwitcher(EventListener):
         self.extensions = extensions
         # jardl
         self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
+        # java
+        self.java_executables = []  # type: list[JavaExecutableInfo]
         # api
         global __version__
         __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
@@ -134,6 +136,8 @@ class CraftSwitcher(EventListener):
             user = await self.add_user("admin", "abc")
             log.info("  login    : admin")
             log.info("  password : abc")
+
+        asyncio.create_task(self.scan_java_executables())
 
     async def shutdown(self):
         if not self._initialized:
@@ -462,6 +466,37 @@ class CraftSwitcher(EventListener):
 
     def get_watched_paths(self) -> set[Path]:
         return set(self._watch_files.keys())
+
+    async def scan_java_executables(self):
+        log.debug("Scan java executables")
+        exe_name = "java.exe" if is_windows() else "java"
+        exe_files = []  # type: list[Path]
+
+        # list executable files
+        for child in self.config.java_executables:
+            child = Path(child).resolve()
+            if child.is_file() and child not in exe_files:
+                exe_files.append(child)
+
+        for search_dir in self.config.java_auto_detect_locations:
+            search_dir_path = Path(search_dir)
+            if not search_dir_path.exists():
+                continue
+
+            for child in search_dir_path.glob(f"*/bin/{exe_name}"):
+                child = child.resolve()
+                if child.is_file() and child not in exe_files:
+                    exe_files.append(child)
+
+        # check java
+        self.java_executables.clear()
+
+        for path in exe_files:
+            info = await check_java_executable(path)
+            if info:
+                self.java_executables.append(info)
+
+        log.debug("%s Java executables found", len(self.java_executables))
 
     # server api
 
