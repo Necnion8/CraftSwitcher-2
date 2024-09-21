@@ -116,11 +116,6 @@ class ServerGlobalConfig(ConfigValues):
     shutdown_timeout = 30
 
 
-class JavaExecutable(ConfigValues):
-    name: str
-    executable: str
-
-
 class PublicApiServer(ConfigValues):
     enable = True
     bind_host = "0.0.0.0"
