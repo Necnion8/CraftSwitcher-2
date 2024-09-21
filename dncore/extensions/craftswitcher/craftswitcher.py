@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import os
+import shutil
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
@@ -472,6 +473,13 @@ class CraftSwitcher(EventListener):
         exe_name = "java.exe" if is_windows() else "java"
         exe_files = []  # type: list[Path]
 
+        # include default java
+        _default_java = shutil.which("java")
+        if _default_java:
+            default_java = Path(_default_java).resolve()
+            if default_java.exists():
+                exe_files.append(default_java)
+
         # list executable files
         for child in self.config.java_executables:
             child = Path(child).resolve()
@@ -490,11 +498,13 @@ class CraftSwitcher(EventListener):
 
         # check java
         self.java_executables.clear()
+        executables = set()
 
         for path in exe_files:
             info = await check_java_executable(path)
-            if info:
+            if info and info.executable not in executables:
                 self.java_executables.append(info)
+                executables.add(info.executable)
 
         log.debug("%s Java executables found", len(self.java_executables))
 
