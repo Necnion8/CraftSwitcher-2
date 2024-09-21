@@ -252,6 +252,7 @@ class APIHandler(object):
                 model.JavaExecutableInfo(
                     runtime_version=i.runtime_version,
                     java_home_path=i.java_home_path,
+                    java_major_version=i.java_major_version,
                     specification_version=i.specification_version,
                     class_version=i.class_version,
                     vendor=i.vendor,

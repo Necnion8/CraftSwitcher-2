@@ -133,6 +133,7 @@ class JavaExecutableInfo(NamedTuple):
     executable: Path
     runtime_version: str
     java_home_path: str | None
+    java_major_version: int
     specification_version: str | None = None
     class_version: int | None = None
     vendor: str | None = None

@@ -67,6 +67,26 @@ def safe_server_id(s: str):
     return s.lower().replace(" ", "_")
 
 
+def parse_java_major_version(s: str):
+    """
+    "1.8" や "22.0.1" などのテキストからメジャーバージョンを出力します
+
+    解析できない場合は -1 を返します
+    """
+    if s is None:
+        return -1
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    m = re.search(r"^(\d+\.\d+)", s)
+    if m:
+        v = float(m.group(1))
+        # eg. 17, 22 OR 1.8 -> 8
+        return int(v) if 1 < int(v) else int(v * 10) % 10
+    return -1
+
+
 async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
     path = path.resolve()
     p = await asyncio.create_subprocess_exec(
@@ -93,12 +113,19 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
                     data_values[index][1] = value
                     continue
 
+        specification_version = data_values[0][1]
+        java_home_path = data_values[1][1] or java_home
+        runtime_version = data_values[3][1] or None
+
+        java_major_version = parse_java_major_version(specification_version or runtime_version)
+
         return JavaExecutableInfo(
-            executable=(Path(data_values[1][1] or java_home) / "bin" / path.name).resolve(),
-            specification_version=data_values[0][1],
-            java_home_path=data_values[1][1] or java_home,
+            executable=(Path(java_home_path) / "bin" / path.name).resolve(),
+            specification_version=specification_version,
+            java_home_path=java_home_path,
+            java_major_version=java_major_version,
             class_version=float(data_values[2][1] or 0) or None,
-            runtime_version=data_values[3][1] or None,
+            runtime_version=runtime_version,
             vendor=data_values[4][1] or None,
         )
 
@@ -114,10 +141,12 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
             match = m
 
     if match:  # last
+        runtime_version = match.group(1)
         return JavaExecutableInfo(
             executable=path,
-            runtime_version=match.group(1),
+            runtime_version=runtime_version,
             java_home_path=java_home,
+            java_major_version=parse_java_major_version(runtime_version),
         )
     return None
 
