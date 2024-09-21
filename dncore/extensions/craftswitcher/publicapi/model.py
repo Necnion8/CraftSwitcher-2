@@ -1,4 +1,5 @@
 import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -278,6 +279,7 @@ class PluginMessageResponse(BaseModel):
 
 
 class JavaExecutableInfo(BaseModel):
+    executable: Path
     runtime_version: str
     java_home_path: str | None
     java_major_version: int
