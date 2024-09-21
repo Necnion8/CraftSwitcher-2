@@ -9,6 +9,7 @@ __all__ = [
     "SystemPerformanceInfo",
     "ProcessInfo",
     "FileWatchInfo",
+    "JavaExecutableInfo",
 ]
 
 
@@ -126,3 +127,11 @@ class ProcessInfo(NamedTuple):
 class FileWatchInfo(NamedTuple):
     path: Path
     owner: Any
+
+
+class JavaExecutableInfo(NamedTuple):
+    specification_version: str
+    java_home_path: str
+    class_version: int | None = None
+    runtime_version: str | None = None
+    vendor: str | None = None

@@ -3,13 +3,16 @@ import datetime
 import functools
 import logging
 import platform
+import re
+import subprocess
 from logging import getLogger
+from pathlib import Path
 from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaitable
 
 import psutil
 
 from dncore import DNCoreAPI
-from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo
+from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo, JavaExecutableInfo
 
 if TYPE_CHECKING:
     from .craftswitcher import CraftSwitcher
@@ -56,6 +59,56 @@ def safe_server_id(s: str):
     サーバーIDとして正しい値に変換します
     """
     return s.lower().replace(" ", "_")
+
+
+async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
+    p = await asyncio.create_subprocess_exec(
+        path, "-XshowSettings:properties", "-version",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+
+    java_home = str(path.parent.parent)
+
+    if await p.wait() == 0:
+        data_values = [
+            ["java.specification.version =", None],
+            ["java.home =", None],
+            ["java.class.version =", None],
+            ["java.runtime.version =", None],
+            ["java.vendor =", None],
+        ]
+
+        while line := await p.stdout.readline():
+            line = line.strip().decode()
+            for index, (prefix, value) in enumerate(data_values):
+                if value is None and line.startswith(prefix):
+                    value = line[len(prefix)+1:].strip()
+                    data_values[index][1] = value
+                    continue
+
+        return JavaExecutableInfo(
+            specification_version=data_values[0][1],
+            java_home_path=data_values[1][1] or java_home,
+            class_version=float(data_values[2][1] or 0) or None,
+            runtime_version=data_values[3][1] or None,
+            vendor=data_values[4][1] or None,
+        )
+
+    p = await asyncio.create_subprocess_exec(
+        path, "-version",
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    m = None
+    while line := await p.stdout.readline():
+        line = line.strip().decode()
+        m = re.search("version \"(.+)\"", line)
+
+    if m:  # last
+        return JavaExecutableInfo(
+            specification_version=m.group(1),
+            java_home_path=java_home,
+        )
+    return None
 
 
 class ProcessPerformanceMonitor(object):
