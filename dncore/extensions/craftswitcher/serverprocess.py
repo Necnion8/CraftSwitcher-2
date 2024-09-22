@@ -382,6 +382,8 @@ class ServerProcess(object):
         if ret is None:
             self.state = ServerState.BUILD if builder else ServerState.RUNNING
             self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+            self._config.last_launch_at = datetime_now()
+            self._config.save()
 
         else:
             if builder:
