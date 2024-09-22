@@ -76,6 +76,13 @@ class ServerConfig(FileConfigValues):
     # 起動オプション
     launch_option: LaunchOption
     # 起動オプションを使わず、カスタムコマンドで起動する
+    # 置換される変数:
+    #   $JAVA_EXE       --> java_executable で設定された値
+    #   $JAVA_MEM_ARGS  --> min_heap_memory, max_heap_memory で設定された値 (eg. '-Xms2048M -Xmx2048M')
+    #   $JAVA_ARGS      --> java_options で設定された値
+    #   $SERVER_ID      --> eg. 'lobby'
+    #   $SERVER_JAR     --> jar_file で設定された値
+    #   $SERVER_ARGS    --> server_options で設定された値
     enable_launch_command = False
     launch_command = ""
 

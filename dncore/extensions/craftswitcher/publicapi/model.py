@@ -99,7 +99,9 @@ class ServerConfig(BaseModel):
     launch_option__enable_free_memory_check: bool | None = Field(None, description="起動時に空きメモリを確認する")
     launch_option__enable_reporter_agent: bool | None = Field(None, description="サーバーと連携するエージェントを使う")
     enable_launch_command: bool | None = Field(None, description="起動オプションを使わず、カスタムコマンドで起動する")
-    launch_command: str = None
+    launch_command: str = Field(None, description="置換される変数: "
+                                                  "$JAVA_EXE, $JAVA_MEM_ARGS, $JAVA_ARGS, $JAVA_ARGS, "
+                                                  "$SERVER_ID, $SERVER_JAR, $SERVER_ARGS")
     stop_command: str | None = Field(None, description="停止コマンド")
     shutdown_timeout: int | None = Field(None, description="停止処理の最大待ち時間 (単位: 秒)")
     created_at: datetime.datetime | None = Field(None, description="作成された日付")
