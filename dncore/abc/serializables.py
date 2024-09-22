@@ -19,11 +19,14 @@ class DatetimeSerializer(ObjectSerializer):
         return issubclass(clazz, datetime.datetime)
 
     def serialize(self, obj: datetime.datetime):
-        return obj.replace(tzinfo=datetime.timezone.utc).timestamp()
+        return obj.replace(tzinfo=datetime.timezone.utc).isoformat()
 
     @classmethod
     def deserialize(cls, value):
-        return datetime.datetime.utcfromtimestamp(value)
+        if isinstance(value, float):
+            return datetime.datetime.utcfromtimestamp(value)  # bug fix
+
+        return datetime.datetime.fromisoformat(value)
 
 
 class DatetimeDateSerializer(ObjectSerializer):
@@ -457,4 +460,4 @@ class ActivitySetting(ObjectSerializable, Cloneable):
 
 
 def serializers():
-    return DatetimeTimeSerializer(), DatetimeDateSerializer(), DatetimeSerializer(),
+    return DatetimeSerializer(), DatetimeTimeSerializer(), DatetimeDateSerializer(),
