@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from dncore.event import EventListener, onevent
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
@@ -58,6 +59,7 @@ class CraftSwitcher(EventListener):
             title="CraftSwitcher",
             version=__version__,
         )
+        api.add_middleware(CORSMiddleware, allow_origins=["*"])
 
         @api.on_event("startup")
         async def _startup():
