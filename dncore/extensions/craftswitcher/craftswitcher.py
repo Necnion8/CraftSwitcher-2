@@ -59,7 +59,13 @@ class CraftSwitcher(EventListener):
             title="CraftSwitcher",
             version=__version__,
         )
-        api.add_middleware(CORSMiddleware, allow_origins=["*"])
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @api.on_event("startup")
         async def _startup():
