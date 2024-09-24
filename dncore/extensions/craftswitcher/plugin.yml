@@ -21,3 +21,4 @@ libraries:
   - pydantic
   - aiohttp
   - watchdog
+  - croniter
