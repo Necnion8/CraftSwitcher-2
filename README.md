@@ -12,10 +12,14 @@ Minecraft Java サーバー 管理システム |
 - [x] ファイル管理
 - [x] アーカイブファイルの対応
 - [x] サーバーのインストール
-- [ ] バックアップ
-- [ ] スケジューラー
+- [ ] バックアップ機能
+  - 大体のイメージはOK。実装待ち
+- [ ] スケジューラ機能
+  - 大体のイメージはOK。ただし、実装の構想イメージが不足
 - [ ] サーバー内連携モジュール
+  - アイディア募集中。旧式なら実現は可能
 - [ ] Discordコマンド
+  - 実装待ち
 - [ ] リリース！
 
 ---
@@ -36,24 +40,24 @@ Minecraft Java サーバー 管理システム |
 ※ macOSは未確認。おそらく動作？
 
 ## 対応サーバー
-| サーバー          | 基本操作 | 連携 | ダウンロード | ビルド |                             URL                              |
-|:--------------|:----:|:--:|:------:|:---:|:------------------------------------------------------------:|
-| Vanilla       |  ?   | ✕  |   〇    |  -  | [Minecraft](https://www.minecraft.net/ja-jp/download/server) |     |     |
-| Spigot        |  ?   | ✕  |   〇    |  〇  |    [SpigotMC](https://www.spigotmc.org/wiki/buildtools/)     |     |     |
-| Paper         |  ?   | ✕  |   〇    |  -  |         [PaperMC](https://papermc.io/software/paper)         |     |     |
-| Purpur        |  ?   | ✕  |   〇    |  -  |              [PurpurMC](https://purpurmc.org/)               |     |     |
-| Folia         |  ?   | ✕  |   〇    |  -  |         [PaperMC](https://papermc.io/software/folia)         |     |     |
+| サーバー          | 基本操作 | 鯖内連携 | ダウンロード | ビルド |                             URL                              |
+|:--------------|:----:|:----:|:------:|:---:|:------------------------------------------------------------:|
+| Vanilla       |  ?   |  ✕   |   〇    |  -  | [Minecraft](https://www.minecraft.net/ja-jp/download/server) |     |     |
+| Spigot        |  ?   |  ✕   |   〇    |  〇  |    [SpigotMC](https://www.spigotmc.org/wiki/buildtools/)     |     |     |
+| Paper         |  ?   |  ✕   |   〇    |  -  |         [PaperMC](https://papermc.io/software/paper)         |     |     |
+| Purpur        |  ?   |  ✕   |   〇    |  -  |              [PurpurMC](https://purpurmc.org/)               |     |     |
+| Folia         |  ?   |  ✕   |   〇    |  -  |         [PaperMC](https://papermc.io/software/folia)         |     |     |
 | # ***mod***   |
-| Forge         |  ?   | ✕  |   〇    |  〇  |     [Minecraft Forge](https://files.minecraftforge.net/)     |     |     |
-| Mohist        |  ?   | ✕  |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/mohist)       |     |     |
-| NeoForge      |  ?   | ✕  |   〇    |  〇  |             [NeoForged](https://neoforged.net/)              |     |     |
-| Youer         |  ?   | ✕  |   ?    |  ?  |       [MohistMC](https://mohistmc.com/software/youer)        |     |     |
-| Fabric        |  ?   | ✕  |   〇    |  -  |              [FabricMC](https://fabricmc.net/)               |     |     |
-| Banner        |  ?   | ✕  |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/banner)       |     |     |
+| Forge         |  ?   |  ✕   |   〇    |  〇  |     [Minecraft Forge](https://files.minecraftforge.net/)     |     |     |
+| Mohist        |  ?   |  ✕   |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/mohist)       |     |     |
+| NeoForge      |  ?   |  ✕   |   〇    |  〇  |             [NeoForged](https://neoforged.net/)              |     |     |
+| Youer         |  ?   |  ✕   |   ?    |  ?  |       [MohistMC](https://mohistmc.com/software/youer)        |     |     |
+| Fabric        |  ?   |  ✕   |   〇    |  -  |              [FabricMC](https://fabricmc.net/)               |     |     |
+| Banner        |  ?   |  ✕   |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/banner)       |     |     |
 | # ***proxy*** |
-| BungeeCord    |  ?   | ✕  |   〇    |  -  |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |     |     |
-| Waterfall     |  ?   | ✕  |   〇    |  -  |       [PaperMC](https://papermc.io/software/waterfall)       |     |     |
-| Velocity      |  ?   | ✕  |   〇    |  -  |       [PaperMC](https://papermc.io/software/velocity)        |     |     |
+| BungeeCord    |  ?   |  ✕   |   〇    |  -  |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |     |     |
+| Waterfall     |  ?   |  ✕   |   〇    |  -  |       [PaperMC](https://papermc.io/software/waterfall)       |     |     |
+| Velocity      |  ?   |  ✕   |   〇    |  -  |       [PaperMC](https://papermc.io/software/velocity)        |     |     |
 
 ## 導入と起動
 ```bash
