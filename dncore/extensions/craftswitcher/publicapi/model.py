@@ -16,12 +16,9 @@ if TYPE_CHECKING:
 
 
 class SwitcherConfig(BaseModel):
-    servers_location: str = Field("/", description="サーバーの保管に使うパス")
-    java_executables: list[str] = Field(description="実行可能なJavaのパスリスト。システムパスで指定してください。")
-    java_auto_detect_locations: list[str] = Field([
-        "/usr/lib/jvm",
-        "C:\\Program Files\\Java",
-    ], description="Javaを自動検出するディレクトリ。システムパスで指定してください。", )
+    servers_location: str | None = Field(None, description="サーバーの保管に使うパス")
+    java_executables: list[str] | None = Field(None, description="実行可能なJavaのパスリスト。システムパスで指定してください。")
+    java_auto_detect_locations: list[str] | None = Field(None, description="Javaを自動検出するディレクトリ。システムパスで指定してください。", )
 
 
 class Server(BaseModel):
