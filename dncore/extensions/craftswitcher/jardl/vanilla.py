@@ -63,4 +63,4 @@ class VanillaServerDownloader(ServerDownloader[VanillaVersion]):
         async with aiohttp.request("GET", "https://launchermeta.mojang.com/mc/game/version_manifest.json") as res:
             res.raise_for_status()
             info = VersionManifest.model_validate(await res.json())
-            return [VanillaVersion(ver.id, ver) for ver in info.versions]
+            return [VanillaVersion(ver.id, ver) for ver in reversed(info.versions) if ver.type == "release"]
