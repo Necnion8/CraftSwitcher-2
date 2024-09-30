@@ -557,7 +557,8 @@ class CraftSwitcher(EventListener):
         config.load(save_defaults=False)
         return config
 
-    def create_server(self, server_id: str, directory: str | Path, config: ServerConfig, *, set_creation_date=True):
+    def create_server(self, server_id: str, directory: str | Path, config: ServerConfig,
+                      *, set_creation_date=True, set_accept_eula: bool = None, ):
         """
         サーバーを作成し、CraftSwitcherに追加されます。
 
@@ -580,6 +581,9 @@ class CraftSwitcher(EventListener):
 
         if set_creation_date:
             config.created_at = datetime_now()
+
+        if set_accept_eula is not None:
+            server.set_eula_accept(set_accept_eula or False)
 
         config.save(force=True)
         self.servers.append(server)

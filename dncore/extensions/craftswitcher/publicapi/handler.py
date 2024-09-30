@@ -492,7 +492,11 @@ class APIHandler(object):
             summary="構成済みのサーバーを追加",
             description="構成済みのサーバーを登録します",
         )
-        async def _add(server_id: str, param: model.AddServerParam, ) -> model.ServerOperationResult:
+        async def _add(
+                server_id: str,
+                param: model.AddServerParam,
+                eula: bool | None = Query(False, description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -506,7 +510,7 @@ class APIHandler(object):
             except FileNotFoundError:
                 raise APIErrorCode.NOT_EXISTS_CONFIG_FILE.of("Not exists server config")
 
-            server = inst.create_server(server_id, server_dir, config, set_creation_date=False)
+            server = inst.create_server(server_id, server_dir, config, set_creation_date=False, set_accept_eula=eula)
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
@@ -514,7 +518,12 @@ class APIHandler(object):
             summary="サーバーを作成",
             description="サーバーを作成します",
         )
-        async def _create(server_id: str, param: model.CreateServerParam, ) -> model.ServerOperationResult:
+        async def _create(
+                server_id: str,
+                param: model.CreateServerParam,
+                eula: bool | None = Query(False, description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.ServerOperationResult:
+
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -539,7 +548,8 @@ class APIHandler(object):
             config.stop_command = param.stop_command
             config.shutdown_timeout = param.shutdown_timeout
 
-            server = inst.create_server(server_id, server_dir, config)
+            server = inst.create_server(server_id, server_dir, config, set_accept_eula=eula)
+
             return model.ServerOperationResult.success(server.id)
 
         @api.delete(
