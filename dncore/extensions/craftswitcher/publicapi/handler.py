@@ -329,7 +329,7 @@ class APIHandler(object):
 
         @api.get(
             "/login",
-            summary="セッションの有効性を返す"
+            summary="セッションが有効かどうかを返す"
         )
         async def _get_login(request: Request) -> bool:
             try:
