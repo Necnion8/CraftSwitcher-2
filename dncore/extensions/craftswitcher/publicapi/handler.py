@@ -327,6 +327,17 @@ class APIHandler(object):
                 raise APIErrorCode.NOT_EXISTS_USER.of("Unknown user id", 404)
             return user
 
+        @api.get(
+            "/login",
+            summary="セッションの有効性を返す"
+        )
+        async def _get_login(request: Request) -> bool:
+            try:
+                user = await self.get_authorized_user(request)
+            except APIError:
+                return False
+            return bool(user)
+
         @api.post(
             "/login",
         )
