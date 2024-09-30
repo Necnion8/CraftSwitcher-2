@@ -609,6 +609,29 @@ class APIHandler(object):
             server._config.load()
             return await _get_config(server)
 
+        @api.get(
+            "/server/{server_id}/eula",
+            summary="EULA の値を取得",
+            description="EULAファイルの値を返します",
+        )
+        def _get_eula(server: "ServerProcess" = Depends(getserver), ) -> bool | None:
+            try:
+                return server.is_eula_accepted(ignore_not_exists=False)
+            except FileNotFoundError:
+                return None
+
+        @api.post(
+            "/server/{server_id}/eula",
+            summary="EULA の値を設定",
+            description="EULAファイルの値を変更します",
+        )
+        def _post_eula(
+                server: "ServerProcess" = Depends(getserver),
+                accept: bool = Query(description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.FileInfo:
+            eula_path = server.set_eula_accept(accept)
+            return self.inst.create_file_info(eula_path, root_dir=server.directory)
+
         @api.post(
             "/server/{server_id}/install",
             summary="サーバーJarのインストール",
