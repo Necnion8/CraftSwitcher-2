@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.database import model as db
 
 
+class SwitcherConfig(BaseModel):
+    servers_location: str = Field("/", description="サーバーの保管に使うパス")
+
+
 class Server(BaseModel):
     id: str = Field(description="サーバーID 小文字のみ")
     name: str | None = Field(description="表示名")

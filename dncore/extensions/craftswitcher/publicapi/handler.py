@@ -25,7 +25,7 @@ from dncore.extensions.craftswitcher.utils import call_event, datetime_now
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
-    from dncore.extensions.craftswitcher.config import ServerConfig
+    from dncore.extensions.craftswitcher.config import ServerConfig, SwitcherConfig
     from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
 
 log = getLogger(__name__)
@@ -208,6 +208,43 @@ class APIHandler(object):
         api = APIRouter(
             tags=["App", ],
         )
+
+        @api.get(
+            "/config/app",
+            summary="Switcher設定の取得",
+            description="Switcherの設定を返します",
+        )
+        def _get_config() -> model.SwitcherConfig:
+            def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
+                ls = {}
+                for key, entry in conf.get_values().items():
+                    if isinstance(entry.value, ConfigValues):
+                        ls.update(toflat([*keys, key], entry.value))
+                    else:
+                        ls[".".join([*keys, key])] = entry.value
+                return ls
+
+            return model.SwitcherConfig(**toflat([], self.inst.config))
+
+        @api.put(
+            "/config/app",
+            summary="Switcher設定の更新",
+            description="Switcherの設定を変更します",
+        )
+        def _put_config(param: model.SwitcherConfig) -> model.SwitcherConfig:
+            config = self.inst.config  # type: SwitcherConfig
+            changed_keys = set()
+            
+            for key, value in param.model_dump(exclude_unset=True).items():
+                conf = config
+                changed_keys.add(key)
+                key = key.split("__")
+                while 2 <= len(key):
+                    conf = getattr(conf, key.pop(0))
+                setattr(conf, key[0], value)
+
+            config.save(force=True)
+            return _get_config()
 
         @api.get(
             "/config/server_global",
