@@ -1,3 +1,5 @@
+from logging import getLogger
+
 from dncore.discord.events import DebugCommandPreExecuteEvent
 from dncore.event import onevent
 from dncore.extensions.craftswitcher import CraftSwitcher, SwitcherExtension, EditableFile, ExtensionInfo
@@ -7,15 +9,23 @@ from dncore.extensions.craftswitcher.event import ServerChangeStateEvent
 from dncore.extensions.craftswitcher.ext import SwitcherExtensionManager
 from dncore.plugin import Plugin
 
+log = getLogger(__name__)
+
 
 class CraftSwitcherPlugin(Plugin, SwitcherExtension):
     def __init__(self):
         super().__init__()
         # config_path = DNCoreAPI.core().config_dir / "switcher.yml"
         config_path = self.data_dir / "config.yml"
+        self.web_root_dir = web_root_dir = self.data_dir / "public_html"
         self.extensions = SwitcherExtensionManager()
         self.ext_info = ExtensionInfo.create(self.info)
-        self.switcher = CraftSwitcher(self.loop, config_path, plugin_info=self.info, extensions=self.extensions)
+        self.switcher = CraftSwitcher(
+            self.loop, config_path,
+            web_root_dir=web_root_dir,
+            plugin_info=self.info,
+            extensions=self.extensions,
+        )
         self.activity = BotActivity()
         #
         self.editable_files.append(EditableFile(config_path, "config", "メイン設定"))
@@ -72,6 +82,9 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
         self.register_activity(self.activity)
         await self.switcher.init()
         self.extensions.add(self, self.ext_info)
+
+        if not self.web_root_dir.is_dir():
+            log.warning("Not exists web_root: %s", self.web_root_dir)
 
     async def on_disable(self):
         self.extensions.remove(self)
