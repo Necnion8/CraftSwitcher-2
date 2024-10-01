@@ -349,7 +349,7 @@ class APIHandler(object):
             if not db.verify_hash(form_data.password, user.password):
                 raise APIErrorCode.INCORRECT_USERNAME_OR_PASSWORD.of("Incorrect username or password")
 
-            expires, token, _ = await db.update_user_token(
+            _, token, expires_datetime = await db.update_user_token(
                 user=user,
                 last_login=datetime_now(),
                 last_address=request.client.host,
@@ -358,7 +358,7 @@ class APIHandler(object):
             response.set_cookie(
                 key="session",
                 value=token,
-                max_age=expires.total_seconds(),
+                expires=expires_datetime,
             )
             return dict(result=True)
 
