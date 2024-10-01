@@ -63,12 +63,14 @@ class APIHandler(object):
         self.router = api
         self._websocket_clients = set()  # type: set[WebSocketClient]
         #
-        api.include_router(self._app())
-        api.include_router(self._user())
-        api.include_router(self._server())
-        api.include_router(self._file())
-        api.include_router(self._jardl())
-        api.include_router(self._plugins())
+        _api = APIRouter(prefix="/api")
+        _api.include_router(self._app())
+        _api.include_router(self._user())
+        _api.include_router(self._server())
+        _api.include_router(self._file())
+        _api.include_router(self._jardl())
+        _api.include_router(self._plugins())
+        api.include_router(_api)
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):
