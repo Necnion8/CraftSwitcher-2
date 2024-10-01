@@ -331,17 +331,17 @@ class APIHandler(object):
             "/login",
             summary="セッションが有効かどうかを返す"
         )
-        async def _get_login(request: Request) -> bool:
+        async def _get_login(request: Request) -> dict:
             try:
-                user = await self.get_authorized_user(request)
+                result = bool(await self.get_authorized_user(request))
             except APIError:
-                return False
-            return bool(user)
+                result = False
+            return dict(result=result)
 
         @api.post(
             "/login",
         )
-        async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+        async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()) -> dict:
             user = await self.database.get_user(form_data.username)
             if not user:
                 raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
