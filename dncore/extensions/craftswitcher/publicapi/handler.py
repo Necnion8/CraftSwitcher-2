@@ -229,7 +229,7 @@ class APIHandler(object):
         @api.put(
             "/config/app",
             summary="Switcher設定の更新",
-            description="Switcherの設定を変更します",
+            description="Switcherの設定を変更します。変更しない値は省略できます。",
         )
         def _put_config(param: model.SwitcherConfig) -> model.SwitcherConfig:
             config = self.inst.config  # type: SwitcherConfig
@@ -249,6 +249,7 @@ class APIHandler(object):
         @api.get(
             "/config/server_global",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="サーバーのデフォルト設定の取得",
         )
         async def _get_config_server_global() -> model.ServerGlobalConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
@@ -265,6 +266,8 @@ class APIHandler(object):
         @api.put(
             "/config/server_global",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="サーバーのデフォルト設定の更新",
+            description="変更しない値を省略できます",
         )
         async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
             config = inst.config.server_defaults
@@ -283,6 +286,7 @@ class APIHandler(object):
         @api.get(
             "/java/list",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="利用できるJavaの一覧",
         )
         def _get_java_list() -> list[model.JavaExecutableInfo]:
             return [
@@ -301,6 +305,7 @@ class APIHandler(object):
         @api.post(
             "/java/rescan",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="利用可能なJavaを再検出",
         )
         async def _post_java_rescan() -> list[model.JavaExecutableInfo]:
             await self.inst.scan_java_executables()
@@ -329,7 +334,7 @@ class APIHandler(object):
 
         @api.get(
             "/login",
-            summary="セッションが有効かどうかを返す"
+            summary="セッションが有効かどうかを返す",
         )
         async def _get_login(request: Request) -> dict:
             try:
@@ -340,6 +345,7 @@ class APIHandler(object):
 
         @api.post(
             "/login",
+            summary="セッションの生成と設定",
         )
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()) -> dict:
             user = await self.database.get_user(form_data.username)
@@ -365,6 +371,7 @@ class APIHandler(object):
         @api.get(
             "/users",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="登録されたユーザーの一覧",
         )
         async def _users() -> list[model.User]:
             return [model.User.create(u) for u in await self.database.get_users()]
@@ -372,6 +379,7 @@ class APIHandler(object):
         @api.post(
             "/user/add",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="ユーザーを作成",
         )
         async def _user_add(form_data: OAuth2PasswordRequestForm = Depends()) -> model.UserOperationResult:
             try:
@@ -384,6 +392,7 @@ class APIHandler(object):
         @api.delete(
             "/user/remove",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="ユーザーを削除",
         )
         async def _user_remove(user: User = Depends(getuser)) -> model.UserOperationResult:
             await self.database.remove_user(user)
@@ -632,7 +641,7 @@ class APIHandler(object):
         @api.put(
             "/server/{server_id}/config",
             summary="サーバー設定の更新",
-            description="サーバーの設定を変更します",
+            description="サーバーの設定を変更します。変更しない値は省略できます。",
         )
         async def _put_config(param: model.ServerConfig, server: "ServerProcess" = Depends(getserver),
                               ) -> model.ServerConfig:
