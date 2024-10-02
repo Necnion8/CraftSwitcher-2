@@ -68,6 +68,7 @@ class ServerType(Enum):
     YOUER = "youer"
     # fabric
     FABRIC = "fabric"
+    QUILT = "quilt"
     BANNER = "banner"
     # proxy
     BUNGEECORD = "bungeecord"
@@ -100,6 +101,7 @@ SERVER_TYPE_SPECS = {
     ServerType.MOHIST: _ServerType("mohist", "stop", False, True),
     ServerType.YOUER: _ServerType("youer", "stop", False, True),
     ServerType.FABRIC: _ServerType("fabric", "stop", False, True),
+    ServerType.QUILT: _ServerType("quilt", "stop", False, True),
     ServerType.BANNER: _ServerType("banner", "stop", False, True),
     ServerType.BUNGEECORD: _ServerType("bungeecord", "end", True, False),
     ServerType.WATERFALL: _ServerType("waterfall", "end", True, False),
