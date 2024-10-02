@@ -53,6 +53,7 @@ Minecraft Java サーバー 管理システム |
 | NeoForge      |  ?   |  ✕   |   〇    |  〇  |             [NeoForged](https://neoforged.net/)              |     |     |
 | Youer         |  ?   |  ✕   |   ?    |  ?  |       [MohistMC](https://mohistmc.com/software/youer)        |     |     |
 | Fabric        |  ?   |  ✕   |   〇    |  -  |              [FabricMC](https://fabricmc.net/)               |     |     |
+| Quilt         |  ?   |  ✕   |   〇    |  〇  |               [QuiltMC](https://quiltmc.org/)                |
 | Banner        |  ?   |  ✕   |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/banner)       |     |     |
 | # ***proxy*** |
 | BungeeCord    |  ?   |  ✕   |   〇    |  -  |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |     |     |
