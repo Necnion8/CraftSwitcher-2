@@ -841,7 +841,7 @@ class APIHandler(object):
 
             return model.FileDirectoryInfo(
                 name="" if path.swi == "/" else path.real.name,
-                path=self.files.swipath(path.real.parent, force=True),
+                path=self.files.swipath(path.real.parent, force=True, root_dir=path.root_dir),
                 children=file_list,
             )
 
