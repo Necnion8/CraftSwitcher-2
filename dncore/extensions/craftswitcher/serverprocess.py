@@ -228,7 +228,6 @@ class ServerProcess(object):
         return mem_available > required
 
     async def _term_read(self, data: str):
-        data = data.lstrip()
         self.log.info(f"[OUTPUT]: {data!r}")
 
         if self.builder and self.builder.state == ServerBuildStatus.PENDING:
