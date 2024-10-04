@@ -99,7 +99,7 @@ class APIHandler(object):
         ]
 
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _ws_handler(self, websocket: WebSocket):
         await websocket.accept()
@@ -535,7 +535,7 @@ class APIHandler(object):
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
-            "/server/{server_id/send_line",
+            "/server/{server_id}/send_line",
             summary="サーバープロセスに送信",
             description="コマンド文などの文字列をサーバープロセスへ書き込みます",
         )
