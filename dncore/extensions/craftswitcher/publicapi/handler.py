@@ -236,7 +236,7 @@ class APIHandler(object):
         def _put_config(param: model.SwitcherConfig) -> model.SwitcherConfig:
             config = self.inst.config  # type: SwitcherConfig
             changed_keys = set()
-            
+
             for key, value in param.model_dump(exclude_unset=True).items():
                 conf = config
                 changed_keys.add(key)
@@ -303,7 +303,7 @@ class APIHandler(object):
                     vendor_version=i.vendor_version,
                 ) for i in self.inst.java_executables
             ]
-        
+
         @api.post(
             "/java/rescan",
             dependencies=[Depends(self.get_authorized_user), ],
@@ -539,12 +539,29 @@ class APIHandler(object):
             summary="サーバープロセスに送信",
             description="コマンド文などの文字列をサーバープロセスへ書き込みます",
         )
-        async def _send_line(line: str, server: "ServerProcess" = Depends(getserver), ):
+        async def _send_line(line: str, server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.send_command(line)
             except errors.NotRunningError:
                 raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
             return model.ServerOperationResult.success(server.id)
+
+        @api.get(
+            "/server/{server_id}/logs/latest",
+            summary="サーバープロセスの出力ログ",
+        )
+        def _logs_latest(
+                server: "ServerProcess" = Depends(getserver),
+                max_lines: int | None = Query(None, ge=1, description=(
+                        "取得する最大行数。null でキャッシュされている全ての行を出力します。"
+                )),
+        ) -> list[str]:
+            logs = server.logs
+
+            if max_lines is None:
+                return list(reversed(logs))
+
+            return [logs[-(1+i)] for i in range(max_lines) if i < len(logs)]
 
         @api.post(
             "/server/{server_id}/import",
