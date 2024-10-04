@@ -1,5 +1,6 @@
 import asyncio
 import asyncio.subprocess as subprocess
+import collections
 import datetime
 import logging
 import os
@@ -23,6 +24,18 @@ from .jardl import ServerBuilder, ServerBuildStatus
 from .utils import *
 
 _log = logging.getLogger(__name__)
+
+
+class LineBuffer(object):
+    def __init__(self):
+        self._buffer = ""
+
+    def put(self, data: str):
+        buf = self._buffer + data
+        while (idx := buf.find("\n")) and idx != -1:
+            line, buf = buf[:idx], buf[idx+1:]
+            self._buffer = buf
+            yield line
 
 
 class ServerProcess(object):
@@ -137,6 +150,7 @@ class ServerProcess(object):
             self, loop: asyncio.AbstractEventLoop,
             directory: Path, server_id: str,
             config: ServerConfig, global_config: ServerGlobalConfig,
+            *, max_logs_line: int = None,
     ):
         self.log = ServerLoggerAdapter(_log, server_id)
         self.loop = loop
@@ -150,6 +164,8 @@ class ServerProcess(object):
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
         self._builder = None  # type: ServerBuilder | None
+        self._logs = self._create_logs_list(max_logs_line)
+        self._logs_buffer = LineBuffer()
         #
         self.shutdown_to_restart = False
 
@@ -203,6 +219,16 @@ class ServerProcess(object):
         call_event(ServerChangeStateEvent(self, old_state))
 
     @property
+    def logs(self):
+        return self._logs
+
+    def _create_logs_list(self, max_lines: int = None):
+        try:
+            return collections.deque(self._logs, maxlen=max_lines)
+        except AttributeError:
+            return collections.deque(maxlen=max_lines)
+
+    @property
     def players(self) -> list:
         return list()  # TODO: impl players
 
@@ -238,6 +264,14 @@ class ServerProcess(object):
 
         if data:
             call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
+
+            _lines = []
+            for line in self._logs_buffer.put(data):
+                line = line.rstrip()
+                self._logs.append(line)
+                _lines.append(line)
+            if _lines:
+                call_event(ServerProcessReadLinesEvent(self, _lines))  # イベント負荷を要検証
 
     async def _build_arguments(self):
         generated_arguments = False

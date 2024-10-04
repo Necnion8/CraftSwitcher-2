@@ -254,6 +254,15 @@ class CraftSwitcher(EventListener):
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersLoadedEvent())
 
+    def resize_logs_size(self):
+        lines = self.config.max_console_lines_in_memory
+
+        for server in self.servers.values():
+            if not server:
+                continue
+
+            server._logs = server._create_logs_list(lines)
+
     def _init_server_directory(self, server_id: str, swi_directory: str):
         try:
             server_dir = self.files.realpath(swi_directory)
@@ -283,6 +292,7 @@ class CraftSwitcher(EventListener):
             server_id=server_id,
             config=config,
             global_config=self.config.server_defaults,
+            max_logs_line=self.config.max_console_lines_in_memory,
         )
 
     def reload_servers(self):
@@ -589,7 +599,7 @@ class CraftSwitcher(EventListener):
             if not directory.parent.is_dir():
                 raise NotADirectoryError(str(directory))
             directory.mkdir()
-        server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
+        server = self._init_server(server_id, directory, config)
 
         if set_creation_date:
             config.created_at = datetime_now()

@@ -16,6 +16,7 @@ __all__ = [
     "ServerCreatedEvent",
     "ServerDeletedEvent",
     "ServerProcessReadEvent",
+    "ServerProcessReadLinesEvent",
     "SwitcherInitializedEvent",
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
@@ -81,6 +82,15 @@ class ServerProcessReadEvent(Event, ServerEvent):
     def __init__(self, server: "ServerProcess", data: str):
         super().__init__(server)
         self.data = data
+
+
+class ServerProcessReadLinesEvent(Event, ServerEvent):
+    """
+    プロセスから読み取った出力から改行コード(\\\\n)で終わる行ごとに処理します
+    """
+    def __init__(self, server: "ServerProcess", lines: list[str]):
+        super().__init__(server)
+        self.lines = lines
 
 
 class SwitcherInitializedEvent(Event):
