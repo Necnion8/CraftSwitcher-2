@@ -31,11 +31,13 @@ class LineBuffer(object):
         self._buffer = ""
 
     def put(self, data: str):
-        buf = self._buffer + data
-        while (idx := buf.find("\n")) and idx != -1:
-            line, buf = buf[:idx], buf[idx+1:]
+        buf = (self._buffer + data).replace("\r\n", "\n")
+        try:
+            while (idx := buf.find("\n")) and idx != -1:
+                line, buf = buf[:idx], buf[idx+1:]
+                yield line.rsplit("\r", 1)[-1]
+        finally:
             self._buffer = buf
-            yield line
 
 
 class ServerProcess(object):
@@ -254,8 +256,6 @@ class ServerProcess(object):
         return mem_available > required
 
     async def _term_read(self, data: str):
-        self.log.info(f"[OUTPUT]: {data!r}")
-
         if self.builder and self.builder.state == ServerBuildStatus.PENDING:
             try:
                 await self.builder._read(data)
@@ -267,9 +267,9 @@ class ServerProcess(object):
 
             _lines = []
             for line in self._logs_buffer.put(data):
-                line = line.rstrip()
                 self._logs.append(line)
                 _lines.append(line)
+                self.log.debug(f"[OUTPUT]: {line!r}")
             if _lines:
                 call_event(ServerProcessReadLinesEvent(self, _lines))  # イベント負荷を要検証
 
