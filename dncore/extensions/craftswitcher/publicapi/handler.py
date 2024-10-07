@@ -945,7 +945,7 @@ class APIHandler(object):
         async def _copy(
                 path: PairPath = Depends(get_path_of_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
 
             task = self.files.copy(
                 path.real, dst_path.real,
@@ -969,7 +969,7 @@ class APIHandler(object):
         async def _move(
                 path: PairPath = Depends(get_path_of_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
 
             task = self.files.move(
                 path.real, dst_path.real,
@@ -1126,7 +1126,7 @@ class APIHandler(object):
         async def _server_copy(
                 path: PairPath = Depends(get_path_of_server_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
             return await _copy(path, dst_path)
 
         @api.put(
@@ -1137,7 +1137,7 @@ class APIHandler(object):
         async def _server_move(
                 path: PairPath = Depends(get_path_of_server_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
             return await _move(path, dst_path)
 
         @api.post(
