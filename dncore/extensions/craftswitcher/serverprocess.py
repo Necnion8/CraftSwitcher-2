@@ -161,7 +161,7 @@ class ServerProcess(object):
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
 
-        self.term_size = 80, 25
+        self.term_size = 200, 25
         self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
