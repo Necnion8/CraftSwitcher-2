@@ -176,6 +176,7 @@ def defaults():
         VelocityServerDownloader,
     )
     from .purpurmc import PurpurServerDownloader
+    from .quiltmc import QuiltServerDownloader
     from .spigotmc import SpigotServerDownloader
     from .vanilla import VanillaServerDownloader
 
@@ -192,6 +193,7 @@ def defaults():
         ServerType.WATERFALL: WaterfallServerDownloader(),
         ServerType.VELOCITY: VelocityServerDownloader(),
         ServerType.PURPUR: PurpurServerDownloader(),
+        ServerType.QUILT: QuiltServerDownloader(),
         ServerType.SPIGOT: SpigotServerDownloader(),
         ServerType.VANILLA: VanillaServerDownloader(),
     }

@@ -25,7 +25,7 @@ from dncore.extensions.craftswitcher.utils import call_event, datetime_now
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
-    from dncore.extensions.craftswitcher.config import ServerConfig
+    from dncore.extensions.craftswitcher.config import ServerConfig, SwitcherConfig
     from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
 
 log = getLogger(__name__)
@@ -63,12 +63,14 @@ class APIHandler(object):
         self.router = api
         self._websocket_clients = set()  # type: set[WebSocketClient]
         #
-        api.include_router(self._app())
-        api.include_router(self._user())
-        api.include_router(self._server())
-        api.include_router(self._file())
-        api.include_router(self._jardl())
-        api.include_router(self._plugins())
+        _api = APIRouter(prefix="/api")
+        _api.include_router(self._app())
+        _api.include_router(self._user())
+        _api.include_router(self._server())
+        _api.include_router(self._file())
+        _api.include_router(self._jardl())
+        _api.include_router(self._plugins())
+        api.include_router(_api)
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):
@@ -97,7 +99,7 @@ class APIHandler(object):
         ]
 
         if tasks:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _ws_handler(self, websocket: WebSocket):
         await websocket.accept()
@@ -210,8 +212,46 @@ class APIHandler(object):
         )
 
         @api.get(
+            "/config/app",
+            summary="Switcher設定の取得",
+            description="Switcherの設定を返します",
+        )
+        def _get_config() -> model.SwitcherConfig:
+            def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
+                ls = {}
+                for key, entry in conf.get_values().items():
+                    if isinstance(entry.value, ConfigValues):
+                        ls.update(toflat([*keys, key], entry.value))
+                    else:
+                        ls[".".join([*keys, key])] = entry.value
+                return ls
+
+            return model.SwitcherConfig(**toflat([], self.inst.config))
+
+        @api.put(
+            "/config/app",
+            summary="Switcher設定の更新",
+            description="Switcherの設定を変更します。変更しない値は省略できます。",
+        )
+        def _put_config(param: model.SwitcherConfig) -> model.SwitcherConfig:
+            config = self.inst.config  # type: SwitcherConfig
+            changed_keys = set()
+
+            for key, value in param.model_dump(exclude_unset=True).items():
+                conf = config
+                changed_keys.add(key)
+                key = key.split("__")
+                while 2 <= len(key):
+                    conf = getattr(conf, key.pop(0))
+                setattr(conf, key[0], value)
+
+            config.save(force=True)
+            return _get_config()
+
+        @api.get(
             "/config/server_global",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="サーバーのデフォルト設定の取得",
         )
         async def _get_config_server_global() -> model.ServerGlobalConfig:
             def toflat(keys: list[str], conf: "ConfigValues") -> dict[str, Any]:
@@ -228,6 +268,8 @@ class APIHandler(object):
         @api.put(
             "/config/server_global",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="サーバーのデフォルト設定の更新",
+            description="変更しない値を省略できます",
         )
         async def _put_config_server_global(param: model.ServerGlobalConfig) -> model.ServerGlobalConfig:
             config = inst.config.server_defaults
@@ -246,6 +288,7 @@ class APIHandler(object):
         @api.get(
             "/java/list",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="利用できるJavaの一覧",
         )
         def _get_java_list() -> list[model.JavaExecutableInfo]:
             return [
@@ -260,10 +303,11 @@ class APIHandler(object):
                     vendor_version=i.vendor_version,
                 ) for i in self.inst.java_executables
             ]
-        
+
         @api.post(
             "/java/rescan",
             dependencies=[Depends(self.get_authorized_user), ],
+            summary="利用可能なJavaを再検出",
         )
         async def _post_java_rescan() -> list[model.JavaExecutableInfo]:
             await self.inst.scan_java_executables()
@@ -290,10 +334,22 @@ class APIHandler(object):
                 raise APIErrorCode.NOT_EXISTS_USER.of("Unknown user id", 404)
             return user
 
+        @api.get(
+            "/login",
+            summary="セッションが有効かどうかを返す",
+        )
+        async def _get_login(request: Request) -> dict:
+            try:
+                result = bool(await self.get_authorized_user(request))
+            except APIError:
+                result = False
+            return dict(result=result)
+
         @api.post(
             "/login",
+            summary="セッションの生成と設定",
         )
-        async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
+        async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()) -> dict:
             user = await self.database.get_user(form_data.username)
             if not user:
                 raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
@@ -301,7 +357,7 @@ class APIHandler(object):
             if not db.verify_hash(form_data.password, user.password):
                 raise APIErrorCode.INCORRECT_USERNAME_OR_PASSWORD.of("Incorrect username or password")
 
-            expires, token, _ = await db.update_user_token(
+            _, token, expires_datetime = await db.update_user_token(
                 user=user,
                 last_login=datetime_now(),
                 last_address=request.client.host,
@@ -310,13 +366,14 @@ class APIHandler(object):
             response.set_cookie(
                 key="session",
                 value=token,
-                max_age=expires.total_seconds(),
+                expires=expires_datetime,
             )
             return dict(result=True)
 
         @api.get(
             "/users",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="登録されたユーザーの一覧",
         )
         async def _users() -> list[model.User]:
             return [model.User.create(u) for u in await self.database.get_users()]
@@ -324,6 +381,7 @@ class APIHandler(object):
         @api.post(
             "/user/add",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="ユーザーを作成",
         )
         async def _user_add(form_data: OAuth2PasswordRequestForm = Depends()) -> model.UserOperationResult:
             try:
@@ -336,6 +394,7 @@ class APIHandler(object):
         @api.delete(
             "/user/remove",
             dependencies=[Depends(self.get_authorized_user)],
+            summary="ユーザーを削除",
         )
         async def _user_remove(user: User = Depends(getuser)) -> model.UserOperationResult:
             await self.database.remove_user(user)
@@ -476,23 +535,44 @@ class APIHandler(object):
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
-            "/server/{server_id/send_line",
+            "/server/{server_id}/send_line",
             summary="サーバープロセスに送信",
             description="コマンド文などの文字列をサーバープロセスへ書き込みます",
         )
-        async def _send_line(line: str, server: "ServerProcess" = Depends(getserver), ):
+        async def _send_line(line: str, server: "ServerProcess" = Depends(getserver), ) -> model.ServerOperationResult:
             try:
                 await server.send_command(line)
             except errors.NotRunningError:
                 raise APIErrorCode.SERVER_NOT_RUNNING.of("Not running")
             return model.ServerOperationResult.success(server.id)
 
+        @api.get(
+            "/server/{server_id}/logs/latest",
+            summary="サーバープロセスの出力ログ",
+        )
+        def _logs_latest(
+                server: "ServerProcess" = Depends(getserver),
+                max_lines: int | None = Query(None, ge=1, description=(
+                        "取得する最大行数。null でキャッシュされている全ての行を出力します。"
+                )),
+        ) -> list[str]:
+            logs = server.logs
+
+            if max_lines is None:
+                return list(reversed(logs))
+
+            return [logs[-(1+i)] for i in range(max_lines) if i < len(logs)]
+
         @api.post(
             "/server/{server_id}/import",
             summary="構成済みのサーバーを追加",
             description="構成済みのサーバーを登録します",
         )
-        async def _add(server_id: str, param: model.AddServerParam, ) -> model.ServerOperationResult:
+        async def _add(
+                server_id: str,
+                param: model.AddServerParam,
+                eula: bool | None = Query(False, description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.ServerOperationResult:
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -506,7 +586,7 @@ class APIHandler(object):
             except FileNotFoundError:
                 raise APIErrorCode.NOT_EXISTS_CONFIG_FILE.of("Not exists server config")
 
-            server = inst.create_server(server_id, server_dir, config, set_creation_date=False)
+            server = inst.create_server(server_id, server_dir, config, set_creation_date=False, set_accept_eula=eula)
             return model.ServerOperationResult.success(server.id)
 
         @api.post(
@@ -514,7 +594,12 @@ class APIHandler(object):
             summary="サーバーを作成",
             description="サーバーを作成します",
         )
-        async def _create(server_id: str, param: model.CreateServerParam, ) -> model.ServerOperationResult:
+        async def _create(
+                server_id: str,
+                param: model.CreateServerParam,
+                eula: bool | None = Query(False, description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.ServerOperationResult:
+
             server_id = server_id.lower()
             if server_id in servers:
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
@@ -539,7 +624,8 @@ class APIHandler(object):
             config.stop_command = param.stop_command
             config.shutdown_timeout = param.shutdown_timeout
 
-            server = inst.create_server(server_id, server_dir, config)
+            server = inst.create_server(server_id, server_dir, config, set_accept_eula=eula)
+
             return model.ServerOperationResult.success(server.id)
 
         @api.delete(
@@ -574,7 +660,7 @@ class APIHandler(object):
         @api.put(
             "/server/{server_id}/config",
             summary="サーバー設定の更新",
-            description="サーバーの設定を変更します",
+            description="サーバーの設定を変更します。変更しない値は省略できます。",
         )
         async def _put_config(param: model.ServerConfig, server: "ServerProcess" = Depends(getserver),
                               ) -> model.ServerConfig:
@@ -598,6 +684,29 @@ class APIHandler(object):
         async def _reload_config(server: "ServerProcess" = Depends(getserver), ) -> model.ServerConfig:
             server._config.load()
             return await _get_config(server)
+
+        @api.get(
+            "/server/{server_id}/eula",
+            summary="EULA の値を取得",
+            description="EULAファイルの値を返します",
+        )
+        def _get_eula(server: "ServerProcess" = Depends(getserver), ) -> bool | None:
+            try:
+                return server.is_eula_accepted(ignore_not_exists=False)
+            except FileNotFoundError:
+                return None
+
+        @api.post(
+            "/server/{server_id}/eula",
+            summary="EULA の値を設定",
+            description="EULAファイルの値を変更します",
+        )
+        def _post_eula(
+                server: "ServerProcess" = Depends(getserver),
+                accept: bool = Query(description="Minecraft EULA に同意されていれば true にできます"),
+        ) -> model.FileInfo:
+            eula_path = server.set_eula_accept(accept)
+            return self.inst.create_file_info(eula_path, root_dir=server.directory)
 
         @api.post(
             "/server/{server_id}/install",
@@ -749,7 +858,7 @@ class APIHandler(object):
 
             return model.FileDirectoryInfo(
                 name="" if path.swi == "/" else path.real.name,
-                path=self.files.swipath(path.real.parent, force=True),
+                path=self.files.swipath(path.real.parent, force=True, root_dir=path.root_dir),
                 children=file_list,
             )
 
@@ -836,7 +945,7 @@ class APIHandler(object):
         async def _copy(
                 path: PairPath = Depends(get_path_of_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
 
             task = self.files.copy(
                 path.real, dst_path.real,
@@ -860,7 +969,7 @@ class APIHandler(object):
         async def _move(
                 path: PairPath = Depends(get_path_of_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
 
             task = self.files.move(
                 path.real, dst_path.real,
@@ -1017,7 +1126,7 @@ class APIHandler(object):
         async def _server_copy(
                 path: PairPath = Depends(get_path_of_server_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
             return await _copy(path, dst_path)
 
         @api.put(
@@ -1028,7 +1137,7 @@ class APIHandler(object):
         async def _server_move(
                 path: PairPath = Depends(get_path_of_server_root(exists=True)),
                 dst_path: PairPath = Depends(get_path_of_server_root(Query(alias="dst_path"), no_exists=True)),
-        ) -> model.FileInfo:
+        ) -> model.FileOperationResult:
             return await _move(path, dst_path)
 
         @api.post(

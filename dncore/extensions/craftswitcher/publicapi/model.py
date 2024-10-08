@@ -15,6 +15,12 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.database import model as db
 
 
+class SwitcherConfig(BaseModel):
+    servers_location: str | None = Field(None, description="サーバーの保管に使うパス")
+    java_executables: list[str] | None = Field(None, description="実行可能なJavaのパスリスト。システムパスで指定してください。")
+    java_auto_detect_locations: list[str] | None = Field(None, description="Javaを自動検出するディレクトリ。システムパスで指定してください。", )
+
+
 class Server(BaseModel):
     id: str = Field(description="サーバーID 小文字のみ")
     name: str | None = Field(description="表示名")

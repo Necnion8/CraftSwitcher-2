@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import mimetypes
 import os
 import shutil
 import time
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
@@ -36,12 +38,18 @@ log = getLogger(__name__)
 __version__ = "2.0.0"
 
 
+def fix_mimetypes():
+    mimetypes.add_type('application/javascript', '.js')
+    mimetypes.add_type('text/css', '.css')
+    mimetypes.add_type('image/svg+xml', '.svg')
+
+
 class CraftSwitcher(EventListener):
     _inst: "CraftSwitcher"
     SERVER_CONFIG_FILE_NAME = "swi.server.yml"
 
     def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *,
-                 plugin_info: "PluginInfo" = None, extensions: SwitcherExtensionManager):
+                 plugin_info: "PluginInfo" = None, web_root_dir: Path = None, extensions: SwitcherExtensionManager):
         self.loop = loop
         self.config = SwitcherConfig(config_file)
         self.database = db = SwitcherDatabase(config_file.parent)
@@ -77,6 +85,10 @@ class CraftSwitcher(EventListener):
 
         self.api_server = UvicornServer()
         self.api_handler = APIHandler(self, api, db)
+
+        if web_root_dir:
+            api.mount("/", StaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
+
         #
         self._initialized = False
         self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
@@ -242,6 +254,15 @@ class CraftSwitcher(EventListener):
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersLoadedEvent())
 
+    def resize_logs_size(self):
+        lines = self.config.max_console_lines_in_memory
+
+        for server in self.servers.values():
+            if not server:
+                continue
+
+            server._logs = server._create_logs_list(lines)
+
     def _init_server_directory(self, server_id: str, swi_directory: str):
         try:
             server_dir = self.files.realpath(swi_directory)
@@ -271,6 +292,7 @@ class CraftSwitcher(EventListener):
             server_id=server_id,
             config=config,
             global_config=self.config.server_defaults,
+            max_logs_line=self.config.max_console_lines_in_memory,
         )
 
     def reload_servers(self):
@@ -557,7 +579,8 @@ class CraftSwitcher(EventListener):
         config.load(save_defaults=False)
         return config
 
-    def create_server(self, server_id: str, directory: str | Path, config: ServerConfig, *, set_creation_date=True):
+    def create_server(self, server_id: str, directory: str | Path, config: ServerConfig,
+                      *, set_creation_date=True, set_accept_eula: bool = None, ):
         """
         サーバーを作成し、CraftSwitcherに追加されます。
 
@@ -576,10 +599,13 @@ class CraftSwitcher(EventListener):
             if not directory.parent.is_dir():
                 raise NotADirectoryError(str(directory))
             directory.mkdir()
-        server = ServerProcess(self.loop, directory, server_id, config, self.config.server_defaults)
+        server = self._init_server(server_id, directory, config)
 
         if set_creation_date:
             config.created_at = datetime_now()
+
+        if set_accept_eula is not None:
+            server.set_eula_accept(set_accept_eula or False)
 
         config.save(force=True)
         self.servers.append(server)
@@ -1009,3 +1035,6 @@ def getinst() -> "CraftSwitcher":
         return CraftSwitcher._inst
     except AttributeError:
         raise RuntimeError("CraftSwitcher is not instanced")
+
+
+fix_mimetypes()
