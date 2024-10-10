@@ -772,6 +772,7 @@ class CraftSwitcher(EventListener):
             system=dict(
                 cpu=dict(
                     usage=sys_perf.cpu_usage,
+                    count=sys_perf.cpu_count,
                 ),
                 memory=dict(
                     total=sys_mem.total_bytes,

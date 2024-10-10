@@ -53,8 +53,9 @@ def system_memory(swap=False):
 
 
 def system_perf():
-    percent = psutil.cpu_percent(interval=None, percpu=False)
-    return SystemPerformanceInfo(percent)
+    # noinspection PyTypeChecker
+    percent = psutil.cpu_percent(interval=None, percpu=True)  # type: list[float]
+    return SystemPerformanceInfo(sum(percent), len(percent))
 
 
 def datetime_now():
@@ -168,8 +169,6 @@ class ProcessPerformanceMonitor(object):
     def info(self):
         mem = self.process.memory_info()
         cpu_usage = self.process.cpu_percent(interval=None)
-        if IS_WINDOWS:
-            cpu_usage /= psutil.cpu_count()
         self.cached_info = info = ProcessInfo(
             cpu_usage=cpu_usage,
             memory_used_size=mem.rss,

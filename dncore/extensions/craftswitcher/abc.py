@@ -118,6 +118,7 @@ class SystemMemoryInfo(NamedTuple):
 
 class SystemPerformanceInfo(NamedTuple):
     cpu_usage: float
+    cpu_count: int
 
 
 class ProcessInfo(NamedTuple):
