@@ -12,7 +12,7 @@ from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaita
 import psutil
 
 from dncore import DNCoreAPI
-from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo, JavaExecutableInfo
+from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo, JavaExecutableInfo, DiskUsageInfo
 
 if TYPE_CHECKING:
     from .craftswitcher import CraftSwitcher
@@ -25,6 +25,7 @@ __all__ = [
     "is_windows",
     "system_memory",
     "system_perf",
+    "disk_usage",
     "datetime_now",
     "safe_server_id",
     "check_java_executable",
@@ -56,6 +57,11 @@ def system_perf():
     # noinspection PyTypeChecker
     percent = psutil.cpu_percent(interval=None, percpu=True)  # type: list[float]
     return SystemPerformanceInfo(sum(percent), len(percent))
+
+
+def disk_usage(path: str | Path):
+    info = psutil.disk_usage(str(path))
+    return DiskUsageInfo(info.total, info.used, info.free)
 
 
 def datetime_now():

@@ -207,6 +207,12 @@ class ArchiveFile(BaseModel):
         )
 
 
+class StorageInfo(BaseModel):
+    total_size: int
+    used_size: int
+    free_size: int
+
+
 class User(BaseModel):
     id: int
     name: str

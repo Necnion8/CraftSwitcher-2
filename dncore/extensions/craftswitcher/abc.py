@@ -7,6 +7,7 @@ __all__ = [
     "ServerType",
     "SystemMemoryInfo",
     "SystemPerformanceInfo",
+    "DiskUsageInfo",
     "ProcessInfo",
     "FileWatchInfo",
     "JavaExecutableInfo",
@@ -119,6 +120,12 @@ class SystemMemoryInfo(NamedTuple):
 class SystemPerformanceInfo(NamedTuple):
     cpu_usage: float
     cpu_count: int
+
+
+class DiskUsageInfo(NamedTuple):
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
 
 
 class ProcessInfo(NamedTuple):

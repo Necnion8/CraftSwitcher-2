@@ -21,7 +21,7 @@ from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
-from dncore.extensions.craftswitcher.utils import call_event, datetime_now
+from dncore.extensions.craftswitcher.utils import call_event, datetime_now, disk_usage
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
@@ -1179,6 +1179,21 @@ class APIHandler(object):
                 include_files: list[str] = Query(description="格納するファイルのパス"),
         ) -> model.FileOperationResult:
             return await _archive_make(path, files_root, include_files)
+
+        @api.get(
+            "/storage/info",
+            summary="ディスク使用量の取得",
+        )
+        def _storage_info(server_id: str | None = None) -> model.StorageInfo:
+            if server_id is not None:
+                info = disk_usage(get_server(server_id).directory)
+            else:
+                info = disk_usage(self.files.root_dir)
+            return model.StorageInfo(
+                total_size=info.total_bytes,
+                used_size=info.used_bytes,
+                free_size=info.free_bytes,
+            )
 
         return api
 
