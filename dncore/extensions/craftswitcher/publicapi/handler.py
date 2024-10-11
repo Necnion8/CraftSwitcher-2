@@ -589,6 +589,34 @@ class APIHandler(object):
             server = inst.create_server(server_id, server_dir, config, set_creation_date=False, set_accept_eula=eula)
             return model.ServerOperationResult.success(server.id)
 
+        @api.get(
+            "/server/{server_id}",
+            summary="サーバー情報を取得",
+        )
+        def _get(server_id: str) -> model.Server:
+            server_id = server_id.lower()
+            try:
+                server = servers[server_id]
+            except KeyError:
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
+
+            if server is None:
+                try:
+                    _server_dir = inst.config.servers[server_id]
+                    server_dir = inst.files.resolvepath(_server_dir, force=True)
+                except KeyError:
+                    # 外部から削除または変更されていた場合はリストから静かに除外する
+                    raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
+
+                return model.Server.create_no_data(server_id, server_dir)
+
+            try:
+                server_swi_path = inst.swipath_server(server)
+            except ValueError:
+                server_swi_path = None
+
+            return model.Server.create(server, server_swi_path)
+
         @api.post(
             "/server/{server_id}",
             summary="サーバーを作成",
