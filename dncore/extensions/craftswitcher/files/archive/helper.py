@@ -14,7 +14,7 @@ class ArchiveHelper:
         try:
             return path.resolve().relative_to(root_dir.resolve()).as_posix()
         except ValueError:
-            return path.name
+            raise
 
     def available(self) -> bool:
         raise NotImplementedError
