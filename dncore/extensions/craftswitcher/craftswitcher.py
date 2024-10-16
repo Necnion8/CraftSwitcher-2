@@ -162,6 +162,38 @@ class CraftSwitcher(EventListener):
 
         asyncio.create_task(self.scan_java_executables())
 
+    async def _test(self):
+        root_dir = self.files.root_dir
+        server_dir = root_dir / "paper1_8"
+        plugins_dir = server_dir / "plugins"
+        plugins = [plugins_dir / "ItemRecall.jar", plugins_dir / "LuckPerms.jar", ]
+        out_file = root_dir / "test.zip"
+
+        if out_file.is_file():
+            os.remove(out_file)
+
+        # configuration
+        zip_out = out_file
+        zip_root = server_dir
+        zip_target = [*plugins, root_dir / "paper1_21" / "eula.txt"]
+        # configuration
+
+        zip_target = zip_target if isinstance(zip_target, list) else [zip_target]
+        log.info("START MAKE ARCHIVE")
+        # log.debug(f"  output: {zip_out.relative_to(root_dir)}")
+        log.debug(f"  root  : {zip_root.relative_to(root_dir)}")
+        log.debug(f"  target: {', '.join(map(lambda p: str(p.relative_to(root_dir)), zip_target))}")
+
+        task = await self.files.make_archive(zip_out, zip_root, zip_target)
+        await task
+
+        log.info("COMPLETED")
+
+        for entry in await self.files.list_archive(zip_out):
+            log.debug(f"- {entry.filename}")
+
+        #
+
     async def shutdown(self):
         if not self._initialized:
             return

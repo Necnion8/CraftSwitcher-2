@@ -70,6 +70,7 @@ class APIHandler(object):
         _api.include_router(self._file())
         _api.include_router(self._jardl())
         _api.include_router(self._plugins())
+        _api.include_router(self._debug())
         api.include_router(_api)
 
         @api.exception_handler(HTTPException)
@@ -1396,5 +1397,31 @@ class APIHandler(object):
                 ).model_dump_json())
 
             return model.FileOperationResult.success(None, None)
+
+        return api
+
+    def _debug(self):
+        api = APIRouter(
+            prefix="/debug",
+            tags=["Debug", ],
+        )
+
+        @api.get("/reload")
+        async def _reload():
+            from dncore import DNCoreAPI
+
+            async def _async():
+                try:
+                    await DNCoreAPI.plugins().reload_plugin(DNCoreAPI.get_plugin_info("CraftSwitcher"))
+                except Exception as e:
+                    log.warning("Failed to reload by debug", exc_info=e)
+
+            self.inst.loop.create_task(_async())
+            return True
+
+        @api.get("/test")
+        async def _test():
+            self.inst.loop.create_task(self.inst._test())
+            return True
 
         return api
