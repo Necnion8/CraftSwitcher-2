@@ -49,7 +49,7 @@ class SevenZipHelper(ArchiveHelper):
             "a", str(archive_path),
             "-bb0", "-bso2", "-bse2", "-bsp2", "-sccUTF-8", "-y",
             "--", *[str(self._safe_path(root_dir, p)) for p in files],
-            stderr=subprocess.PIPE,
+            stderr=subprocess.PIPE, cwd=root_dir,
         )
 
         last_logs = collections.deque(maxlen=10)

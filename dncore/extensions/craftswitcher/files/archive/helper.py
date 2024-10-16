@@ -12,9 +12,9 @@ class ArchiveHelper:
     # noinspection PyMethodMayBeStatic
     def _safe_path(self, root_dir: Path, path: Path) -> str:
         try:
-            return (root_dir / path.resolve().relative_to(root_dir.resolve())).as_posix()
+            return path.resolve().relative_to(root_dir.resolve()).as_posix()
         except ValueError:
-            return (root_dir / path.name).as_posix()
+            return path.name
 
     def available(self) -> bool:
         raise NotImplementedError
@@ -71,9 +71,14 @@ class ZipArchiveHelper(ArchiveHelper):
             _total_size = 0
             new_files = []
             for _file in files:
-                for _child in _file.glob("**/*"):
-                    new_files.append(_child)
-                    _total_size += os.path.getsize(_child)
+                if _file.is_dir():
+                    for _child in _file.glob("**/*"):
+                        new_files.append(_child)
+                        _total_size += os.path.getsize(_child)
+                else:
+                    new_files.append(_file)
+                    _total_size += os.path.getsize(_file)
+
             return new_files, _total_size
 
         loop = asyncio.get_running_loop()
