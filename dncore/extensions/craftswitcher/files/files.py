@@ -317,7 +317,7 @@ class FileManager(object):
             async with aiohttp.request("GET", src_url) as res:
                 res.raise_for_status()
 
-                total_bytes = res.content_length
+                total_bytes = res.content_length or 0
                 total_read = 0
 
                 try:
