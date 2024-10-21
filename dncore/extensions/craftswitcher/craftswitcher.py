@@ -648,10 +648,25 @@ class CraftSwitcher(EventListener):
         call_event(ServerCreatedEvent(server))
         return server
 
-    def delete_server(self, server: ServerProcess, *, delete_server_config=False):
+    def delete_server(self, server: str | ServerProcess, *, delete_server_config=False):
         """
         サーバーを削除します。サーバーは停止している必要があります。
         """
+        if not isinstance(server, ServerProcess):
+            try:
+                _server = self.servers[server]
+            except KeyError:
+                raise ValueError(f"Not exists server {server}")
+
+            if not _server:
+                # not loaded
+                self._remove_server(server)
+                log.info("Server deleted: %s (not loaded, silent)", server)
+                self.config.save()
+                return
+
+            server = _server
+
         if server.state.is_running:
             raise RuntimeError("Server is running")
 

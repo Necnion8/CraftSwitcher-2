@@ -662,12 +662,22 @@ class APIHandler(object):
             summary="サーバーを削除",
             description="サーバーを削除します",
         )
-        async def _delete(server: "ServerProcess" = Depends(getserver), delete_config_file: bool = False, ) -> model.ServerOperationResult:
-            if server.state.is_running:
-                raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
+        async def _delete(server_id: str, delete_config_file: bool = False, ) -> model.ServerOperationResult:
+            server_id = server_id.lower()
+            try:
+                server = servers[server_id]
+            except KeyError:
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
 
-            inst.delete_server(server, delete_server_config=delete_config_file)
-            return model.ServerOperationResult.success(server.id)
+            if server:
+                if server.state.is_running:
+                    raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
+                inst.delete_server(server, delete_server_config=delete_config_file)
+
+            else:
+                inst.delete_server(server_id, delete_server_config=delete_config_file)
+
+            return model.ServerOperationResult.success(server.id if server else server_id)
 
         @api.get(
             "/server/{server_id}/config",
