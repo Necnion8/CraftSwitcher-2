@@ -32,8 +32,10 @@ class LineBuffer(object):
 
     def put(self, data: str):
         buf = (self._buffer + data).replace("\r\n", "\n")
+        if 1_000_000 < len(buf):  # 最大 1000KB でカット
+            buf = buf[-1_000_000:]
         try:
-            while (idx := buf.find("\n")) and idx != -1:
+            while (idx := buf.find("\n")) != -1:
                 line, buf = buf[:idx], buf[idx+1:]
                 yield line.rsplit("\r", 1)[-1]
         finally:
