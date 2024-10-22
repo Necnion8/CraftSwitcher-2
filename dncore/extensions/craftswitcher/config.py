@@ -99,6 +99,9 @@ class ServerConfig(FileConfigValues):
     # 最後にバックアップした日付
     last_backup_at: datetime.datetime | None
 
+    # ファイル識別用
+    source_id: str | None
+
 
 class LaunchGlobalOption(ConfigValues):
     # Javaコマンド、もしくはパス
@@ -214,5 +217,5 @@ class SwitcherConfig(FileConfigValues):
     # Discordボットの設定
     discord: Discord
 
-    # バックアップ設定
+    # サーバーバックアップ設定
     backup: Backup

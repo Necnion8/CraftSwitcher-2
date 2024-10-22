@@ -5,6 +5,7 @@ import logging
 import platform
 import re
 import subprocess
+import uuid
 from logging import getLogger
 from pathlib import Path
 from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaitable
@@ -30,6 +31,7 @@ __all__ = [
     "safe_server_id",
     "check_java_executable",
     "get_java_home",
+    "generate_uuid",
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "AsyncCallTimer",
@@ -164,6 +166,10 @@ async def check_java_executable(path: Path) -> JavaExecutableInfo | None:
 async def get_java_home(exe_path: Path) -> str | None:
     info = await check_java_executable(exe_path)
     return info and info.java_home_path or None
+
+
+def generate_uuid():
+    return uuid.uuid4()
 
 
 class ProcessPerformanceMonitor(object):
