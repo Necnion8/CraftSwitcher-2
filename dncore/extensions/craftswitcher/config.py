@@ -166,6 +166,23 @@ class Discord(ConfigValues):
     activities: DiscordActivity
 
 
+class Backup(ConfigValues):
+    # スナップショット機能を使用するか
+    enable_snapshots = True
+
+    # フルバックアップとスナップショットのデータを格納します。システムパスで指定してください。
+    # このディレクトリはサーバーディレクトリと別のドライブに配置することを推奨します。
+    # ※ スナップショットを利用する場合、このディレクトリのファイルシステムでハードリンク機能が利用できる必要があります。
+    backups_directory = "./data_backups"
+
+    # ゴミ箱機能を使用するか
+    enable_trash = True
+
+    # ゴミ箱に移動されたデータを格納します。システムパスで指定してください。
+    # このディレクトリはサーバーディレクトリと同じドライブに配置することを推奨します。
+    trash_files_directory = "./trash_files"
+
+
 class SwitcherConfig(FileConfigValues):
     # サーバーリスト (key: サーバーID、val: サーバー場所)
     servers: dict[str, str]
@@ -196,3 +213,6 @@ class SwitcherConfig(FileConfigValues):
 
     # Discordボットの設定
     discord: Discord
+
+    # バックアップ設定
+    backup: Backup
