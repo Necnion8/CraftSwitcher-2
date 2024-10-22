@@ -142,3 +142,8 @@ class SwitcherDatabase(object):
         expires = datetime_now() + TOKEN_EXPIRES
         await self.update_user(user, token=token, token_expire=expires, **new_values)
         return TOKEN_EXPIRES, token, expires
+
+    # backupper
+
+    pass
+
