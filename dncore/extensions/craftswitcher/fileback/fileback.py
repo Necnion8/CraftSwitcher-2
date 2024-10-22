@@ -1,13 +1,16 @@
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..config import Backup as BackupConfig
-from ..database import SwitcherDatabase
+
+if TYPE_CHECKING:
+    from ..database import SwitcherDatabase
 
 
 class Backupper(object):
     def __init__(self, loop: asyncio.AbstractEventLoop,
-                 *, database: SwitcherDatabase, config: BackupConfig,
+                 *, database: "SwitcherDatabase", config: BackupConfig,
                  backups_dir: Path, trash_dir: Path, ):
         self.loop = loop
         self._db = database

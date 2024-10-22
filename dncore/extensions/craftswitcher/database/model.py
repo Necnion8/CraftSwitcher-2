@@ -61,6 +61,10 @@ class Backup(Base):
     size = Column(Integer, nullable=False)
     comments = Column(String, nullable=True, default=None)
 
+    __mapper_args__ = {
+        "primary_key": [source, path]
+    }
+
 
 class Snapshot(Base):
     __tablename__ = "snapshots"
@@ -76,6 +80,10 @@ class Snapshot(Base):
     size = Column(Integer, nullable=True)
     hash = Column(String, nullable=True)
 
+    __mapper_args__ = {
+        "primary_key": [source, path]
+    }
+
 
 class TrashFile(Base):
     __tablename__ = "trash_files"
@@ -89,3 +97,7 @@ class TrashFile(Base):
     moved_path = Column(String, nullable=False)
     modified = Column(DateTime(), nullable=False)
     size = Column(Integer, nullable=False)
+
+    __mapper_args__ = {
+        "primary_key": [source, moved_path]
+    }
