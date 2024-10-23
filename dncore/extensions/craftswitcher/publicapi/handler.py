@@ -927,7 +927,7 @@ class APIHandler(object):
         )
         def _post_file(
                 file: UploadFile,
-                path: PairPath = Depends(get_path_of_root(is_file=True)),
+                path: PairPath = Depends(get_path_of_root(no_exists=True)),
         ) -> model.FileInfo:
 
             try:
@@ -1133,7 +1133,7 @@ class APIHandler(object):
         )
         def _server_post_file(
                 file: UploadFile,
-                path: PairPath = Depends(get_path_of_server_root(is_file=True)),
+                path: PairPath = Depends(get_path_of_server_root(no_exists=True)),
         ) -> model.FileInfo:
             return _post_file(file, path)
 
