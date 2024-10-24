@@ -17,7 +17,7 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
-from dncore.extensions.craftswitcher.files import FileManager, FileTask
+from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
@@ -925,18 +925,21 @@ class APIHandler(object):
             summary="ファイルデータを保存",
             description="",
         )
-        def _post_file(
+        async def _post_file(
                 file: UploadFile,
                 path: PairPath = Depends(get_path_of_root(no_exists=True)),
         ) -> model.FileInfo:
-
-            try:
-                with path.real.open("wb") as f:
-                    shutil.copyfileobj(file.file, f)
-
-            finally:
-                file.file.close()
-
+            def _do():
+                try:
+                    with path.real.open("wb") as f:
+                        shutil.copyfileobj(file.file, f)
+                finally:
+                    file.file.close()
+            
+            await self.files.create_task_in_executor(
+                FileEventType.CREATE, path.real, None, _do, executor=None,
+                server=path.server, src_swi_path=path.swi, dst_swi_path=None,
+            )
             return create_file_info(path, path.root_dir)
 
         @api.delete(
@@ -1131,11 +1134,11 @@ class APIHandler(object):
             summary="ファイルデータを保存",
             description="",
         )
-        def _server_post_file(
+        async def _server_post_file(
                 file: UploadFile,
                 path: PairPath = Depends(get_path_of_server_root(no_exists=True)),
         ) -> model.FileInfo:
-            return _post_file(file, path)
+            return await _post_file(file, path)
 
         @api.delete(
             "/server/{server_id}/file",
