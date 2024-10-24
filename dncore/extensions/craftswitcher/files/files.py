@@ -360,9 +360,10 @@ class FileManager(object):
         利用できる拡張子とヘルパーを返します
         :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
-        for helper in self._available_archive_helpers:
-            for suffix in suffixes:
-                if suffix in helper.available_formats():
+        helper_formats = [(h, h.available_formats()) for h in self._available_archive_helpers]
+        for suffix in suffixes:
+            for helper, formats in helper_formats:
+                if suffix in formats:
                     return suffix, helper
         raise NoArchiveHelperError(f"No supported archive helper: {suffixes}")
 
