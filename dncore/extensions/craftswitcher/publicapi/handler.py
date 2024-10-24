@@ -68,6 +68,7 @@ class APIHandler(object):
         _api.include_router(self._user())
         _api.include_router(self._server())
         _api.include_router(self._file())
+        _api.include_router(self._backup())
         _api.include_router(self._jardl())
         _api.include_router(self._plugins())
         _api.include_router(self._debug())
@@ -86,6 +87,10 @@ class APIHandler(object):
                 error="Internal Server Error",
                 error_code=-1,
             ))
+
+    @property
+    def backups(self):
+        return self.inst.backups
 
     # websocket
 
@@ -1233,6 +1238,38 @@ class APIHandler(object):
                 used_size=info.used_bytes,
                 free_size=info.free_bytes,
             )
+
+        return api
+
+    def _backup(self):
+        api = APIRouter(
+            tags=["Backup", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+
+        def getserver(server_id: str):
+            try:
+                server = self.servers[server_id.lower()]
+            except KeyError:
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
+
+            if server is None:
+                raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
+            return server
+
+        @api.get("/server/{server_id}/backup")
+        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:
+            task = self.backups.get_running_task_by_server(server)
+            return bool(task)
+
+        @api.post("/server/{server_id}/backup")
+        async def _post_backup(server: "ServerProcess" = Depends(getserver), comments: str | None = None) -> bool:
+            task = self.backups.get_running_task_by_server(server)
+            if task:
+                raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
+
+            task = await self.backups.create_backup(server, comments)
+            return True
 
         return api
 

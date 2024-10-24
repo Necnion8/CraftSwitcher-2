@@ -66,7 +66,7 @@ class Backupper(object):
         if server in self._tasks:
             raise AlreadyBackupError("Already running backup")
 
-        if server.directory.is_dir():
+        if not server.directory.is_dir():
             raise NotADirectoryError("Server directory is not exists or directory")
 
         return self._start_backup_server(server, server.directory, comments=comments)
@@ -81,17 +81,33 @@ class Backupper(object):
 
         archive_file_name += f".{suffix}"
         archive_path = self.backups_dir / server.get_source_id() / archive_file_name
+        if not archive_path.parent.is_dir():
+            archive_path.parent.mkdir(parents=True)
 
         async def _do():
-            async for progress in await helper.make_archive(archive_path, server_dir.parent, [server_dir]):
-                task.progress = progress.progress
+            try:
+                async for progress in helper.make_archive(archive_path, server_dir.parent, [server_dir]):
+                    task.progress = progress.progress
+            except Exception as e:
+                server.log.exception("Failed to server backup", exc_info=e)
+            else:
+                server.log.info("Completed backup: %s", archive_path)
 
+        server.log.info("Starting backup: %s", archive_path)
+        fut = asyncio.get_running_loop().create_task(_do())
         task = self._tasks[server] = BackupTask(
             task_id=self._files._add_task_id(),
             src=server_dir,
-            fut=asyncio.get_running_loop().create_task(_do()),
+            fut=fut,
             server=server,
             comments=comments,
         )
+
+        def _done(*_):
+            if self._tasks.get(server) is task:
+                self._tasks.pop(server, None)
+
+        if not fut.done():
+            fut.add_done_callback(_done)
         self._files.add_task(task)
         return task
