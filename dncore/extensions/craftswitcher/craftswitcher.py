@@ -21,6 +21,7 @@ from .database.model import User
 from .errors import ServerProcessingError, NoDownloadFile
 from .event import *
 from .ext import SwitcherExtensionManager
+from .fileback import Backupper
 from .files import FileManager
 from .files.event import *
 from .files.event import WatchdogEvent
@@ -55,6 +56,7 @@ class CraftSwitcher(EventListener):
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl
         self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
@@ -145,6 +147,14 @@ class CraftSwitcher(EventListener):
         self.load_servers()
 
         await self.database.connect()
+        if self.backups is None:
+            backups_dir = Path(self.config.backup.backups_directory)
+            trash_dir = Path(self.config.backup.trash_files_directory)
+            self.backups = Backupper(
+                self.loop, config=self.config.backup, database=self.database, files=self.files,
+                backups_dir=backups_dir,
+                trash_dir=trash_dir,
+            )
 
         self.print_welcome()
 

@@ -17,6 +17,7 @@ from .archive import ArchiveFile, ArchiveHelper
 from .archive.helper import ZipArchiveHelper
 from .archive.sevenziphelper import SevenZipHelper
 from .event import *
+from ..errors import NoArchiveHelperError
 from ..utils import call_event
 
 if TYPE_CHECKING:
@@ -354,6 +355,17 @@ class FileManager(object):
             if ignore_suffix or suffix_name in helper.available_formats():
                 return helper
 
+    def find_archive_helper_with_suffixes(self, suffixes: list[str]) -> tuple[str, ArchiveHelper]:
+        """
+        利用できる拡張子とヘルパーを返します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
+        """
+        for helper in self._available_archive_helpers:
+            for suffix in suffixes:
+                if suffix in helper.available_formats():
+                    return suffix, helper
+        raise NoArchiveHelperError(f"No supported archive helper: {suffixes}")
+
     async def is_archive(self, src: Path, *, ignore_suffix=False) -> bool:
         """
         指定されたファイルがアーカイブファイルかどうかチェックします
@@ -367,6 +379,7 @@ class FileManager(object):
     async def list_archive(self, src: Path, password: str = None, *, ignore_suffix=False) -> list[ArchiveFile]:
         """
         指定されたアーカイブファイルに格納されているファイルを返します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = src.suffix[1:].lower()
 
@@ -374,13 +387,14 @@ class FileManager(object):
             if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(src)):
                 return await helper.list_archive(src, password=password)
 
-        raise RuntimeError("No supported archive helper")
+        raise NoArchiveHelperError("No supported archive helper")
 
     async def extract_archive(self, archive: Path, extract_dir: Path, password: str = None,
                               server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None,
                               *, ignore_suffix=False):
         """
         格納されてるファイルを展開します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = archive.suffix[1:].lower()
 
@@ -388,7 +402,7 @@ class FileManager(object):
             if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(archive)):
                 break
         else:
-            raise RuntimeError("No supported archive helper")
+            raise NoArchiveHelperError("No supported archive helper")
 
         async def _progressing():
             async for progress in helper.extract_archive(archive, extract_dir, password=password):
@@ -409,6 +423,7 @@ class FileManager(object):
         ファイルを圧縮します
 
         格納される各ファイルのパスは files_root を基準に相対パスに変換されます
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = archive.suffix[1:].lower()
 
@@ -416,7 +431,7 @@ class FileManager(object):
             if suffix_name in helper.available_formats():
                 break
         else:
-            raise RuntimeError("No supported archive helper by suffix")
+            raise NoArchiveHelperError("No supported archive helper by suffix")
 
         async def _progressing():
             async for progress in helper.make_archive(archive, files_root, files):

@@ -15,7 +15,7 @@ from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.abc import ServerType, ServerState
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
-from dncore.extensions.craftswitcher.errors import NoDownloadFile
+from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
@@ -1036,7 +1036,7 @@ class APIHandler(object):
         ) -> list[model.ArchiveFile]:
             try:
                 arc_files = await self.files.list_archive(path.real, password=password, ignore_suffix=ignore_suffix)
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
@@ -1062,7 +1062,7 @@ class APIHandler(object):
                     path.real, output_dir.real, password,
                     server=path.server, src_swi_path=path.swi, dst_swi_path=output_dir.swi, ignore_suffix=ignore_suffix,
                 )
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
@@ -1091,7 +1091,7 @@ class APIHandler(object):
                     path.real, files_root.real, include_files,
                     server=path.server, src_swi_path=path.swi,
                 )
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 

@@ -8,6 +8,8 @@ __all__ = [
     "ServerProcessingError",
     "OperationCancelledError",
     "NoDownloadFile",
+    "NoArchiveHelperError",
+    "AlreadyBackupError",
 ]
 
 
@@ -40,4 +42,12 @@ class OperationCancelledError(ServerProcessError):
 
 
 class NoDownloadFile(Exception):
+    pass
+
+
+class NoArchiveHelperError(Exception):
+    pass
+
+
+class AlreadyBackupError(Exception):
     pass
