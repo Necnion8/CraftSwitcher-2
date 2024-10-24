@@ -73,6 +73,7 @@ class Backupper(object):
 
     def _start_backup_server(self, server: "ServerProcess", server_dir: Path, *, comments: str | None) -> BackupTask:
         """
+        バックアップタスクを作成し、開始します。
         :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
         """
         archive_file_name = create_backup_filename(comments)
@@ -86,7 +87,11 @@ class Backupper(object):
                 task.progress = progress.progress
 
         task = self._tasks[server] = BackupTask(
-            server, server_dir, comments, asyncio.get_running_loop().create_task(_do())
+            task_id=self._files._add_task_id(),
+            src=server_dir,
+            fut=asyncio.get_running_loop().create_task(_do()),
+            server=server,
+            comments=comments,
         )
-        # TODO: add to task (and event)
+        self._files.add_task(task)
         return task

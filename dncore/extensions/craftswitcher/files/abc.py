@@ -22,6 +22,7 @@ class FileEventType(Enum):
     EXTRACT_ARCHIVE = "extract_archive"
     CREATE_ARCHIVE = "create_archive"
     DOWNLOAD = "download"
+    BACKUP = "backup"
 
 
 class FileTaskResult(Enum):

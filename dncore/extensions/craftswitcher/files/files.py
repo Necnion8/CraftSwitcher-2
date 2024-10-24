@@ -209,6 +209,12 @@ class FileManager(object):
 
         task.fut.add_done_callback(_done)
 
+    def add_task(self, task: FileTask):
+        self._add_task_callback(task)
+        self.tasks.add(task)
+        call_event(FileTaskStartEvent(task))
+        return task
+
     def create_task(self, event_type: FileEventType, src: Path, dst: Path | None, fut: asyncio.Future,
                     server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
@@ -217,10 +223,7 @@ class FileManager(object):
         if fut.done():
             raise ValueError("Already task completed")
         task = FileTask(self._add_task_id(), event_type, src, dst, fut, server, src_swi_path, dst_swi_path)
-        self._add_task_callback(task)
-        self.tasks.add(task)
-        call_event(FileTaskStartEvent(task))
-        return task
+        return self.add_task(task)
 
     def create_task_in_executor(self, event_type: FileEventType, src: Path, dst: Path | None, do_task, executor=None,
                                 server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):

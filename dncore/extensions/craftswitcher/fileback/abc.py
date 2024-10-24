@@ -3,6 +3,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..files import FileTask, FileEventType
+
 if TYPE_CHECKING:
     from ..serverprocess import ServerProcess
 
@@ -19,21 +21,8 @@ class SnapshotStatus(Enum):
     UPDATE = 2
 
 
-class BackupTask(object):
-    def __init__(self, server: "ServerProcess", source_dir: Path, comments: str | None, task: asyncio.Future):
-        self.server = server
-        self.source_dir = source_dir
+class BackupTask(FileTask):
+    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future",
+                 server: "ServerProcess", comments: str | None):
+        super().__init__(task_id, FileEventType.BACKUP, src, None, fut, server)
         self.comments = comments
-        self.task = task
-        self._progress = 0.0
-
-    @property
-    def progress(self):
-        return 1.0 if self.task.done() else self._progress
-
-    @progress.setter
-    def progress(self, value: float):
-        self._progress = value
-
-    def __await__(self):
-        return self.task.__await__()
