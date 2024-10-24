@@ -46,7 +46,7 @@ class SevenZipHelper(ArchiveHelper):
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
-            "a", str(archive_path),
+            "a", str(archive_path.absolute()),
             "-bb0", "-bso2", "-bse2", "-bsp2", "-sccUTF-8", "-y",
             "--", *[str(self._safe_path(root_dir, p)) for p in files],
             stderr=subprocess.PIPE, cwd=root_dir,
