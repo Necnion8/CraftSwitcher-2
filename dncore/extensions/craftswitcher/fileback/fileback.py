@@ -129,3 +129,26 @@ class Backupper(object):
 
         self._files.add_task(task)
         return task
+
+    async def delete_backup(self, server: "ServerProcess", backup_id: int):
+        """
+        指定されたIDのバックアップをファイルとデータベースから削除します
+
+        :except ValueError: 存在しないバックアップID
+        """
+        backup = await self._db.get_backup(backup_id)
+        if not backup:
+            raise ValueError("Not found backup")
+
+        server.log.debug("Deleting backup: %s", backup_id)
+        backup_path = Path(self.backups_dir / backup.path)
+        if backup_path.is_file():
+            try:
+                await self._files.delete(backup_path, server)
+            except Exception as e:
+                server.log.warning(f"Failed to delete backup file: {e}: {backup_path}")
+        else:
+            log.warning("Backup file not exists: %s", backup_path)
+
+        await self._db.remove_backup(backup)
+        server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)

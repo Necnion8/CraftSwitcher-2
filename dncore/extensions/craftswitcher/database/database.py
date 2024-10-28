@@ -145,7 +145,13 @@ class SwitcherDatabase(object):
 
     # backupper
 
-    pass
+    async def get_backup(self, backup_id: int) -> Backup | None:
+        async with self.session() as db:
+            result = await db.execute(select(Backup).where(Backup.id == backup_id))
+            try:
+                return result.one()[0]
+            except NoResultFound:
+                return None
 
     async def add_backup(self, backup: Backup):
         async with self._commit_lock:

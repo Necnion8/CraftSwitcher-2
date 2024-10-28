@@ -1271,6 +1271,14 @@ class APIHandler(object):
             _ = await self.backups.create_backup(server, comments)
             return True
 
+        @api.delete("/server/{server_id}/backup/{backup_id}")
+        async def _delete_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
+            try:
+                await self.backups.delete_backup(server, backup_id)
+            except ValueError as e:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
+            return True
+
         return api
 
     def _jardl(self):

@@ -67,6 +67,7 @@ class APIErrorCode(IntEnum):
 
     # backup
     BACKUP_ALREADY_RUNNING = 800
+    BACKUP_NOT_FOUND = auto()
 
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
