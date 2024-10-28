@@ -3,6 +3,7 @@ import shutil
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
 from fastapi.exceptions import WebSocketException
@@ -1242,6 +1243,7 @@ class APIHandler(object):
         return api
 
     def _backup(self):
+        db = self.database
         api = APIRouter(
             tags=["Backup", ],
             dependencies=[Depends(self.get_authorized_user), ],
@@ -1256,6 +1258,18 @@ class APIHandler(object):
             if server is None:
                 raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
+
+        @api.get("/server/{server_id}/backups")
+        async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
+            return [
+                model.Backup(
+                    id=backup.id,
+                    created=backup.created,
+                    path=backup.path,
+                    size=backup.size,
+                    comments=backup.comments,
+                ) for backup in await db.get_backups(UUID(server.get_source_id()))
+            ]
 
         @api.get("/server/{server_id}/backup")
         def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:

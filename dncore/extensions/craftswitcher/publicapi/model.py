@@ -301,3 +301,11 @@ class JavaExecutableInfo(BaseModel):
     class_version: int | None = None
     vendor: str | None = None
     vendor_version: str | None = None
+
+
+class Backup(BaseModel):
+    id: int
+    created: datetime.datetime
+    path: str
+    size: int
+    comments: str | None

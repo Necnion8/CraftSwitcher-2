@@ -3,6 +3,7 @@ import datetime
 import secrets
 from logging import getLogger
 from pathlib import Path
+from uuid import UUID
 
 from passlib.context import CryptContext
 from sqlalchemy import URL, select, delete
@@ -144,6 +145,11 @@ class SwitcherDatabase(object):
         return TOKEN_EXPIRES, token, expires
 
     # backupper
+
+    async def get_backups(self, source: UUID) -> list[Backup]:
+        async with self.session() as db:
+            result = await db.execute(select(Backup).where(Backup.source == source))
+            return [r[0] for r in result.all()]
 
     async def get_backup(self, backup_id: int) -> Backup | None:
         async with self.session() as db:
