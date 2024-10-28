@@ -1295,6 +1295,23 @@ class APIHandler(object):
             _ = await self.backups.create_backup(server, comments)
             return True
 
+        @api.get(
+            "/server/{server_id}/backup/{backup_id}",
+            summary="バックアップの情報",
+        )
+        async def _get_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
+            backup = await db.get_backup(backup_id)
+            if not backup:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
+
+            return model.Backup(
+                id=backup.id,
+                created=backup.created,
+                path=backup.path,
+                size=backup.size,
+                comments=backup.comments,
+            )
+
         @api.delete(
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの削除",
