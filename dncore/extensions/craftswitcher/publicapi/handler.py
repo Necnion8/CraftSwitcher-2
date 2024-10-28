@@ -1259,7 +1259,10 @@ class APIHandler(object):
                 raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
             return server
 
-        @api.get("/server/{server_id}/backups")
+        @api.get(
+            "/server/{server_id}/backups",
+            summary="バックアップ一覧",
+        )
         async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
             return [
                 model.Backup(
@@ -1271,12 +1274,19 @@ class APIHandler(object):
                 ) for backup in await db.get_backups(UUID(server.get_source_id()))
             ]
 
-        @api.get("/server/{server_id}/backup")
+        @api.get(
+            "/server/{server_id}/backup",
+            summary="バックアップ実行中かどうか",
+        )
         def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:
             task = self.backups.get_running_task_by_server(server)
             return bool(task)
 
-        @api.post("/server/{server_id}/backup")
+        @api.post(
+            "/server/{server_id}/backup",
+            summary="バックアップを開始",
+            description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
+        )
         async def _post_backup(server: "ServerProcess" = Depends(getserver), comments: str | None = None) -> bool:
             task = self.backups.get_running_task_by_server(server)
             if task:
@@ -1285,7 +1295,11 @@ class APIHandler(object):
             _ = await self.backups.create_backup(server, comments)
             return True
 
-        @api.delete("/server/{server_id}/backup/{backup_id}")
+        @api.delete(
+            "/server/{server_id}/backup/{backup_id}",
+            summary="バックアップの削除",
+            description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
+        )
         async def _delete_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
             try:
                 await self.backups.delete_backup(server, backup_id)
