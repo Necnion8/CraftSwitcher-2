@@ -1268,7 +1268,7 @@ class APIHandler(object):
             if task:
                 raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
 
-            task = await self.backups.create_backup(server, comments)
+            _ = await self.backups.create_backup(server, comments)
             return True
 
         return api

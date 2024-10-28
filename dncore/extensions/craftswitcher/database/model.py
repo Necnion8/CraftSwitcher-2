@@ -6,6 +6,9 @@ from ..fileback.abc import SnapshotStatus
 __all__ = [
     "Base",
     "User",
+    "Backup",
+    "Snapshot",
+    "TrashFile",
 ]
 
 Base = declarative_base()
@@ -55,15 +58,12 @@ class Backup(Base):
         "sqlite_autoincrement": True,
     }
 
+    id = Column(Integer, primary_key=True)
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
     path = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     comments = Column(String, nullable=True, default=None)
-
-    __mapper_args__ = {
-        "primary_key": [source, path]
-    }
 
 
 class Snapshot(Base):

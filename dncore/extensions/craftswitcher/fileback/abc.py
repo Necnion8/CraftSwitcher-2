@@ -21,8 +21,8 @@ class SnapshotStatus(Enum):
     UPDATE = 2
 
 
-class BackupTask(FileTask):
-    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future",
+class BackupTask(FileTask[int]):
+    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future[int]",
                  server: "ServerProcess", comments: str | None):
         super().__init__(task_id, FileEventType.BACKUP, src, None, fut, server)
         self.comments = comments

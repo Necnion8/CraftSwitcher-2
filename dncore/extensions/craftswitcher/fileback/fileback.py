@@ -1,7 +1,9 @@
 import asyncio
 import re
+from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from .abc import *
 from ..errors import AlreadyBackupError
@@ -17,6 +19,7 @@ __all__ = [
     "create_backup_filename",
     "Backupper",
 ]
+log = getLogger(__name__)
 
 
 def create_backup_filename(comments: str = None):
@@ -76,22 +79,43 @@ class Backupper(object):
         バックアップタスクを作成し、開始します。
         :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
         """
+        from ..database.model import Backup
+
         archive_file_name = create_backup_filename(comments)
         suffix, helper = self._files.find_archive_helper_with_suffixes(["7z", "zip"])
 
         archive_file_name += f".{suffix}"
-        archive_path = self.backups_dir / server.get_source_id() / archive_file_name
+        archive_path_name = Path(server.get_source_id()) / archive_file_name
+        archive_path = self.backups_dir / archive_path_name
         if not archive_path.parent.is_dir():
             archive_path.parent.mkdir(parents=True)
 
-        async def _do():
+        async def _do() -> int:
             try:
                 async for progress in helper.make_archive(archive_path, server_dir.parent, [server_dir]):
                     task.progress = progress.progress
             except Exception as e:
                 server.log.exception("Failed to server backup", exc_info=e)
-            else:
-                server.log.info("Completed backup: %s", archive_path)
+                raise
+            finally:
+                if self._tasks.get(server) is task:
+                    _ = self._tasks.pop(server, None)
+
+            try:
+                backup_id = await self._db.add_backup(Backup(
+                    source=UUID(server.get_source_id()),
+                    created=datetime_now(),
+                    path=archive_path_name.as_posix(),
+                    size=archive_path.stat().st_size,
+                    comments=comments or None,
+                ))
+
+            except Exception as e:
+                server.log.error("Failed to add backup to database", exc_info=e)
+                raise
+
+            server.log.info("Completed backup: %s (id: %s)", archive_path, backup_id)
+            return backup_id
 
         server.log.info("Starting backup: %s", archive_path)
         fut = asyncio.get_running_loop().create_task(_do())
@@ -103,11 +127,5 @@ class Backupper(object):
             comments=comments,
         )
 
-        def _done(*_):
-            if self._tasks.get(server) is task:
-                self._tasks.pop(server, None)
-
-        if not fut.done():
-            fut.add_done_callback(_done)
         self._files.add_task(task)
         return task

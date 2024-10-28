@@ -10,7 +10,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from .model import Base, User
+from .model import *
 from ..utils import datetime_now
 
 log = getLogger(__name__)
@@ -109,7 +109,7 @@ class SwitcherDatabase(object):
                 db.add(user)
                 await db.flush()
                 await db.refresh(user)
-                user_id = str(user.id)
+                user_id = user.id
                 await db.commit()
                 return user_id
 
@@ -147,3 +147,21 @@ class SwitcherDatabase(object):
 
     pass
 
+    async def add_backup(self, backup: Backup):
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(backup)
+                await db.flush()
+                await db.refresh(backup)
+                backup_id = backup.id
+                await db.commit()
+                return backup_id
+
+    async def remove_backup(self, backup: Backup | int):
+        async with self._commit_lock:
+            async with self.session() as db:
+                if isinstance(backup, Backup):
+                    await db.delete(backup)
+                else:
+                    await db.execute(delete(Backup).where(Backup.id == backup))
+                await db.commit()
