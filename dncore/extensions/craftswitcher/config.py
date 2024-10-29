@@ -64,6 +64,8 @@ class LaunchOption(ConfigValues):
     enable_free_memory_check: bool | None
     # サーバーと連携するエージェントを使う
     enable_reporter_agent: bool | None
+    # GNU Screen を使って起動する
+    enable_screen: bool | None
 
 
 class ServerConfig(FileConfigValues):
@@ -114,6 +116,8 @@ class LaunchGlobalOption(ConfigValues):
     enable_free_memory_check = True
     # サーバーと連携するエージェントを使う
     enable_reporter_agent = True
+    # GNU Screen を使って起動する
+    enable_screen = False
 
 
 class ServerGlobalConfig(ConfigValues):
@@ -127,6 +131,15 @@ class PublicApiServer(ConfigValues):
     enable = True
     bind_host = "0.0.0.0"
     bind_port = 8080
+
+
+class Screen(ConfigValues):
+    # セッション名の接頭辞
+    # ※ 他のセッション名と被らないようにする必要があります
+    session_name_prefix = "swi-"
+
+    # CraftSwitcherが停止する時にサーバーを停止させません
+    enable_keep_server_on_shutdown = True
 
 
 class DiscordActivity(ConfigValues):
@@ -187,6 +200,10 @@ class SwitcherConfig(FileConfigValues):
         "/usr/lib/jvm",
         "C:\\Program Files\\Java",
     ]
+
+    # GNU Screen 設定
+    # ※ 利用できない場合は無視し、通常通りサーバーを直接起動させます。
+    screen: Screen
 
     # コンソールログをメモリに保持する行数 (サーバーごと)
     max_console_lines_in_memory = 10_000

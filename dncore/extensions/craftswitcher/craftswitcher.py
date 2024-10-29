@@ -589,6 +589,9 @@ class CraftSwitcher(EventListener):
                  len(self.java_executables), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)
 
+    def screen_session_name_of(self, server: "ServerProcess"):
+        return self.config.screen.session_name_prefix + server.id
+
     # server api
 
     def create_server_config(self, server_directory: str | Path, jar_file=""):
