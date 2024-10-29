@@ -344,11 +344,11 @@ class CraftSwitcher(EventListener):
                 log.debug("Ignore server remove: not stopped: (%s)", server.state.name)
                 removes.pop(server_id)
                 self._remove_servers.add(server_id)
-            elif server:
-                self.delete_server(server)
-            else:  # not loaded
-                self._remove_server(server_id)
-                log.info("Server removed: %s", server_id)
+            else:
+                try:
+                    self.delete_server(server or server_id)
+                except ValueError:
+                    pass  # ignored 404
 
         # update
         updates = {
