@@ -1,8 +1,15 @@
-# CraftSwitcher v2
-Minecraft Java サーバー 管理システム |
-[DNC6](https://github.com/Necnion8/dnCoreV6)プラグイン実装
-<br>
-本体コードは [dncore/extensions/craftswitcher](dncore%2Fextensions%2Fcraftswitcher) にあります
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="icons/header_nobg.png">
+    <source media="(prefers-color-scheme: light)" srcset="icons/header_nobg_light.png">
+    <img src="icons/header.png">
+  </picture>
+
+  Minecraft Java サーバー 管理システム |
+  <a href="https://github.com/Necnion8/dnCoreV6">DNC6</a>プラグイン実装
+  <br>
+  本体コードは <a href="dncore%2Fextensions%2Fcraftswitcher">dncore/extensions/craftswitcher</a> にあります
+</div>
 
 ---
 ## 開発中
