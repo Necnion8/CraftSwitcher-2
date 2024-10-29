@@ -203,7 +203,7 @@ class CraftSwitcher(EventListener):
 
         try:
             try:
-                await self.shutdown_all_servers()
+                await self.shutdown_all_servers(exclude_screen=self.config.screen.enable_keep_server_on_shutdown)
             except Exception as e:
                 log.warning("Exception in shutdown servers", exc_info=e)
 
@@ -390,8 +390,11 @@ class CraftSwitcher(EventListener):
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersReloadedEvent(removes, updates, news))
 
-    async def shutdown_all_servers(self):
+    async def shutdown_all_servers(self, *, exclude_screen=False):
         async def _shutdown(s: ServerProcess):
+            if exclude_screen and s.screen_session_name:
+                return
+
             if s.state.is_running:
                 try:
                     try:
@@ -424,7 +427,7 @@ class CraftSwitcher(EventListener):
         if not self.servers:
             return
 
-        if any(s.state.is_running for s in self.servers.values() if s):
+        if any(not s.screen_session_name and s.state.is_running for s in self.servers.values() if s):
             raise ValueError("Contains not stopped server")
 
         call_event(SwitcherServersUnloadEvent())
