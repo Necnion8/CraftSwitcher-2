@@ -16,7 +16,7 @@ from pathlib import Path
 from shutil import which
 from typing import Awaitable, Any, Callable
 
-from . import errors
+from . import errors, utilscreen as screen
 from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
 from .event import *
@@ -102,6 +102,13 @@ class ServerProcess(object):
                     self._global_config.enable_reporter_agent,
                 ][self._config.enable_reporter_agent is None]
 
+            @property
+            def enable_screen(self) -> bool:
+                return [
+                    self._config.enable_screen,
+                    self._global_config.enable_screen,
+                ][self._config.enable_screen is None]
+
         def __init__(self, config: ServerConfig, global_config: ServerGlobalConfig):
             self._config = config
             self._global_config = global_config
@@ -172,6 +179,7 @@ class ServerProcess(object):
         self._logs_buffer = LineBuffer()
         #
         self.shutdown_to_restart = False
+        self._current_screen_name = None  # type: str | None
 
     @property
     def directory(self) -> Path:
@@ -239,6 +247,10 @@ class ServerProcess(object):
     @property
     def perfmon(self) -> "ProcessPerformanceMonitor | None":
         return self._perf_mon
+
+    @property
+    def screen_session_name(self):
+        return self._current_screen_name
 
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
@@ -349,6 +361,7 @@ class ServerProcess(object):
             ret_ = wrapper.exit_status
             self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
             self.state = ServerState.STOPPED
+            self._current_screen_name = None
             self._perf_mon = None
 
             if builder:
@@ -366,6 +379,7 @@ class ServerProcess(object):
 
                 asyncio.create_task(_do_on_exited())
 
+        self._current_screen_name = None
         try:
             cwd = self.directory
             env = dict(os.environ)
@@ -397,6 +411,17 @@ class ServerProcess(object):
                 if not self.check_free_memory():
                     raise errors.OutOfMemoryError
                 args = await self._build_arguments()
+
+            # wrap screen
+            if self.config.launch_option.enable_screen:
+                if screen.is_available():
+                    screen_name = self._current_screen_name = getinst().screen_session_name_of(self)
+                    args = [
+                        *screen.new_session_commands(screen_name),
+                        *args,
+                    ]
+                else:
+                    self.log.warning("GNU Screen not available. (Ignored)")
 
             wrapper = self.wrapper = await self._start_subprocess(
                 args, cwd, term_size=self.term_size, env=env, read_handler=self._term_read)

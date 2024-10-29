@@ -104,6 +104,7 @@ class ServerConfig(BaseModel):
     launch_option__min_heap_memory: int | None = Field(None, description="メモリ割り当て量 (単位: MB)")
     launch_option__enable_free_memory_check: bool | None = Field(None, description="起動時に空きメモリを確認する")
     launch_option__enable_reporter_agent: bool | None = Field(None, description="サーバーと連携するエージェントを使う")
+    launch_option__enable_screen: bool | None = Field(None, description="GNU Screen を使って起動する")
     enable_launch_command: bool | None = Field(None, description="起動オプションを使わず、カスタムコマンドで起動する")
     launch_command: str = Field(None, description="置換される変数: "
                                                   "$JAVA_EXE, $JAVA_MEM_ARGS, $JAVA_ARGS, $JAVA_ARGS, "
@@ -128,6 +129,7 @@ class ServerGlobalConfig(BaseModel):
     launch_option__min_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")
     launch_option__enable_free_memory_check: bool = Field(True, description="起動時に空きメモリを確認する")
     launch_option__enable_reporter_agent: bool = Field(True, description="サーバーと連携するエージェントを使う")
+    launch_option__enable_screen: bool = Field(False, description="GNU Screen を使って起動する")
     shutdown_timeout: int = Field(30, description="停止処理の最大待ち時間 (単位: 秒)")
 
     class Config:
