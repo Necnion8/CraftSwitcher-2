@@ -335,20 +335,96 @@ class ServerProcess(object):
             read_handler=read_handler,
         )
 
-    async def start(self, *, no_build=False):
+    async def attach_to_screen_session(self, screen_name: str):
+        """
+        Screenセッションにアタッチし、サーバープロセスと連携を再開します。
+
+        :except AlreadyRunningError: すでにプロセスが起動中
+        """
+        if self._is_running:
+            raise errors.AlreadyRunningError
+
+        def _end(_):
+            async def _do_on_exited():
+                # デタッチされた？時は再アタッチを試みる
+                if screen.is_available() and screen_name in screen.list_names():
+                    await asyncio.sleep(1)
+                    await self.attach_to_screen_session(screen_name)
+                    return
+
+                ret_ = 0  # screenから終了コードを得られないので常に 0 を設定
+                self.log.info("Stopped server process (by screen session)")
+                self.state = ServerState.STOPPED
+                self._current_screen_name = None
+                self._perf_mon = None
+
+                # 常に正常終了したことにする。※ 通常はビルダーをscreenで実行されることはない
+                builder = self._builder
+                if builder and builder.state.is_running():
+                    self.log.warning("builder was running in a screen session. (bug?)")
+                    await self.on_exit_builder(builder, ret_)
+
+            asyncio.create_task(_do_on_exited())
+
+        self.log.debug("Trying attach to screen session: %s", screen_name)
+        call_event(ServerScreenAttachPreEvent(self, screen_name))
+        try:
+            cwd = self.directory
+            env = dict(os.environ)
+            env["SWITCHER_SERVER_NAME"] = self.id
+
+            args = screen.attach_commands(screen_name, force=True)
+
+            wrapper = self.wrapper = await self._start_subprocess(
+                args, cwd, term_size=self.term_size, env=env, read_handler=self._term_read)
+
+            try:
+                await asyncio.wait_for(wrapper.wait(), timeout=1)
+            except asyncio.TimeoutError:
+                pass
+
+        except Exception as e:
+            self.log.exception("Exception in attach screen", exc_info=e)
+            raise errors.ServerLaunchError(str(e)) from e
+
+        ret = wrapper.exit_status
+        if ret is None:
+            self.log.info("Reattached to screen session")
+            self._current_screen_name = screen_name
+            self.state = ServerState.RUNNING
+            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+            call_event(ServerScreenAttachEvent(self, screen_name, True))
+
+        else:
+            self.log.warning("Failed to attach: return code: %s", ret)
+            call_event(ServerScreenAttachEvent(self, screen_name, False))
+            raise errors.ServerLaunchError(f"Failed to attach: exited {ret}")
+
+        self.create_performance_monitor(wrapper.pid)
+
+    async def start(self, *, no_build=False, skip_memory_check=False, no_screen=False):
         """
         サーバーを起動します
 
         準備が完了しているビルダーが設定されている場合は、no_buildが真でない限りビルドを実行します
+
+        :except AlreadyRunningError: すでにプロセスが起動中
         """
         if self._is_running:
             raise errors.AlreadyRunningError
+
+        # check screen session
+        screen_name = getinst().screen_session_name_of(self)
+        if screen.is_available() and screen_name in screen.list_names():
+            self.log.warning("Startup aborted: already running screen found")
+            await self.attach_to_screen_session(screen_name)
 
         builder = self._builder
         if no_build:
             builder = None
 
         if builder:
+            no_screen = True
             self.log.info("Starting build process")
             await call_event(ServerBuildPreStartEvent(self))
         else:
@@ -365,19 +441,7 @@ class ServerProcess(object):
             self._perf_mon = None
 
             if builder:
-                async def _do_on_exited():
-                    result = await builder._exited(ret_)
-                    self.log.info("Build Result: %s", result.name)
-                    if ServerBuildStatus.SUCCESS == result:
-                        if builder.apply_server_jar(self._config):
-                            if self.config.enable_launch_command:
-                                self.log.debug("Updated config: '%s' (command)", self.config.launch_command)
-                            else:
-                                self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
-                        await asyncio.sleep(1)
-                        await self.clean_builder()
-
-                asyncio.create_task(_do_on_exited())
+                asyncio.create_task(self.on_exit_builder(builder, ret_))
 
         self._current_screen_name = None
         try:
@@ -408,14 +472,14 @@ class ServerProcess(object):
                     raise ValueError("Empty params.args")
 
             else:
-                if not self.check_free_memory():
+                if not skip_memory_check and not self.check_free_memory():
                     raise errors.OutOfMemoryError
                 args = await self._build_arguments()
 
             # wrap screen
-            if self.config.launch_option.enable_screen:
+            if not no_screen and self.config.launch_option.enable_screen:
                 if screen.is_available():
-                    screen_name = self._current_screen_name = getinst().screen_session_name_of(self)
+                    self._current_screen_name = screen_name
                     args = [
                         *screen.new_session_commands(screen_name),
                         *args,
@@ -453,10 +517,7 @@ class ServerProcess(object):
             self.log.warning("Exited process: return code: %s", ret)
             raise errors.ServerLaunchError(f"process exited {ret}")
 
-        try:
-            self._perf_mon = ProcessPerformanceMonitor(wrapper.pid)
-        except Exception as e:
-            self.log.warning("Exception in init perf.mon", exc_info=e)
+        self.create_performance_monitor(wrapper.pid)
 
     async def send_command(self, command: str):
         if not self._is_running:
@@ -515,7 +576,27 @@ class ServerProcess(object):
             finally:
                 self.builder = None
 
-    #
+    async def on_exit_builder(self, builder: ServerBuilder, exit_code: int):
+        result = await builder._exited(exit_code)
+        self.log.info("Build Result: %s", result.name)
+        if ServerBuildStatus.SUCCESS == result:
+            if builder.apply_server_jar(self._config):
+                if self.config.enable_launch_command:
+                    self.log.debug("Updated config: '%s' (command)", self.config.launch_command)
+                else:
+                    self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
+            await asyncio.sleep(1)
+            await self.clean_builder()
+
+    def create_performance_monitor(self, pid: int):
+        try:
+            self._perf_mon = mon = ProcessPerformanceMonitor(pid)
+        except Exception as e:
+            self.log.warning("Exception in init perf.mon", exc_info=e)
+            mon = None
+        return mon
+
+    # eula
 
     def is_eula_accepted(self, *, ignore_not_exists=False):
         """

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
+from . import utilscreen as screen
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
@@ -153,6 +154,12 @@ class CraftSwitcher(EventListener):
 
         await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
+
+        if screen.is_available():
+            try:
+                await self.reattach_server_screens()
+            except Exception as e:
+                log.exception("Exception in attach server screens", exc_info=e)
 
         if not await self.database.get_users():
             log.info("Creating admin user")
@@ -432,6 +439,20 @@ class CraftSwitcher(EventListener):
 
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
+
+    async def reattach_server_screens(self):
+        screen_names = screen.list_names()
+
+        for server in self.servers.values():
+            if not server:
+                continue
+
+            screen_name = self.screen_session_name_of(server)
+            if screen_name in screen_names:
+                try:
+                    await server.attach_to_screen_session(screen_name)
+                except Exception as e:
+                    log.warning("Failed to attach to %s server screen", server.id, exc_info=e)
 
     # server downloader
 

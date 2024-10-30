@@ -6,6 +6,7 @@ __all__ = [
     "list_names",
     "list_screens",
     "new_session_commands",
+    "attach_commands",
     "is_available",
     "ScreenSession",
     "ScreenStatus",
@@ -50,6 +51,19 @@ def new_session_commands(session_name: str, *,
     if exist_ignore:
         args.append("-m")  # ignore $STY, create new session
 
+    return args
+
+
+def attach_commands(session_name: str, *,
+                    force=False, ) -> list[str]:
+    args = [
+        which("screen") or "screen",
+    ]
+
+    if force:
+        args.append("-x")  # force attach (multi display mode)
+
+    args.extend(("-r", session_name))  # reattach
     return args
 
 
