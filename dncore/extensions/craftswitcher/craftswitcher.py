@@ -392,7 +392,7 @@ class CraftSwitcher(EventListener):
 
     async def shutdown_all_servers(self, *, exclude_screen=False):
         async def _shutdown(s: ServerProcess):
-            if exclude_screen and s.screen_session_name:
+            if exclude_screen and s.screen_session_name and s.state != ServerState.BUILD:  # ビルド中なら無視せず終了
                 return
 
             if s.state.is_running:
