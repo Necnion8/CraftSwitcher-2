@@ -38,13 +38,19 @@ def list_screens():
     return screens
 
 
-def new_session_commands(session_name: str) -> list[str]:
-    return [
+def new_session_commands(session_name: str, *,
+                         detach=False, exist_ignore=False, ) -> list[str]:
+    args = [
         which("screen") or "screen",
-        "-d",  # detach
-        "-m",  # ignore $STY, create new session
         "-S", session_name,  # set name
     ]
+
+    if detach:
+        args.append("-d")
+    if exist_ignore:
+        args.append("-m")  # ignore $STY, create new session
+
+    return args
 
 
 def is_available():
