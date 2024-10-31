@@ -927,8 +927,14 @@ class APIHandler(object):
         )
         async def _post_file(
                 file: UploadFile,
-                path: PairPath = Depends(get_path_of_root(no_exists=True)),
+                path: PairPath = Depends(get_path_of_root()),
+                override: bool = Query(True, description="上書きを許可"),
         ) -> model.FileInfo:
+            if not override and path.real.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of(f"Already exists: 'path'")
+            if path.real.is_dir():
+                raise APIErrorCode.NOT_FILE.of("Not a file: 'path'")
+
             def _do():
                 try:
                     with path.real.open("wb") as f:
@@ -1136,9 +1142,10 @@ class APIHandler(object):
         )
         async def _server_post_file(
                 file: UploadFile,
-                path: PairPath = Depends(get_path_of_server_root(no_exists=True)),
+                path: PairPath = Depends(get_path_of_server_root()),
+                override: bool = Query(True, description="上書きを許可"),
         ) -> model.FileInfo:
-            return await _post_file(file, path)
+            return await _post_file(file, path, override)
 
         @api.delete(
             "/server/{server_id}/file",
