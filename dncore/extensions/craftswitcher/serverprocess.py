@@ -588,6 +588,7 @@ class ServerProcess(object):
         finally:
             if self._detaching_screen:
                 self.log.info("Detached screen")
+                call_event(ServerScreenDetachedEvent(self, screen_name))
             else:
                 # デタッチされた？時は再アタッチを試みる
                 if screen.is_available() and screen_name in screen.list_names():
