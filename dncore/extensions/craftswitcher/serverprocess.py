@@ -344,30 +344,9 @@ class ServerProcess(object):
         if self._is_running:
             raise errors.AlreadyRunningError
 
-        def _end(_):
-            async def _do_on_exited():
-                # デタッチされた？時は再アタッチを試みる
-                if screen.is_available() and screen_name in screen.list_names():
-                    await asyncio.sleep(1)
-                    await self.attach_to_screen_session(screen_name)
-                    return
-
-                ret_ = 0  # screenから終了コードを得られないので常に 0 を設定
-                self.log.info("Stopped server process (by screen session)")
-                self.state = ServerState.STOPPED
-                self._current_screen_name = None
-                self._perf_mon = None
-
-                # 常に正常終了したことにする。※ 通常はビルダーをscreenで実行されることはない
-                builder = self._builder
-                if builder and builder.state.is_running():
-                    self.log.warning("builder was running in a screen session. (bug?)")
-                    await self.on_exit_builder(builder, ret_)
-
-            asyncio.create_task(_do_on_exited())
-
         self.log.debug("Trying attach to screen session: %s", screen_name)
         call_event(ServerScreenAttachPreEvent(self, screen_name))
+        builder = self.builder
         try:
             cwd = self.directory
             env = dict(os.environ)
@@ -392,7 +371,7 @@ class ServerProcess(object):
             self.log.info("Reattached to screen session")
             self._current_screen_name = screen_name
             self.state = ServerState.RUNNING
-            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+            self.loop.create_task(self.handle_exit_process_reattach(wrapper, builder, screen_name))
             call_event(ServerScreenAttachEvent(self, screen_name, True))
 
         else:
@@ -432,16 +411,6 @@ class ServerProcess(object):
             _event = await call_event(ServerPreStartEvent(self))
             if _event.cancelled:
                 raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
-
-        def _end(_):
-            ret_ = wrapper.exit_status
-            self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
-            self.state = ServerState.STOPPED
-            self._current_screen_name = None
-            self._perf_mon = None
-
-            if builder:
-                asyncio.create_task(self.on_exit_builder(builder, ret_))
 
         self._current_screen_name = None
         try:
@@ -507,7 +476,7 @@ class ServerProcess(object):
         ret = wrapper.exit_status
         if ret is None:
             self.state = ServerState.BUILD if builder else ServerState.RUNNING
-            self.loop.create_task(wrapper.wait()).add_done_callback(_end)
+            self.loop.create_task(self.handle_exit_process(wrapper, builder, screen_name))
             self._config.last_launch_at = datetime_now()
             self._config.save()
 
@@ -576,7 +545,7 @@ class ServerProcess(object):
             finally:
                 self.builder = None
 
-    async def on_exit_builder(self, builder: ServerBuilder, exit_code: int):
+    async def handle_exit_builder(self, builder: ServerBuilder, exit_code: int):
         result = await builder._exited(exit_code)
         self.log.info("Build Result: %s", result.name)
         if ServerBuildStatus.SUCCESS == result:
@@ -587,6 +556,46 @@ class ServerProcess(object):
                     self.log.debug("Updated config: %s", self.config.launch_option.jar_file)
             await asyncio.sleep(1)
             await self.clean_builder()
+
+    async def handle_exit_process(self, proc: "ProcessWrapper", builder: ServerBuilder | None, screen_name: str):
+        try:
+            await proc.wait()
+        finally:
+            # デタッチされた？時は再アタッチを試みる
+            if screen.is_available() and screen_name in screen.list_names():
+                await asyncio.sleep(1)
+                await self.attach_to_screen_session(screen_name)
+                return
+
+            ret_ = proc.exit_status
+            self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
+            self.state = ServerState.STOPPED
+            self._current_screen_name = None
+            self._perf_mon = None
+
+            if builder:
+                await self.handle_exit_builder(builder, ret_)
+
+    async def handle_exit_process_reattach(self, proc: "ProcessWrapper", builder: ServerBuilder | None, screen_name: str):
+        try:
+            await proc.wait()
+        finally:
+            # デタッチされた？時は再アタッチを試みる
+            if screen.is_available() and screen_name in screen.list_names():
+                await asyncio.sleep(1)
+                await self.attach_to_screen_session(screen_name)
+                return
+
+            ret_ = 0  # screenから終了コードを得られないので常に 0 を設定
+            self.log.info("Stopped server process (by screen session)")
+            self.state = ServerState.STOPPED
+            self._current_screen_name = None
+            self._perf_mon = None
+
+            # 常に正常終了したことにする。※ 通常はビルダーをscreenで実行されることはない
+            if builder and builder.state.is_running():
+                self.log.warning("builder was running in a screen session. (bug?)")
+                await self.handle_exit_builder(builder, ret_)
 
     def create_performance_monitor(self, pid: int):
         try:
