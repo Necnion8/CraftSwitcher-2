@@ -19,6 +19,7 @@ __all__ = [
     "ServerProcessReadLinesEvent",
     "ServerScreenAttachPreEvent",
     "ServerScreenAttachEvent",
+    "ServerScreenDetachedEvent",
     "SwitcherInitializedEvent",
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
@@ -106,6 +107,12 @@ class ServerScreenAttachEvent(Event, ServerEvent):
         super().__init__(server)
         self.session_name = session_name
         self.result = result
+
+
+class ServerScreenDetachedEvent(Event, ServerEvent):
+    def __init__(self, server: "ServerProcess", session_name: str):
+        super().__init__(server)
+        self.session_name = session_name
 
 
 class SwitcherInitializedEvent(Event):
