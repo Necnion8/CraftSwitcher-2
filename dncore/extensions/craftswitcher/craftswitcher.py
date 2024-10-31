@@ -239,7 +239,7 @@ class CraftSwitcher(EventListener):
             try:
                 self.unload_servers()
             except ValueError as e:
-                log.warning(f"Failed to unload_Servers: {e}")
+                log.warning(f"Failed to unload_servers: {e}")
 
             AsyncCallTimer.cancel_all_timers()
 
@@ -399,8 +399,13 @@ class CraftSwitcher(EventListener):
 
     async def shutdown_all_servers(self, *, exclude_screen=False):
         async def _shutdown(s: ServerProcess):
-            if exclude_screen and s.screen_session_name and s.state != ServerState.BUILD:  # ビルド中なら無視せず終了
-                return
+            if exclude_screen:
+                if s.screen_session_name and s.state != ServerState.BUILD:  # ビルド中なら無視せず終了
+                    try:
+                        await s.detach_screen()
+                    except Exception as e:
+                        log.warning("Exception in detach server (ignored)", exc_info=e)
+                    return
 
             if s.state.is_running:
                 try:

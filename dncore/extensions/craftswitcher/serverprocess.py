@@ -180,6 +180,7 @@ class ServerProcess(object):
         #
         self.shutdown_to_restart = False
         self._current_screen_name = None  # type: str | None
+        self._detaching_screen = False
 
     @property
     def directory(self) -> Path:
@@ -247,10 +248,6 @@ class ServerProcess(object):
     @property
     def perfmon(self) -> "ProcessPerformanceMonitor | None":
         return self._perf_mon
-
-    @property
-    def screen_session_name(self):
-        return self._current_screen_name
 
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
@@ -335,17 +332,18 @@ class ServerProcess(object):
             read_handler=read_handler,
         )
 
-    async def attach_to_screen_session(self, screen_name: str):
+    async def attach_to_screen_session(self, screen_name: str, *, ignore_status=False):
         """
         Screenセッションにアタッチし、サーバープロセスと連携を再開します。
 
         :except AlreadyRunningError: すでにプロセスが起動中
         """
-        if self._is_running:
+        if not ignore_status and self._is_running:
             raise errors.AlreadyRunningError
 
         self.log.debug("Trying attach to screen session: %s", screen_name)
         call_event(ServerScreenAttachPreEvent(self, screen_name))
+        self._detaching_screen = False
         builder = self.builder
         try:
             cwd = self.directory
@@ -368,7 +366,7 @@ class ServerProcess(object):
 
         ret = wrapper.exit_status
         if ret is None:
-            self.log.info("Reattached to screen session")
+            self.log.info("Reattached to screen session to %s", screen_name)
             self._current_screen_name = screen_name
             self.state = ServerState.RUNNING
             self.loop.create_task(self.handle_exit_process_reattach(wrapper, builder, screen_name))
@@ -413,6 +411,7 @@ class ServerProcess(object):
                 raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
 
         self._current_screen_name = None
+        self._detaching_screen = False
         try:
             cwd = self.directory
             env = dict(os.environ)
@@ -508,6 +507,7 @@ class ServerProcess(object):
 
         await self.send_command(command)
         self.shutdown_to_restart = False
+        self._detaching_screen = False
         self.state = ServerState.STOPPING
 
     async def kill(self):
@@ -515,6 +515,8 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Killing {self.id} server process...")
+        self.shutdown_to_restart = False
+        self._detaching_screen = False
         self.wrapper.kill()
 
     async def wait_for_shutdown(self, *, timeout: int = None):
@@ -561,11 +563,14 @@ class ServerProcess(object):
         try:
             await proc.wait()
         finally:
-            # デタッチされた？時は再アタッチを試みる
-            if screen.is_available() and screen_name in screen.list_names():
-                await asyncio.sleep(1)
-                await self.attach_to_screen_session(screen_name)
-                return
+            if self._detaching_screen:
+                self.log.info("Detached screen")
+            else:
+                # デタッチされた？時は再アタッチを試みる
+                if screen.is_available() and screen_name in screen.list_names():
+                    await asyncio.sleep(1)
+                    await self.attach_to_screen_session(screen_name, ignore_status=True)
+                    return
 
             ret_ = proc.exit_status
             self.log.info("Stopped %s process (ret: %s)", "build" if builder else "server", ret_)
@@ -580,11 +585,14 @@ class ServerProcess(object):
         try:
             await proc.wait()
         finally:
-            # デタッチされた？時は再アタッチを試みる
-            if screen.is_available() and screen_name in screen.list_names():
-                await asyncio.sleep(1)
-                await self.attach_to_screen_session(screen_name)
-                return
+            if self._detaching_screen:
+                self.log.info("Detached screen")
+            else:
+                # デタッチされた？時は再アタッチを試みる
+                if screen.is_available() and screen_name in screen.list_names():
+                    await asyncio.sleep(1)
+                    await self.attach_to_screen_session(screen_name, ignore_status=True)
+                    return
 
             ret_ = 0  # screenから終了コードを得られないので常に 0 を設定
             self.log.info("Stopped server process (by screen session)")
@@ -663,6 +671,25 @@ class ServerProcess(object):
 
         eula_path.write_text("\n".join(lines), encoding="utf-8")
         return eula_path
+
+    # screen
+
+    @property
+    def screen_session_name(self):
+        return self._current_screen_name
+
+    async def detach_screen(self):
+        if not self._is_running or not self._current_screen_name or self._current_screen_name not in screen.list_names():
+            return False
+
+        self.log.debug("detaching screen")
+        self._detaching_screen = True
+        try:
+            self.wrapper.write("\001d")  # detach: Ctrl+A, D
+        except Exception as e:
+            self.log.warning(f"Exception in write detach command: {e}")
+            return False
+        return True
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):
@@ -824,7 +851,7 @@ else:
             try:
                 p = await asyncio.create_subprocess_exec(
                     *args,
-                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, env=env, close_fds=True,
+                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, env=env, close_fds=True, preexec_fn=os.setpgrp,
                 )
             except Exception as e:
                 raise RuntimeError("Unable to create_subprocess_exec") from e

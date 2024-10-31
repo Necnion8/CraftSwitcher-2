@@ -43,6 +43,7 @@ def new_session_commands(session_name: str, *,
                          detach=False, exist_ignore=False, ) -> list[str]:
     args = [
         which("screen") or "screen",
+        "-e", "^Aa",  # set command characters: Ctrl+A
         "-S", session_name,  # set name
     ]
 
@@ -58,6 +59,7 @@ def attach_commands(session_name: str, *,
                     force=False, ) -> list[str]:
     args = [
         which("screen") or "screen",
+        "-e", "^Aa",  # set command characters: Ctrl+A
     ]
 
     if force:
