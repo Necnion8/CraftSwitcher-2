@@ -761,10 +761,21 @@ class CraftSwitcher(EventListener):
             return
 
         try:
+            ssl_key_file = config.ssl_keyfile or None
+            ssl_cert_file = config.ssl_certfile or None
+
+            if ssl_key_file:
+                if not Path(ssl_key_file).is_file():
+                    log.warning("SSL key file not exists: %s", Path(ssl_key_file).absolute())
+                if not Path(ssl_cert_file).is_file():
+                    log.warning("SSL cert file not exists: %s", Path(ssl_cert_file).absolute())
+
             await self.api_server.start(
                 self.api_handler.router,
                 host=config.bind_host,
                 port=config.bind_port,
+                ssl_keyfile=config.ssl_keyfile or None,
+                ssl_certfile=config.ssl_certfile or None,
             )
         except RuntimeError as e:
             log.warning(f"Failed to start api server: {e}")

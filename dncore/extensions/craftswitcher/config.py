@@ -127,6 +127,9 @@ class PublicApiServer(ConfigValues):
     enable = True
     bind_host = "0.0.0.0"
     bind_port = 8080
+    # SSLキーファイルのパス
+    ssl_keyfile: str | None = None
+    ssl_certfile: str | None = None
 
 
 class DiscordActivity(ConfigValues):
