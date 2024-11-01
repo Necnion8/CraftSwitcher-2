@@ -190,14 +190,17 @@ class ProcessPerformanceMonitor(object):
         self.cached_info = None  # type: ProcessInfo | None
 
     def info(self):
-        mem = self.process.memory_info()
-        cpu_usage = self.process.cpu_percent(interval=None)
-        self.cached_info = info = ProcessInfo(
-            cpu_usage=cpu_usage,
-            memory_used_size=mem.rss,
-            memory_virtual_used_size=mem.vms,
-        )
-        return info
+        try:
+            mem = self.process.memory_info()
+            cpu_usage = self.process.cpu_percent(interval=None)
+            self.cached_info = info = ProcessInfo(
+                cpu_usage=cpu_usage,
+                memory_used_size=mem.rss,
+                memory_virtual_used_size=mem.vms,
+            )
+            return info
+        except psutil.NoSuchProcess:
+            raise
 
 
 class ServerLoggerAdapter(logging.LoggerAdapter):

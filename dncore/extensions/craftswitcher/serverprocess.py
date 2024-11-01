@@ -16,6 +16,8 @@ from pathlib import Path
 from shutil import which
 from typing import Awaitable, Any, Callable
 
+import psutil
+
 from . import errors, utilscreen as screen
 from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
@@ -614,6 +616,15 @@ class ServerProcess(object):
             self.log.warning("Exception in init perf.mon", exc_info=e)
             mon = None
         return mon
+
+    def get_perf_info(self):
+        if self._perf_mon:
+            try:
+                return self._perf_mon.info()
+            except psutil.NoSuchProcess:
+                self._perf_mon = None
+                self.log.warning("Failed to get performance info: No such process")
+        return None
 
     # eula
 
