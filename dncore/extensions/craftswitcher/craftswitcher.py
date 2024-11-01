@@ -821,7 +821,9 @@ class CraftSwitcher(EventListener):
         for server in self.servers.values():
             if not server or not server.perfmon:
                 continue
-            servers_info[server] = server.perfmon.info()
+
+            if _info := server.get_perf_info():
+                servers_info[server] = _info
 
         progress_data = dict(
             type="progress",
