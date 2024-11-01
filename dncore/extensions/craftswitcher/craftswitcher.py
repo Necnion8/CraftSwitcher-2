@@ -21,6 +21,7 @@ from .database.model import User
 from .errors import ServerProcessingError, NoDownloadFile
 from .event import *
 from .ext import SwitcherExtensionManager
+from .fileback import Backupper
 from .files import FileManager
 from .files.event import *
 from .files.event import WatchdogEvent
@@ -55,6 +56,7 @@ class CraftSwitcher(EventListener):
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl
         self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
@@ -145,6 +147,14 @@ class CraftSwitcher(EventListener):
         self.load_servers()
 
         await self.database.connect()
+        if self.backups is None:
+            backups_dir = Path(self.config.backup.backups_directory)
+            trash_dir = Path(self.config.backup.trash_files_directory)
+            self.backups = Backupper(
+                self.loop, config=self.config.backup, database=self.database, files=self.files,
+                backups_dir=backups_dir,
+                trash_dir=trash_dir,
+            )
 
         self.print_welcome()
 
@@ -304,6 +314,7 @@ class CraftSwitcher(EventListener):
 
         server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(server_config_path)
+        config.source_id = generate_uuid().hex
 
         if not server_config_path.is_file():
             log.warning("Not exists server config: %s", server_dir)
@@ -318,6 +329,11 @@ class CraftSwitcher(EventListener):
         return server_dir, config
 
     def _init_server(self, server_id: str, server_dir: Path, config: ServerConfig):
+        if config.source_id is None:
+            config.source_id = generate_uuid().hex
+            config.save()
+            log.error(f"[{server_id}] Invalid source_id. Reset to: {config.source_id!r}")
+
         return ServerProcess(
             self.loop,
             directory=server_dir,
@@ -597,6 +613,7 @@ class CraftSwitcher(EventListener):
         """
         config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
+        config.source_id = generate_uuid().hex
         config.launch_option.jar_file = jar_file
         return config
 
@@ -631,6 +648,8 @@ class CraftSwitcher(EventListener):
             if not directory.parent.is_dir():
                 raise NotADirectoryError(str(directory))
             directory.mkdir()
+
+        config.source_id = generate_uuid().hex
         server = self._init_server(server_id, directory, config)
 
         if set_creation_date:

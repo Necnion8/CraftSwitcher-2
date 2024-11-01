@@ -3,6 +3,7 @@ import datetime
 import secrets
 from logging import getLogger
 from pathlib import Path
+from uuid import UUID
 
 from passlib.context import CryptContext
 from sqlalchemy import URL, select, delete
@@ -10,7 +11,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from .model import Base, User
+from .model import *
 from ..utils import datetime_now
 
 log = getLogger(__name__)
@@ -109,7 +110,7 @@ class SwitcherDatabase(object):
                 db.add(user)
                 await db.flush()
                 await db.refresh(user)
-                user_id = str(user.id)
+                user_id = user.id
                 await db.commit()
                 return user_id
 
@@ -142,3 +143,37 @@ class SwitcherDatabase(object):
         expires = datetime_now() + TOKEN_EXPIRES
         await self.update_user(user, token=token, token_expire=expires, **new_values)
         return TOKEN_EXPIRES, token, expires
+
+    # backupper
+
+    async def get_backups(self, source: UUID) -> list[Backup]:
+        async with self.session() as db:
+            result = await db.execute(select(Backup).where(Backup.source == source))
+            return [r[0] for r in result.all()]
+
+    async def get_backup(self, backup_id: int) -> Backup | None:
+        async with self.session() as db:
+            result = await db.execute(select(Backup).where(Backup.id == backup_id))
+            try:
+                return result.one()[0]
+            except NoResultFound:
+                return None
+
+    async def add_backup(self, backup: Backup):
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(backup)
+                await db.flush()
+                await db.refresh(backup)
+                backup_id = backup.id
+                await db.commit()
+                return backup_id
+
+    async def remove_backup(self, backup: Backup | int):
+        async with self._commit_lock:
+            async with self.session() as db:
+                if isinstance(backup, Backup):
+                    await db.delete(backup)
+                else:
+                    await db.execute(delete(Backup).where(Backup.id == backup))
+                await db.commit()

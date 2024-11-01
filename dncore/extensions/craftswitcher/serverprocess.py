@@ -560,6 +560,13 @@ class ServerProcess(object):
         eula_path.write_text("\n".join(lines), encoding="utf-8")
         return eula_path
 
+    def get_source_id(self, *, generate=True):
+        source_id = self._config.source_id
+        if source_id is None and generate:
+            source_id = self._config.source_id = generate_uuid().hex
+            self._config.save()
+        return source_id
+
 
 class ServerProcessList(dict[str, ServerProcess | None]):
     def append(self, server: ServerProcess):

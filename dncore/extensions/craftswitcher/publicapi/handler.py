@@ -3,6 +3,7 @@ import shutil
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
 from fastapi.exceptions import WebSocketException
@@ -15,7 +16,7 @@ from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.abc import ServerType, ServerState
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
-from dncore.extensions.craftswitcher.errors import NoDownloadFile
+from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
@@ -68,6 +69,7 @@ class APIHandler(object):
         _api.include_router(self._user())
         _api.include_router(self._server())
         _api.include_router(self._file())
+        _api.include_router(self._backup())
         _api.include_router(self._jardl())
         _api.include_router(self._plugins())
         _api.include_router(self._debug())
@@ -86,6 +88,10 @@ class APIHandler(object):
                 error="Internal Server Error",
                 error_code=-1,
             ))
+
+    @property
+    def backups(self):
+        return self.inst.backups
 
     # websocket
 
@@ -1045,7 +1051,7 @@ class APIHandler(object):
         ) -> list[model.ArchiveFile]:
             try:
                 arc_files = await self.files.list_archive(path.real, password=password, ignore_suffix=ignore_suffix)
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
@@ -1071,7 +1077,7 @@ class APIHandler(object):
                     path.real, output_dir.real, password,
                     server=path.server, src_swi_path=path.swi, dst_swi_path=output_dir.swi, ignore_suffix=ignore_suffix,
                 )
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
@@ -1100,7 +1106,7 @@ class APIHandler(object):
                     path.real, files_root.real, include_files,
                     server=path.server, src_swi_path=path.swi,
                 )
-            except RuntimeError as e:
+            except NoArchiveHelperError as e:
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return model.FileOperationResult.pending(task.id)
 
@@ -1243,6 +1249,90 @@ class APIHandler(object):
                 used_size=info.used_bytes,
                 free_size=info.free_bytes,
             )
+
+        return api
+
+    def _backup(self):
+        db = self.database
+        api = APIRouter(
+            tags=["Backup", ],
+            dependencies=[Depends(self.get_authorized_user), ],
+        )
+
+        def getserver(server_id: str):
+            try:
+                server = self.servers[server_id.lower()]
+            except KeyError:
+                raise APIErrorCode.SERVER_NOT_FOUND.of("Server not found", 404)
+
+            if server is None:
+                raise APIErrorCode.SERVER_NOT_LOADED.of("Server config not loaded", 404)
+            return server
+
+        @api.get(
+            "/server/{server_id}/backups",
+            summary="バックアップ一覧",
+        )
+        async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
+            return [
+                model.Backup(
+                    id=backup.id,
+                    created=backup.created,
+                    path=backup.path,
+                    size=backup.size,
+                    comments=backup.comments,
+                ) for backup in await db.get_backups(UUID(server.get_source_id()))
+            ]
+
+        @api.get(
+            "/server/{server_id}/backup",
+            summary="バックアップ実行中かどうか",
+        )
+        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:
+            task = self.backups.get_running_task_by_server(server)
+            return bool(task)
+
+        @api.post(
+            "/server/{server_id}/backup",
+            summary="バックアップを開始",
+            description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
+        )
+        async def _post_backup(server: "ServerProcess" = Depends(getserver), comments: str | None = None) -> bool:
+            task = self.backups.get_running_task_by_server(server)
+            if task:
+                raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
+
+            _ = await self.backups.create_backup(server, comments)
+            return True
+
+        @api.get(
+            "/server/{server_id}/backup/{backup_id}",
+            summary="バックアップの情報",
+        )
+        async def _get_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
+            backup = await db.get_backup(backup_id)
+            if not backup:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
+
+            return model.Backup(
+                id=backup.id,
+                created=backup.created,
+                path=backup.path,
+                size=backup.size,
+                comments=backup.comments,
+            )
+
+        @api.delete(
+            "/server/{server_id}/backup/{backup_id}",
+            summary="バックアップの削除",
+            description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
+        )
+        async def _delete_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
+            try:
+                await self.backups.delete_backup(server, backup_id)
+            except ValueError as e:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
+            return True
 
         return api
 

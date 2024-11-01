@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, Generator, Any, Generic
 
 if TYPE_CHECKING:
     import asyncio
@@ -11,6 +11,7 @@ __all__ = [
     "FileTaskResult",
     "FileTask",
 ]
+_T = TypeVar("_T")
 
 
 class FileEventType(Enum):
@@ -22,6 +23,7 @@ class FileEventType(Enum):
     EXTRACT_ARCHIVE = "extract_archive"
     CREATE_ARCHIVE = "create_archive"
     DOWNLOAD = "download"
+    BACKUP = "backup"
 
 
 class FileTaskResult(Enum):
@@ -30,8 +32,9 @@ class FileTaskResult(Enum):
     FAILED = "failed"
 
 
-class FileTask(object):
-    def __init__(self, task_id: int, event_type: FileEventType, src: "Path", dst: "Path | None", fut: "asyncio.Future",
+class FileTask(Generic[_T]):
+    def __init__(self, task_id: int, event_type: FileEventType, src: "Path", dst: "Path | None",
+                 fut: "asyncio.Future[_T]",
                  server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None):
         self.id = task_id
         self.type = event_type
@@ -54,5 +57,5 @@ class FileTask(object):
     def progress(self, value: float):
         self._progress = value
 
-    def __await__(self):
+    def __await__(self) -> Generator[Any, None, _T]:
         return self.fut.__await__()
