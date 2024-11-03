@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
-from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
+from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo, ProcessInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
 from .database.model import User
@@ -844,14 +844,38 @@ class CraftSwitcher(EventListener):
 
         sys_mem = system_memory(swap=True)
         sys_perf = system_perf()
+        reporter = self.repomo_server
 
-        servers_info = {}
+        servers_info = {}  # type: dict[ServerProcess, ProcessInfo]
         for server in self.servers.values():
             if not server or not server.perfmon:
                 continue
 
             if _info := server.get_perf_info():
                 servers_info[server] = _info
+
+        def create_server_info(s: ServerProcess, i: ProcessInfo):
+            report = reporter.get_status(s.id)
+
+            total = report and report.total_memory
+            free = report and report.free_memory
+
+            return dict(
+                id=s.id,
+                process=dict(
+                    cpu_usage=i.cpu_usage,  # type: float
+                    mem_used=i.memory_used_size,  # type: int
+                    mem_virtual_used=i.memory_virtual_used_size,  # type: int
+                ),
+                jvm=dict(
+                    cpu_usage=-1.0 if (val := report and report.cpu_usage) is None else val * 100,  # type: float
+                    mem_used=-1 if total is None or free is None else total - free,  # type: int
+                    mem_total=-1 if total is None else total,  # type: int
+                ),
+                game = dict(
+                    ticks=-1.0 if (val := report and report.tps) is None else val,  # type: float
+                ),
+            )
 
         progress_data = dict(
             type="progress",
@@ -869,25 +893,7 @@ class CraftSwitcher(EventListener):
                     swap_available=sys_mem.swap_available_bytes,
                 ),
             ),
-            servers=[
-                dict(
-                    id=s.id,
-                    process=dict(
-                        cpu_usage=i.cpu_usage,
-                        mem_used=i.memory_used_size,
-                        mem_virtual_used=i.memory_virtual_used_size,
-                    ),
-                    jvm=dict(  # TODO: impl jvm perf info
-                        cpu_usage=-1,
-                        mem_used=-1,
-                        mem_total=-1,
-                    ),
-                    game=dict(
-                        ticks=-1,
-                    ),
-                )
-                for s, i in servers_info.items()
-            ],
+            servers=[create_server_info(s, i) for s, i in servers_info.items()],
         )
         await self.api_handler.broadcast_websocket(progress_data)
 

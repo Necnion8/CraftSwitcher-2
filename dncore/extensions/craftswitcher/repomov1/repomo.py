@@ -79,6 +79,14 @@ class ReportModuleServer(TCPClientListener):
     def servers(self) -> "dict[str, ServerProcess | None]":
         return getinst().servers
 
+    def get_status(self, server_id: str) -> StatusData | None:
+        try:
+            updater = self.server_updaters[server_id]
+        except KeyError:
+            return
+
+        return updater.data
+
     async def open(self):
         await self.tcp.start()
 
