@@ -872,8 +872,16 @@ class CraftSwitcher(EventListener):
                     mem_used=-1 if total is None or free is None else total - free,  # type: int
                     mem_total=-1 if total is None else total,  # type: int
                 ),
-                game = dict(
+                game=dict(
                     ticks=-1.0 if (val := report and report.tps) is None else val,  # type: float
+                    max_players=-1 if (val := report and report.max_players) is None else val,  # type: int
+                    online_players=-1 if (val := report and report.players) is None else len(val),  # type: int
+                    players=[] if not report or report.players is None else [
+                        dict(
+                            uuid=str(p_uuid),  # type: str
+                            name=p_name,  # type: str
+                        ) for p_uuid, p_name in report.players.items()
+                    ],
                 ),
             )
 
