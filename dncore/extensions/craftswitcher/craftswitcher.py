@@ -348,6 +348,7 @@ class CraftSwitcher(EventListener):
             server_id=server_id,
             config=config,
             global_config=self.config.server_defaults,
+            repomo_config=self.config.repomo,
             max_logs_line=self.config.max_console_lines_in_memory,
         )
 

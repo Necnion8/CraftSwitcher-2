@@ -135,6 +135,11 @@ class PublicApiServer(ConfigValues):
     ssl_certfile: str | None = None
 
 
+class ReportModule(ConfigValues):
+    # Java Agent ファイルのパス
+    agent_file = "./CraftSwitcherReportModule-1.1.3_libs.jar"
+
+
 class DiscordActivity(ConfigValues):
     # ステータスを参照するサーバー
     target_server: ServerSelector = ServerSelector("ALL")
@@ -216,6 +221,9 @@ class SwitcherConfig(FileConfigValues):
 
     # APIサーバー
     api_server: PublicApiServer
+
+    # サーバー連携モジュール設定
+    repomo: ReportModule
 
     # Discordボットの設定
     discord: Discord
