@@ -17,16 +17,12 @@ class ServerStatusUpdater(object):
         self.server = server
         self.data = None  # type: StatusData | None
         self._task = None  # type: asyncio.Task | None
+        self._interrupted = False
 
     async def run(self):
         self.server.log.debug("Started status checker")
         try:
-            while True:
-                if not self.tcp.is_connected(self.server.id):
-                    self.data = None
-                    await asyncio.sleep(3)
-                    continue
-
+            while not self._interrupted and self.tcp.is_connected(self.server.id):
                 try:
                     response = await asyncio.wait_for(self.tcp.send_data(self.server.id, StatusData()), timeout=4)
 
@@ -49,16 +45,21 @@ class ServerStatusUpdater(object):
                     else:
                         self.data = None
 
+                await asyncio.sleep(2)
+
         finally:
             self.server.log.debug("Stopped status checker")
+            self.data = None
             self._task = None
 
     async def start(self):
         await self.stop()
+        self._interrupted = False
         self._task = asyncio.get_running_loop().create_task(self.run())
 
     async def stop(self):
-        if self._task and not self._task.done():
+        self._interrupted = True
+        if self._task:
             self._task.cancel()
             try:
                 await self._task
@@ -223,7 +224,7 @@ class ReportModuleServer(TCPClientListener):
 
         elif isinstance(data, ServerStateRequest):
             if server := self.servers.get(data.server):
-                return ServerStateRequest(server.id, server.state.value)
+                return ServerStateRequest(server.id, server.state.old_value)
             return EmptyResponseData()
 
         log.debug(f"onReceive: reporter=" + reporter_name + ", class=" + type(data).__name__)
