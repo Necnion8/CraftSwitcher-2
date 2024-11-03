@@ -427,9 +427,9 @@ class CraftSwitcher(EventListener):
 
             await s.clean_builder()
 
-        if self.servers:
-            log.info("Shutdown server all!")
-            await asyncio.wait([_shutdown(s) for s in self.servers.values() if s])
+        if servers := [_shutdown(s) for s in self.servers.values() if s]:
+            log.info("Shutting down all servers")
+            await asyncio.wait(servers)
 
     def unload_servers(self):
         """
