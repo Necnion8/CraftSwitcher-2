@@ -5,7 +5,7 @@ import re
 from asyncio import StreamWriter
 from typing import Optional, Dict, List, Set
 
-from .exceptions import ResponseError, ClosedError
+from .errors import ResponseError, ClosedError
 from .socket_data import EmptyResponseData, SerializableData, InvalidData, get_data_class
 
 log = logging.getLogger(__name__)

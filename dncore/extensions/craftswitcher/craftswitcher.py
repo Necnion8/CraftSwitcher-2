@@ -29,6 +29,7 @@ from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
+from .repomov1 import ReportModuleServer
 from .serverprocess import ServerProcessList, ServerProcess
 from .utils import *
 
@@ -56,6 +57,7 @@ class CraftSwitcher(EventListener):
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.repomo_server = ReportModuleServer(loop)
         self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl
@@ -160,6 +162,7 @@ class CraftSwitcher(EventListener):
 
         await self.files.start()
         await self.start_api_server()
+        await self.repomo_server.open()
 
         await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
@@ -216,6 +219,11 @@ class CraftSwitcher(EventListener):
                 await self.shutdown_all_servers()
             except Exception as e:
                 log.warning("Exception in shutdown servers", exc_info=e)
+
+            try:
+                await self.repomo_server.close()
+            except Exception as e:
+                log.warning("Exception in close repomo", exc_info=e)
 
             try:
                 await self.close_api_server()
@@ -885,8 +893,18 @@ class CraftSwitcher(EventListener):
     # events
 
     @onevent(monitor=True)
+    async def on_server_created(self, event: ServerCreatedEvent):
+        await self.repomo_server.handle_on_server_add(event.server.id)
+
+    @onevent(monitor=True)
+    async def on_server_deleted(self, event: ServerDeletedEvent):
+        await self.repomo_server.handle_on_server_remove(event.server.id)
+
+    @onevent(monitor=True)
     async def on_change_state(self, event: ServerChangeStateEvent):
         server = event.server
+
+        await self.repomo_server.handle_on_server_state_update(server.id, event.new_state)
 
         if server.state is ServerState.STOPPED:
             # queue removes
