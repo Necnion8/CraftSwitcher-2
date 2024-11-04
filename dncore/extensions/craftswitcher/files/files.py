@@ -293,12 +293,12 @@ class FileManager(object):
             server=server, src_swi_path=src_swi_path, dst_swi_path=dst_swi_path,
         )
 
-    async def mkdir(self, src: Path):
+    async def mkdir(self, src: Path, parents=False):
         """
         ディレクトリを作成します
         """
         def _do():
-            src.mkdir()
+            src.mkdir(parents=parents)
 
         await self.loop.run_in_executor(None, _do)
 

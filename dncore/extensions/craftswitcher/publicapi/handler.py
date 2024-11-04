@@ -989,10 +989,12 @@ class APIHandler(object):
         )
         async def _mkdir(
                 path: PairPath = Depends(get_path_of_root(no_exists=True)),
-
+                parents: bool = Query(False, description="親ディレクトリも作成します"),
         ) -> model.FileOperationResult:
             try:
-                await self.files.mkdir(path.real)
+                await self.files.mkdir(path.real, parents=parents)
+            except FileNotFoundError:
+                raise APIErrorCode.NOT_EXISTS_PATH.of(f"Not exists parents: 'path'")
             except Exception as e:
                 log.warning(f"Failed to mkdir: {e}: {path}")
                 return model.FileOperationResult.failed(None)
@@ -1178,8 +1180,9 @@ class APIHandler(object):
         )
         async def _server_mkdir(
                 path: PairPath = Depends(get_path_of_server_root(no_exists=True)),
+                parents: bool = Query(False, description="親ディレクトリも作成します"),
         ) -> model.FileOperationResult:
-            return await _mkdir(path)
+            return await _mkdir(path, parents)
 
         @api.put(
             "/server/{server_id}/file/copy",
