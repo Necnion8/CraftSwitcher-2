@@ -49,6 +49,9 @@ class ServerSelector(ObjectSerializable, Cloneable):
 
 
 class LaunchOption(ConfigValues):
+    # Javaプリセット名
+    # ※ java_executable が指定されている場合はそちらが優先されます
+    java_preset: str | None
     # Javaコマンド、もしくはパス
     java_executable: str | None
     # Java オプション
@@ -106,6 +109,9 @@ class ServerConfig(FileConfigValues):
 
 
 class LaunchGlobalOption(ConfigValues):
+    # Javaプリセット名
+    # ※ java_executable が指定されている場合はそちらが優先されます
+    java_preset = "default"
     # Javaコマンド、もしくはパス
     java_executable = "java"
     # Java オプション
@@ -137,6 +143,22 @@ class PublicApiServer(ConfigValues):
     # SSLキーファイルのパス
     ssl_keyfile: str | None = None
     ssl_certfile: str | None = None
+
+
+class JavaPresetConfig(ConfigValues):
+    name: str
+    executable: str
+
+
+class JavaConfigSection(ConfigValues):
+    # 実行可能なJavaのパスリスト。システムパスで指定してください。
+    presets: list[JavaPresetConfig]
+
+    # Javaを自動検出するディレクトリ。システムパスで指定してください。
+    auto_detection_paths: list[str] = [
+        "/usr/lib/jvm",
+        "C:\\Program Files\\Java",
+    ]
 
 
 class Screen(ConfigValues):
@@ -215,14 +237,8 @@ class SwitcherConfig(FileConfigValues):
     # サーバーの保管に使うパス (※ 通常は変更する必要はありません)
     servers_location: str = "/"
 
-    # 実行可能なJavaのパスリスト。システムパスで指定してください。
-    java_executables: list[str]
-
-    # Javaを自動検出するディレクトリ。システムパスで指定してください。
-    java_auto_detect_locations: list[str] = [
-        "/usr/lib/jvm",
-        "C:\\Program Files\\Java",
-    ]
+    # Java 設定
+    java: JavaConfigSection
 
     # GNU Screen 設定
     # ※ 利用できない場合は無視し、通常通りサーバーを直接起動させます。

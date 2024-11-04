@@ -23,6 +23,7 @@ from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
 from .event import *
 from .jardl import ServerBuilder, ServerBuildStatus
+from .utiljava import get_java_home
 from .utils import *
 
 _log = logging.getLogger(__name__)
@@ -52,7 +53,14 @@ class ServerProcess(object):
                 self._global_config = global_config.launch_option
 
             @property
-            def java_executable(self):
+            def java_preset(self) -> str:
+                return [
+                    self._config.java_preset,
+                    self._global_config.java_preset,
+                ][self._config.java_preset is None]
+
+            @property
+            def java_executable(self) -> str:
                 return [
                     self._config.java_executable,
                     self._global_config.java_executable,

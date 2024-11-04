@@ -26,7 +26,7 @@ from dncore.extensions.craftswitcher.utils import call_event, datetime_now, disk
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
-    from dncore.extensions.craftswitcher.config import ServerConfig, SwitcherConfig
+    from dncore.extensions.craftswitcher.config import ServerConfig, SwitcherConfig, JavaPresetConfig
     from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
 
 log = getLogger(__name__)
@@ -297,26 +297,44 @@ class APIHandler(object):
             dependencies=[Depends(self.get_authorized_user), ],
             summary="利用できるJavaの一覧",
         )
-        def _get_java_list() -> list[model.JavaExecutableInfo]:
-            return [
-                model.JavaExecutableInfo(
-                    executable=i.executable,
-                    runtime_version=i.runtime_version,
-                    java_home_path=i.java_home_path,
-                    java_major_version=i.java_major_version,
-                    specification_version=i.specification_version,
-                    class_version=i.class_version,
-                    vendor=i.vendor,
-                    vendor_version=i.vendor_version,
-                ) for i in self.inst.java_executables
-            ]
+        def _get_java_list() -> list[model.JavaPreset]:
+            presets = []  # type: list[model.JavaPreset]
+            config_presets = list(self.inst.config.java.presets)  # type: list[JavaPresetConfig]
+
+            for preset in self.inst.java_presets:
+                registered = False
+                try:
+                    config_presets.remove(preset.config)
+                except ValueError:
+                    pass
+                else:
+                    registered = True
+
+                presets.append(model.JavaPreset(
+                    name=preset.name,
+                    executable=preset.config and preset.config.executable or str(preset.path),
+                    info=preset.info and model.JavaExecutableInfo.create(preset.info),
+                    available=bool(preset.info),
+                    registered=registered,
+                ))
+
+            for c_preset in config_presets:
+                presets.append(model.JavaPreset(
+                    name=c_preset.name,
+                    executable=c_preset.executable,
+                    info=None,
+                    available=False,
+                    registered=True,
+                ))
+
+            return presets
 
         @api.post(
             "/java/rescan",
             dependencies=[Depends(self.get_authorized_user), ],
             summary="利用可能なJavaを再検出",
         )
-        async def _post_java_rescan() -> list[model.JavaExecutableInfo]:
+        async def _post_java_rescan() -> list[model.JavaPreset]:
             await self.inst.scan_java_executables()
             return _get_java_list()
 

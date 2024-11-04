@@ -70,6 +70,7 @@ class ServerOperationResult(BaseModel):
 
 class CreateServerParam(BaseModel):
     class LaunchOption(BaseModel):
+        java_preset: str | None
         java_executable: str | None
         java_options: str | None
         jar_file: str
@@ -96,6 +97,7 @@ class AddServerParam(BaseModel):
 class ServerConfig(BaseModel):
     name: str | None = Field(None, description="表示名")
     type: abc.ServerType = Field(None, description="サーバーの種類")
+    launch_option__java_preset: str | None = Field(None, description="Javaプリセット名")
     launch_option__java_executable: str | None = Field(None, description="Javaコマンド、もしくはパス")
     launch_option__java_options: str | None = Field(None, description="Java オプション")
     launch_option__jar_file: str = Field(None, description="Jarファイルパス")
@@ -122,6 +124,7 @@ class ServerConfig(BaseModel):
 
 
 class ServerGlobalConfig(BaseModel):
+    launch_option__java_preset: str = Field("default", description="Javaプリセット名")
     launch_option__java_executable: str = Field("java", description="Javaコマンド、もしくはパス")
     launch_option__java_options: str = Field("-Dfile.encoding=UTF-8", description="Java オプション")
     launch_option__server_options: str = Field("nogui", description="サーバーオプション")
@@ -295,7 +298,7 @@ class PluginMessageResponse(BaseModel):
 
 
 class JavaExecutableInfo(BaseModel):
-    executable: Path
+    path: Path
     runtime_version: str
     java_home_path: str | None
     java_major_version: int
@@ -303,6 +306,27 @@ class JavaExecutableInfo(BaseModel):
     class_version: int | None = None
     vendor: str | None = None
     vendor_version: str | None = None
+
+    @classmethod
+    def create(cls, info: abc.JavaExecutableInfo):
+        return cls(
+            path=info.path,
+            runtime_version=info.runtime_version,
+            java_home_path=info.java_home_path,
+            java_major_version=info.java_major_version,
+            specification_version=info.specification_version,
+            class_version=info.class_version,
+            vendor=info.vendor,
+            vendor_version=info.vendor_version,
+        )
+
+
+class JavaPreset(BaseModel):
+    name: str = Field(description="Javaプリセット名")
+    executable: str = Field(description="実行可能ファイルまたはコマンド")
+    info: JavaExecutableInfo | None = Field(description="Java 情報")
+    available: bool = Field(False, description="利用可能")
+    registered: bool = Field(False, description="登録されている")
 
 
 class Backup(BaseModel):

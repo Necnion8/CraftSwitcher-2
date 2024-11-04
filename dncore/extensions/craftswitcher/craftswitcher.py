@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
+from typing import Coroutine
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
@@ -16,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from dncore.event import EventListener, onevent
 from . import utilscreen as screen
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
-from .config import SwitcherConfig, ServerConfig
+from .config import SwitcherConfig, ServerConfig, JavaPresetConfig
 from .database import SwitcherDatabase
 from .database.model import User
 from .errors import ServerProcessingError, NoDownloadFile
@@ -31,6 +32,7 @@ from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
 from .serverprocess import ServerProcessList, ServerProcess
+from .utiljava import JavaPreset, check_java_executable
 from .utils import *
 
 if TYPE_CHECKING:
@@ -62,7 +64,10 @@ class CraftSwitcher(EventListener):
         # jardl
         self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
         # java
-        self.java_executables = []  # type: list[JavaExecutableInfo]
+        self.java_presets = []  # type: list[JavaPreset]
+        """プリセット設定済みor自動的にセットされたプリセット"""
+        self.java_detections = []  # type: list[JavaExecutableInfo]
+        """自動検出されたJavaのリスト"""
         # api
         global __version__
         __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
@@ -586,52 +591,77 @@ class CraftSwitcher(EventListener):
     async def _scan_java_executables(self):
         log.debug("Checking java executables")
         exe_name = "java.exe" if is_windows() else "java"
-        exe_files = []  # type: list[Path]
         perf_time = time.perf_counter()
 
-        # include default java
-        _default_java = shutil.which("java")
-        if _default_java:
-            default_java = Path(_default_java).resolve()
-            if default_java.exists():
-                exe_files.append(default_java)
+        _check_java_type = JavaExecutableInfo | None, JavaPresetConfig | None
+        sem = asyncio.Semaphore(3)
+        tasks = []  # type: list[Coroutine[None, None, _check_java_type]]
 
-        # list executable files
-        for child in self.config.java_executables:
-            child = Path(child).resolve()
-            if child.is_file() and child not in exe_files:
-                exe_files.append(child)
+        async def check_java(_path: Path, _config: JavaPresetConfig | None) -> _check_java_type:
+            async with sem:
+                try:
+                    return await check_java_executable(_path), _config
+                except Exception as e:
+                    log.warning(f"Error in check java: {_path!r}: {e}")
+            return None, _config
 
-        for search_dir in self.config.java_auto_detect_locations:
-            search_dir_path = Path(search_dir)
-            if not search_dir_path.exists():
+        # default java
+        default_java_info = None  # type: JavaExecutableInfo | None
+        if default_java := shutil.which("java"):
+            if (default_java := Path(default_java).resolve()).exists():
+                default_java_info = (await check_java(default_java, None))[0]
+
+        # preset java
+        for preset_c in self.config.java.presets:
+            if executable := shutil.which(preset_c.executable):
+                tasks.append(check_java(Path(executable), preset_c))
+
+        # detection java
+        for search_dir in self.config.java.auto_detection_paths:
+            if not (search_dir_path := Path(search_dir)).exists():
                 continue
+            for child in search_dir_path.glob(f"*/bin/{exe_name}"):  # type: Path
+                if (child := child.resolve()).is_file():
+                    tasks.append(check_java(child, None))
 
-            for child in search_dir_path.glob(f"*/bin/{exe_name}"):
-                child = child.resolve()
-                if child.is_file() and child not in exe_files:
-                    exe_files.append(child)
+        # check
+        presets = {}  # type: dict[str, JavaPreset]
+        names = set()
+        detections = []  # type: list[JavaExecutableInfo]
+        if tasks:
+            for info, config in await asyncio.gather(*tasks):  # type: JavaExecutableInfo | None, JavaPresetConfig | None
+                if not info:
+                    # 設定済みand利用不可
+                    if config:
+                        presets[config.executable] = JavaPreset(config.name, None, config)
+                        names.add(config.name)
 
-        # check java
-        self.java_executables.clear()
-        executables = set()
+                elif str(info.path.absolute()) not in presets:
+                    # 自動検出(名前あたり１つ)
+                    if not config:
+                        detections.append(info)
+                        name = f"java-{info.java_major_version}"
+                        if name in names:
+                            continue
+                    else:
+                        # 設定済み
+                        name = config.name
 
-        if exe_files:
-            sem = asyncio.Semaphore(3)
+                    presets[str(info.path.absolute())] = JavaPreset(name, info, config)
+                    names.add(name)
 
-            async def _check(p):
-                async with sem:
-                    return await check_java_executable(p)
-
-            for info in await asyncio.gather(*[_check(p) for p in exe_files]):
-                if info and info.executable not in executables:
-                    self.java_executables.append(info)
-                    executables.add(info.executable)
+        # update list
+        self.java_presets.clear()
+        self.java_presets.extend(list(presets.values()))
+        if default_java_info:
+            self.java_presets.insert(0, JavaPreset("default", default_java_info, None))
+        self.java_detections.clear()
+        self.java_detections.extend(detections)
 
         perf_time = round((time.perf_counter() - perf_time) * 1000)
-        major_vers = sorted(set(i.java_major_version for i in self.java_executables))
-        log.info("Java versions found (total %s java files): %s",
-                 len(self.java_executables), ", ".join(map(str, major_vers)))
+        major_vers = sorted(set(p.major_version for p in presets.values()))
+        log.info("Java versions found (available presets: %s): %s",
+                 sum(bool(p.info) for p in presets.values()), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)
 
     def screen_session_name_of(self, server: "ServerProcess"):

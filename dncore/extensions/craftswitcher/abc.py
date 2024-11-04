@@ -140,7 +140,7 @@ class FileWatchInfo(NamedTuple):
 
 
 class JavaExecutableInfo(NamedTuple):
-    executable: Path
+    path: Path
     runtime_version: str
     java_home_path: str | None
     java_major_version: int
