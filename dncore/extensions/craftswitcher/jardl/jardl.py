@@ -26,6 +26,9 @@ class ServerBuildStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
 
+    def is_running(self):
+        return self in (ServerBuildStatus.PENDING, )
+
 
 # noinspection PyMethodMayBeStatic
 class ServerBuilder(object):

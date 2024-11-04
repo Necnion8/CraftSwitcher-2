@@ -17,6 +17,9 @@ __all__ = [
     "ServerDeletedEvent",
     "ServerProcessReadEvent",
     "ServerProcessReadLinesEvent",
+    "ServerScreenAttachPreEvent",
+    "ServerScreenAttachEvent",
+    "ServerScreenDetachedEvent",
     "SwitcherInitializedEvent",
     "SwitcherShutdownEvent",
     "SwitcherConfigLoadedEvent",
@@ -91,6 +94,25 @@ class ServerProcessReadLinesEvent(Event, ServerEvent):
     def __init__(self, server: "ServerProcess", lines: list[str]):
         super().__init__(server)
         self.lines = lines
+
+
+class ServerScreenAttachPreEvent(Event, ServerEvent):
+    def __init__(self, server: "ServerProcess", session_name: str):
+        super().__init__(server)
+        self.session_name = session_name
+
+
+class ServerScreenAttachEvent(Event, ServerEvent):
+    def __init__(self, server: "ServerProcess", session_name: str, result: bool):
+        super().__init__(server)
+        self.session_name = session_name
+        self.result = result
+
+
+class ServerScreenDetachedEvent(Event, ServerEvent):
+    def __init__(self, server: "ServerProcess", session_name: str):
+        super().__init__(server)
+        self.session_name = session_name
 
 
 class SwitcherInitializedEvent(Event):

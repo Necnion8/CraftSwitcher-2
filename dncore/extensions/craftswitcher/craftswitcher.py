@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
+from . import utilscreen as screen
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
 from .config import SwitcherConfig, ServerConfig
 from .database import SwitcherDatabase
@@ -164,6 +165,12 @@ class CraftSwitcher(EventListener):
         await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
 
+        if screen.is_available():
+            try:
+                await self.reattach_server_screens()
+            except Exception as e:
+                log.exception("Exception in attach server screens", exc_info=e)
+
         if not await self.database.get_users():
             log.info("Creating admin user")
             user = await self.add_user("admin", "abc")
@@ -213,7 +220,7 @@ class CraftSwitcher(EventListener):
 
         try:
             try:
-                await self.shutdown_all_servers()
+                await self.shutdown_all_servers(exclude_screen=self.config.screen.enable_keep_server_on_shutdown)
             except Exception as e:
                 log.warning("Exception in shutdown servers", exc_info=e)
 
@@ -242,7 +249,7 @@ class CraftSwitcher(EventListener):
             try:
                 self.unload_servers()
             except ValueError as e:
-                log.warning(f"Failed to unload_Servers: {e}")
+                log.warning(f"Failed to unload_servers: {e}")
 
             AsyncCallTimer.cancel_all_timers()
 
@@ -406,8 +413,16 @@ class CraftSwitcher(EventListener):
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersReloadedEvent(removes, updates, news))
 
-    async def shutdown_all_servers(self):
+    async def shutdown_all_servers(self, *, exclude_screen=False):
         async def _shutdown(s: ServerProcess):
+            if exclude_screen:
+                if s.screen_session_name and s.state != ServerState.BUILD:  # ビルド中なら無視せず終了
+                    try:
+                        await s.detach_screen()
+                    except Exception as e:
+                        log.warning("Exception in detach server (ignored)", exc_info=e)
+                    return
+
             if s.state.is_running:
                 try:
                     try:
@@ -440,11 +455,25 @@ class CraftSwitcher(EventListener):
         if not self.servers:
             return
 
-        if any(s.state.is_running for s in self.servers.values() if s):
+        if any(not s.screen_session_name and s.state.is_running for s in self.servers.values() if s):
             raise ValueError("Contains not stopped server")
 
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
+
+    async def reattach_server_screens(self):
+        screen_names = screen.list_names()
+
+        for server in self.servers.values():
+            if not server:
+                continue
+
+            screen_name = self.screen_session_name_of(server)
+            if screen_name in screen_names:
+                try:
+                    await server.attach_to_screen_session(screen_name)
+                except Exception as e:
+                    log.warning("Failed to attach to %s server screen", server.id, exc_info=e)
 
     # server downloader
 
@@ -604,6 +633,9 @@ class CraftSwitcher(EventListener):
         log.info("Java versions found (total %s java files): %s",
                  len(self.java_executables), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)
+
+    def screen_session_name_of(self, server: "ServerProcess"):
+        return self.config.screen.session_name_prefix + server.id
 
     # server api
 

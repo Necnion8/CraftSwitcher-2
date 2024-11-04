@@ -134,6 +134,12 @@ class DNCore(object):
 
         self.loop.run_forever()
 
+        if not self.loop.is_closed():
+            try:
+                self.loop.close()
+            except Exception as e:
+                log.warning(f"Exception in close loop: {e}")
+
         if self._restart:
             log.warning("Restarting")
             raise RestartRequest()
