@@ -179,6 +179,7 @@ class ServerProcess(object):
         self._builder = None  # type: ServerBuilder | None
         self._logs = self._create_logs_list(max_logs_line)
         self._logs_buffer = LineBuffer()
+        self._process_pid = None  # type: int | None
         #
         self.shutdown_to_restart = False
         self._current_screen_name = None  # type: str | None
@@ -250,6 +251,10 @@ class ServerProcess(object):
     @property
     def perfmon(self) -> "ProcessPerformanceMonitor | None":
         return self._perf_mon
+
+    @property
+    def pid(self) -> int | None:
+        return self._process_pid
 
     def check_free_memory(self) -> bool:
         if self.config.enable_launch_command and self.config.launch_command:
@@ -345,6 +350,7 @@ class ServerProcess(object):
 
         self.log.debug("Trying attach to screen session: %s", screen_name)
         call_event(ServerScreenAttachPreEvent(self, screen_name))
+        self._process_pid = None
         self._detaching_screen = False
         builder = self.builder
         try:
@@ -379,7 +385,10 @@ class ServerProcess(object):
             call_event(ServerScreenAttachEvent(self, screen_name, False))
             raise errors.ServerLaunchError(f"Failed to attach: exited {ret}")
 
-        self.create_performance_monitor(wrapper.pid)
+        pid = self._process_pid = wrapper.pid
+        if self._current_screen_name and (w_pid := self.get_pid_from_screen(self._current_screen_name)) is not None:
+            pid = self._process_pid = w_pid
+        self.create_performance_monitor(pid)
 
     async def start(self, *, no_build=False, skip_memory_check=False, no_screen=False):
         """
@@ -412,6 +421,7 @@ class ServerProcess(object):
             if _event.cancelled:
                 raise errors.OperationCancelledError(_event.cancelled_reason or "Unknown Reason")
 
+        self._process_pid = None
         self._current_screen_name = None
         self._detaching_screen = False
         try:
@@ -487,7 +497,10 @@ class ServerProcess(object):
             self.log.warning("Exited process: return code: %s", ret)
             raise errors.ServerLaunchError(f"process exited {ret}")
 
-        self.create_performance_monitor(wrapper.pid)
+        pid = self._process_pid = wrapper.pid
+        if self._current_screen_name and (w_pid := self.get_pid_from_screen(self._current_screen_name)) is not None:
+            pid = self._process_pid = w_pid
+        self.create_performance_monitor(pid)
 
     async def send_command(self, command: str):
         if not self._is_running:
@@ -703,6 +716,17 @@ class ServerProcess(object):
             self.log.warning(f"Exception in write detach command: {e}")
             return False
         return True
+
+    @staticmethod
+    def get_pid_from_screen(screen_name: str):
+        if session := screen.get_screen(screen_name):
+            try:
+                proc = psutil.Process(session.pid).children()[-1]
+            except psutil.NoSuchProcess:
+                return
+            except IndexError:
+                return
+            return proc.pid
 
 
 class ServerProcessList(dict[str, ServerProcess | None]):

@@ -5,6 +5,7 @@ from typing import NamedTuple
 __all__ = [
     "list_names",
     "list_screens",
+    "get_screen",
     "new_session_commands",
     "attach_commands",
     "is_available",
@@ -37,6 +38,23 @@ def list_screens():
         screens.append(ScreenSession(int(pid), name, date, ScreenStatus(status)))
 
     return screens
+
+
+def get_screen(name: str):
+    for line in getoutput("screen -ls").split("\n"):
+        if not line.startswith("\t"):
+            continue
+
+        try:
+            pid_name, date, status = line.strip().split("\t")
+        except ValueError:
+            pid_name, status = line.strip().split("\t")
+            date = None
+
+        pid, name_ = pid_name.split(".", 1)
+        if name == name_:
+            return ScreenSession(int(pid), name, date, ScreenStatus(status))
+    return None
 
 
 def new_session_commands(session_name: str, *,
