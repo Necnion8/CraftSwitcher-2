@@ -839,6 +839,10 @@ class APIHandler(object):
             def check(path: str = query) -> PairPath:
                 p = get_pair_path(path)
                 if no_exists and p.real.exists():
+                    if p.real.is_dir():
+                        raise APIErrorCode.EXIST_DIRECTORY.of(f"Directory already exists: {name!r}")
+                    elif p.real.is_file():
+                        raise APIErrorCode.EXIST_FILE.of(f"File already exists: {name!r}")
                     raise APIErrorCode.ALREADY_EXISTS_PATH.of(f"Already exists: {name!r}")
                 elif is_dir and not p.real.is_dir():
                     raise APIErrorCode.NOT_EXISTS_DIRECTORY.of(f"Not a directory or not exists: {name!r}", 404)
@@ -861,6 +865,10 @@ class APIHandler(object):
             def check(path: str = query, server: "ServerProcess" = Depends(get_server)) -> PairPath:
                 p = get_pair_path(path, server=server)
                 if no_exists and p.real.exists():
+                    if p.real.is_dir():
+                        raise APIErrorCode.EXIST_DIRECTORY.of(f"Directory already exists: {name!r}")
+                    elif p.real.is_file():
+                        raise APIErrorCode.EXIST_FILE.of(f"File already exists: {name!r}")
                     raise APIErrorCode.ALREADY_EXISTS_PATH.of(f"Already exists: {name!r}")
                 elif is_dir and not p.real.is_dir():
                     raise APIErrorCode.NOT_EXISTS_DIRECTORY.of(f"Not a directory or not exists: {name!r}", 404)
