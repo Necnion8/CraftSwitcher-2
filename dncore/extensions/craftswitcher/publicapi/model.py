@@ -17,8 +17,7 @@ if TYPE_CHECKING:
 
 class SwitcherConfig(BaseModel):
     servers_location: str | None = Field(None, description="サーバーの保管に使うパス")
-    java_executables: list[str] | None = Field(None, description="実行可能なJavaのパスリスト。システムパスで指定してください。")
-    java_auto_detect_locations: list[str] | None = Field(None, description="Javaを自動検出するディレクトリ。システムパスで指定してください。", )
+    max_console_lines_in_memory: int = Field(10_000, description="コンソールログをメモリに保持する行数 (サーバーごと)")
 
 
 class Server(BaseModel):
