@@ -10,6 +10,7 @@ __all__ = [
     "NoDownloadFile",
     "NoArchiveHelperError",
     "AlreadyBackupError",
+    "UnknownJavaPreset",
 ]
 
 
@@ -50,4 +51,8 @@ class NoArchiveHelperError(Exception):
 
 
 class AlreadyBackupError(Exception):
+    pass
+
+
+class UnknownJavaPreset(Exception):
     pass

@@ -47,7 +47,7 @@ class ServerInstaller(ServerBuilder):
     async def _call(self, params: ServerBuilder.Parameters):
         params.cwd = self.work_dir
         params.args = [
-            self.server.config.launch_option.java_executable,
+            self.server.get_java_executable(),
             "-jar",
             str(self.build.downloaded_path),
             "install",

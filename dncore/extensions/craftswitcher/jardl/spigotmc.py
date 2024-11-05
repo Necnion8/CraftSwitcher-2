@@ -24,7 +24,7 @@ class SpigotBuilder(ServerBuilder):
         self.jar_filename = None
         params.cwd = self.build.downloaded_path.parent
         params.args = [
-            str(self.server.config.launch_option.java_executable),
+            self.server.get_java_executable(),
             "-jar",
             str(self.build.downloaded_path.name),
             "--compile", "SPIGOT",

@@ -507,6 +507,8 @@ class APIHandler(object):
                 await server.start(no_build=no_build)
             except errors.AlreadyRunningError:
                 raise APIErrorCode.SERVER_ALREADY_RUNNING.of("Already running")
+            except errors.UnknownJavaPreset as e:
+                raise APIErrorCode.UNKNOWN_JAVA_PRESET.of(f"Unknown java preset: {e}")
             except errors.OutOfMemoryError:
                 raise APIErrorCode.OUT_OF_MEMORY.of("Out of memory")
             except errors.ServerLaunchError as e:
@@ -661,9 +663,10 @@ class APIHandler(object):
             if not server_dir.parent.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists parent directory")
 
-            config = inst.create_server_config(server_dir)
+            config = inst.create_server_config(server_dir)  # type: ServerConfig
             config.name = param.name
             config.type = param.type
+            config.launch_option.java_preset = param.launch_option.java_preset
             config.launch_option.java_executable = param.launch_option.java_executable
             config.launch_option.java_options = param.launch_option.java_options
             config.launch_option.jar_file = param.launch_option.jar_file

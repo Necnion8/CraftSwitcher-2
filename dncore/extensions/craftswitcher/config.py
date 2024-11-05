@@ -113,7 +113,7 @@ class LaunchGlobalOption(ConfigValues):
     # ※ java_executable が指定されている場合はそちらが優先されます
     java_preset = "default"
     # Javaコマンド、もしくはパス
-    java_executable = "java"
+    java_executable: str | None = None
     # Java オプション
     java_options = "-Dfile.encoding=UTF-8"
     # サーバーオプション

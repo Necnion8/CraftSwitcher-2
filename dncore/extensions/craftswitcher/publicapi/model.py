@@ -125,7 +125,7 @@ class ServerConfig(BaseModel):
 
 class ServerGlobalConfig(BaseModel):
     launch_option__java_preset: str = Field("default", description="Javaプリセット名")
-    launch_option__java_executable: str = Field("java", description="Javaコマンド、もしくはパス")
+    launch_option__java_executable: str | None = Field(None, description="Javaコマンド、もしくはパス")
     launch_option__java_options: str = Field("-Dfile.encoding=UTF-8", description="Java オプション")
     launch_option__server_options: str = Field("nogui", description="サーバーオプション")
     launch_option__max_heap_memory: int = Field(2048, description="メモリ割り当て量 (単位: MB)")

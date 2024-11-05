@@ -28,6 +28,7 @@ class APIErrorCode(IntEnum):
     OUT_OF_MEMORY = 100
     OPERATION_CANCELLED = auto()
     ALREADY_EXISTS_ID = auto()
+    UNKNOWN_JAVA_PRESET = auto()
 
     # server
     SERVER_NOT_FOUND = 200

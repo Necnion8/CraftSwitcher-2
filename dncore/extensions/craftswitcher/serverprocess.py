@@ -23,7 +23,7 @@ from .abc import ServerState
 from .config import ServerConfig, ServerGlobalConfig
 from .event import *
 from .jardl import ServerBuilder, ServerBuildStatus
-from .utiljava import get_java_home
+from .utiljava import JavaPreset
 from .utils import *
 
 _log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class ServerProcess(object):
                 ][self._config.java_preset is None]
 
             @property
-            def java_executable(self) -> str:
+            def java_executable(self) -> str | None:
                 return [
                     self._config.java_executable,
                     self._global_config.java_executable,
@@ -300,10 +300,23 @@ class ServerProcess(object):
                 call_event(ServerProcessReadLinesEvent(self, _lines))  # イベント負荷を要検証
 
     async def _build_arguments(self):
+        try:
+            java_preset, java_executable = self.get_java()
+        except errors.UnknownJavaPreset:
+            raise
+        except ValueError:
+            self.log.warning("No java selected")
+            java_executable = which("java") or "java"
+            java_preset = None
+
+        self.log.info("Java Info:")
+        self.log.info("  Preset  :  %s", java_preset and java_preset.name or None)
+        self.log.info("  Command :  %s", java_executable)
+
         generated_arguments = False
         if self.config.enable_launch_command and self.config.launch_command:
             args = shlex.split(string.Template(self.config.launch_command).safe_substitute(
-                JAVA_EXE=self.config.launch_option.java_executable,
+                JAVA_EXE=java_executable,
                 JAVA_MEM_ARGS=f"-Xms{self.config.launch_option.min_heap_memory}M "
                               f"-Xmx{self.config.launch_option.max_heap_memory}M",
                 JAVA_ARGS=self.config.launch_option.java_options,
@@ -315,7 +328,7 @@ class ServerProcess(object):
         else:
             generated_arguments = True
             args = [
-                self.config.launch_option.java_executable,
+                java_executable,
                 f"-Xms{self.config.launch_option.min_heap_memory}M",
                 f"-Xmx{self.config.launch_option.max_heap_memory}M",
                 *shlex.split(self.config.launch_option.java_options),
@@ -352,6 +365,7 @@ class ServerProcess(object):
         Screenセッションにアタッチし、サーバープロセスと連携を再開します。
 
         :except AlreadyRunningError: すでにプロセスが起動中
+        :except ServerLaunchError: プロセスの接続に失敗した時
         """
         if not ignore_status and self._is_running:
             raise errors.AlreadyRunningError
@@ -405,6 +419,10 @@ class ServerProcess(object):
         準備が完了しているビルダーが設定されている場合は、no_buildが真でない限りビルドを実行します
 
         :except AlreadyRunningError: すでにプロセスが起動中
+        :except UnknownJavaPreset: 指定されたJavaプリセットが見つからない
+        :except OperationCancelledError: イベントによって中止された
+        :except OutOfMemoryError: 空きメモリテストに失敗した
+        :except ServerLaunchError: サーバープロセスの起動に失敗した
         """
         if self._is_running:
             raise errors.AlreadyRunningError
@@ -439,13 +457,13 @@ class ServerProcess(object):
 
             # Add java home to environ
             try:
-                exe_path = which(self.config.launch_option.java_executable)
-                if exe_path:
-                    java_home_dir = await get_java_home(Path(exe_path))
-                    if java_home_dir:
+                if (java_preset := self.get_java_preset()) and (java_info := java_preset.info):
+                    if java_home_dir := java_info.java_home_path:
                         java_home_dir += os.sep + "bin"
                         env["PATH"] = java_home_dir + os.pathsep + env["PATH"]
                         self.log.debug("java path: %s", java_home_dir)
+            except errors.UnknownJavaPreset:
+                pass
             except Exception as e:
                 self.log.warning(f"Exception in add to java home path to environ: {e}")
 
@@ -485,6 +503,20 @@ class ServerProcess(object):
             except asyncio.TimeoutError:
                 pass
 
+        except errors.UnknownJavaPreset as e:
+            self.log.error(f"Failed to start server: Unknown Java preset: {e}")
+            if builder:
+                builder.state = ServerBuildStatus.FAILED
+                await builder._error(e)
+            raise
+
+        except errors.ServerProcessError as e:
+            self.log.exception(f"Failed to start server: {type(e).__name__}: {e}")
+            if builder:
+                builder.state = ServerBuildStatus.FAILED
+                await builder._error(e)
+            raise
+
         except Exception as e:
             self.log.exception("Exception in pre start", exc_info=e)
             if builder:
@@ -502,7 +534,7 @@ class ServerProcess(object):
         else:
             if builder:
                 builder.state = ServerBuildStatus.FAILED
-            self.log.warning("Exited process: return code: %s", ret)
+            self.log.warning("Failed to start server: Exit code %s", ret)
             raise errors.ServerLaunchError(f"process exited {ret}")
 
         pid = self._process_pid = wrapper.pid
@@ -653,6 +685,51 @@ class ServerProcess(object):
             source_id = self._config.source_id = generate_uuid().hex
             self._config.save()
         return source_id
+
+    def get_java_executable(self) -> str:
+        """
+        選択されているJavaプリセットや実行可能コマンドを返します
+
+        設定されていない場合は常に 'java' になります
+        """
+        try:
+            return self.get_java()[1]
+        except errors.UnknownJavaPreset as e:
+            self.log.warning(f"Unknown java preset: {e}")
+            return "java"
+        except ValueError:
+            self.log.warning("No java selected")
+            return "java"
+
+    def get_java_preset(self) -> JavaPreset | None:
+        """
+        選択されているJavaプリセットを返します
+
+        :except UnknownJavaPreset: 設定されたプリセットが見つからない
+        """
+        if preset_name := self.config.launch_option.java_preset:
+            for preset in getinst().java_presets:
+                if preset.name == preset_name:
+                    return preset
+            raise errors.UnknownJavaPreset(preset_name)
+        return None
+
+    def get_java(self) -> tuple[JavaPreset | None, str]:
+        """
+        選択されているJavaプリセットと実行可能コマンドを返します
+
+        :except UnknownJavaPreset: 設定されたプリセットが見つからない
+        :except ValueError: Javaが選択されていない
+        """
+        if executable := self.config.launch_option.java_executable:
+            executable = which(executable) or executable
+            return None, executable
+
+        if preset := self.get_java_preset():
+            return preset, str(preset.path.absolute())
+
+        raise ValueError("No java selected")
+
 
     # eula
 
