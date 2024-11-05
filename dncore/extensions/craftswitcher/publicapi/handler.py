@@ -330,26 +330,70 @@ class APIHandler(object):
 
             return presets
 
+        @api.get(
+            "/java/preset",
+            dependencies=[Depends(self.get_authorized_user), ],
+            summary="Javaプリセット情報",
+        )
+        def _get_java_preset(name: str = Query(description="プリセット名"), ) -> model.JavaPreset:
+            config_presets = self.inst.config.java.presets
+
+            if preset := self.inst.get_java_preset(name):
+                registered = preset.config and preset.config in config_presets or False
+                return model.JavaPreset(
+                    name=preset.name,
+                    executable=preset.config and preset.config.executable or str(preset.path),
+                    info=preset.info and model.JavaExecutableInfo.create(preset.info),
+                    available=bool(preset.info),
+                    registered=registered,
+                )
+
+            else:
+                for c_preset in config_presets:
+                    if c_preset.name == name:
+                        return model.JavaPreset(
+                            name=c_preset.name,
+                            executable=c_preset.executable,
+                            info=None,
+                            available=False,
+                            registered=True,
+                        )
+
+            raise APIErrorCode.UNKNOWN_JAVA_PRESET.of(f"Not found preset: {name!r}")
+
         @api.post(
             "/java/preset",
             dependencies=[Depends(self.get_authorized_user), ],
             summary="Javaプリセットを登録",
+            description="Javaをテストしてプリセットを登録します。自動追加された同じ名のプリセットは上書きされます。",
         )
         async def _add_java_preset(
             name: str = Query(description="プリセット名"),
             executable: str = Query(description="Javaコマンドかパス"),
-        ):
-            pass
+        ) -> model.JavaPreset:
+            try:
+                preset = await self.inst.add_java_preset(name, executable)
+            except ValueError:
+                raise APIErrorCode.ALREADY_EXISTS_ID.of(f"Already exists name: {name!r}")
+
+            return model.JavaPreset(
+                name=preset.name,
+                executable=preset.config and preset.config.executable or str(preset.path),
+                info=preset.info and model.JavaExecutableInfo.create(preset.info),
+                available=bool(preset.info),
+                registered=True,
+            )
 
         @api.delete(
             "/java/preset",
             dependencies=[Depends(self.get_authorized_user), ],
             summary="Javaプリセットを削除",
+            description="該当するプリセット名を削除します。削除したものがあれば true を返します。",
         )
         async def _remove_java_preset(
             name: str = Query(description="プリセット名"),
-        ):
-            pass
+        ) -> bool:
+            return self.inst.remove_java_preset(name)
 
         @api.get(
             "/java/detect/list",

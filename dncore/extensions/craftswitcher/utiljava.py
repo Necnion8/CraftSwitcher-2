@@ -122,7 +122,6 @@ async def get_java_home(exe_path: Path) -> str | None:
     return info and info.java_home_path or None
 
 
-
 class JavaPreset(object):
     def __init__(self, name: str, info: "JavaExecutableInfo | None", config: "JavaPresetConfig | None"):
         self.name = name
@@ -131,12 +130,18 @@ class JavaPreset(object):
 
     @property
     def path(self) -> Path:
+        if not self.info:
+            raise ValueError("No executable info")
         return self.info.path
 
     @property
     def runtime_version(self) -> str:
+        if not self.info:
+            raise ValueError("No executable info")
         return self.info.runtime_version
 
     @property
     def major_version(self) -> int:
+        if not self.info:
+            raise ValueError("No executable info")
         return self.info.java_major_version

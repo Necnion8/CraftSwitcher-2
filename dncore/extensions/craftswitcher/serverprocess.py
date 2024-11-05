@@ -708,9 +708,8 @@ class ServerProcess(object):
         :except UnknownJavaPreset: 設定されたプリセットが見つからない
         """
         if preset_name := self.config.launch_option.java_preset:
-            for preset in getinst().java_presets:
-                if preset.name == preset_name:
-                    return preset
+            if preset := getinst().get_java_preset(preset_name):
+                return preset
             raise errors.UnknownJavaPreset(preset_name)
         return None
 
@@ -729,7 +728,6 @@ class ServerProcess(object):
             return preset, str(preset.path.absolute())
 
         raise ValueError("No java selected")
-
 
     # eula
 

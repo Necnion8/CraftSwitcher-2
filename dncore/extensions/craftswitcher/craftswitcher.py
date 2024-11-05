@@ -7,8 +7,7 @@ import time
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
-from typing import Coroutine
-from typing import TYPE_CHECKING, Any
+from typing import Coroutine, TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -582,6 +581,71 @@ class CraftSwitcher(EventListener):
     def get_watched_paths(self) -> set[Path]:
         return set(self._watch_files.keys())
 
+    def screen_session_name_of(self, server: "ServerProcess"):
+        return self.config.screen.session_name_prefix + server.id
+
+    # java
+
+    def get_java_preset(self, name: str) -> JavaPreset | None:
+        for preset in self.java_presets:
+            if preset.name == name:
+                return preset
+
+    async def add_java_preset(self, name: str, executable: str | Path | JavaExecutableInfo) -> JavaPreset:
+        """
+        指定されたJavaコマンドをテストし、指定された名でプリセットを保存してリストに加えます
+
+        設定に含まれていない同じ名前のプリセットは上書きされます (自動検出によるプリセットなど)
+
+        :except ValueError: すでに設定されているプリセット名
+        """
+        if any(c.name == name for c in self.config.java.presets):
+            raise ValueError(f"Already exists name: {name}")
+        self.remove_java_preset(name)  # 競合名を全て削除
+
+        config = JavaPresetConfig()
+        config.name = name
+
+        if isinstance(executable, JavaExecutableInfo):
+            config.executable = str(executable.path)
+            info = executable
+        else:
+            try:
+                info = await check_java_executable(Path(executable))
+            except Exception as e:
+                log.warning(f"Error in check java: {executable!r}: {e}")
+                info = None
+            config.executable = str(info and info.path or executable)
+
+        preset = JavaPreset(config.name, info, config)
+        self.java_presets.append(preset)
+
+        self.config.java.presets.append(config)
+        self.config.save()
+        return preset
+
+    def remove_java_preset(self, name: str) -> bool:
+        """
+        指定された名のプリセットを設定とプリセットリストから削除します
+        """
+        _changed = False
+        # remove in config
+        for config in list(self.config.java.presets):
+            if config.name == name:
+                self.config.java.presets.remove(config)
+                _changed = True
+
+        if _changed:
+            self.config.save()
+
+        # remove preset
+        for preset in list(self.java_presets):
+            if preset.name == name:
+                self.java_presets.remove(preset)
+                _changed = True
+
+        return _changed
+
     async def scan_java_executables(self):
         task = self._scan_java_task
         if not task or task.done():
@@ -633,8 +697,10 @@ class CraftSwitcher(EventListener):
             log.debug("Testing %s java executables", len(tasks))
             for info, config in await asyncio.gather(*tasks):  # type: JavaExecutableInfo | None, JavaPresetConfig | None
                 if not info:
+                    log.warning(f"no info | {config}")
                     # 設定済みand利用不可
                     if config:
+                        log.warning(f"checkkkkkkkkkk {config.name} => {config.executable}")
                         presets[config.executable] = JavaPreset(config.name, None, config)
                         names.add(config.name)
 
@@ -665,9 +731,6 @@ class CraftSwitcher(EventListener):
         log.info("Java versions found (available presets: %s): %s",
                  sum(bool(p.info) for p in presets.values()), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)
-
-    def screen_session_name_of(self, server: "ServerProcess"):
-        return self.config.screen.session_name_prefix + server.id
 
     # server api
 

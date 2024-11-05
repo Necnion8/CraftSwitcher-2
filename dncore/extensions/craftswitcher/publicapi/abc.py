@@ -28,7 +28,6 @@ class APIErrorCode(IntEnum):
     OUT_OF_MEMORY = 100
     OPERATION_CANCELLED = auto()
     ALREADY_EXISTS_ID = auto()
-    UNKNOWN_JAVA_PRESET = auto()
 
     # server
     SERVER_NOT_FOUND = 200
@@ -71,6 +70,9 @@ class APIErrorCode(IntEnum):
     # backup
     BACKUP_ALREADY_RUNNING = 800
     BACKUP_NOT_FOUND = auto()
+
+    # java
+    UNKNOWN_JAVA_PRESET = 900
 
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
