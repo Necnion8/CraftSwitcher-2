@@ -295,7 +295,8 @@ class APIHandler(object):
         @api.get(
             "/java/list",
             dependencies=[Depends(self.get_authorized_user), ],
-            summary="利用できるJavaの一覧",
+            summary="Javaプリセット一覧",
+            description="登録されているJavaプリセットを返します (自動検出したものを含みます)",
         )
         def _get_java_list() -> list[model.JavaPreset]:
             presets = []  # type: list[model.JavaPreset]
@@ -328,6 +329,14 @@ class APIHandler(object):
                 ))
 
             return presets
+
+        @api.get(
+            "/java/detect/list",
+            dependencies=[Depends(self.get_authorized_user), ],
+            summary="検出されたJava一覧",
+        )
+        def _get_java_detect_list() -> list[model.JavaExecutableInfo]:
+            return [model.JavaExecutableInfo.create(i) for i in self.inst.java_detections]
 
         @api.post(
             "/java/detect/rescan",
