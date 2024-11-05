@@ -123,8 +123,9 @@ async def get_java_home(exe_path: Path) -> str | None:
 
 
 class JavaPreset(object):
-    def __init__(self, name: str, info: "JavaExecutableInfo | None", config: "JavaPresetConfig | None"):
+    def __init__(self, name: str, executable: str, info: "JavaExecutableInfo | None", config: "JavaPresetConfig | None"):
         self.name = name
+        self.executable = executable
         self.info = info
         self.config = config
 

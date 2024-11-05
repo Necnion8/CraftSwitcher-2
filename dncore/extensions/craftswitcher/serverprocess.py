@@ -312,6 +312,11 @@ class ServerProcess(object):
         self.log.info("Java Info:")
         self.log.info("  Preset  :  %s", java_preset and java_preset.name or None)
         self.log.info("  Command :  %s", java_executable)
+        if java_preset:
+            if java_info := java_preset.info:
+                self.log.info("  Version :  %s (%s)", java_info.runtime_version, java_info.vendor)
+            else:
+                self.log.warning("  Version :  No info")
 
         generated_arguments = False
         if self.config.enable_launch_command and self.config.launch_command:
@@ -725,7 +730,7 @@ class ServerProcess(object):
             return None, executable
 
         if preset := self.get_java_preset():
-            return preset, str(preset.path.absolute())
+            return preset, str(preset.path.absolute()) if preset.info else preset.executable
 
         raise ValueError("No java selected")
 

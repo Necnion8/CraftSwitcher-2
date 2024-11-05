@@ -617,7 +617,7 @@ class CraftSwitcher(EventListener):
                 info = None
             config.executable = str(info and info.path or executable)
 
-        preset = JavaPreset(config.name, info, config)
+        preset = JavaPreset(config.name, config.executable, info, config)
         self.java_presets.append(preset)
 
         self.config.java.presets.append(config)
@@ -677,8 +677,7 @@ class CraftSwitcher(EventListener):
 
         # preset java
         for preset_c in self.config.java.presets:
-            if executable := shutil.which(preset_c.executable):
-                tasks.append(check_java(Path(executable), preset_c))
+            tasks.append(check_java(Path(shutil.which(preset_c.executable) or preset_c.executable), preset_c))
 
         # detection java
         for search_dir in self.config.java.auto_detection_paths:
@@ -697,11 +696,9 @@ class CraftSwitcher(EventListener):
             log.debug("Testing %s java executables", len(tasks))
             for info, config in await asyncio.gather(*tasks):  # type: JavaExecutableInfo | None, JavaPresetConfig | None
                 if not info:
-                    log.warning(f"no info | {config}")
                     # 設定済みand利用不可
                     if config:
-                        log.warning(f"checkkkkkkkkkk {config.name} => {config.executable}")
-                        presets[config.executable] = JavaPreset(config.name, None, config)
+                        presets[config.executable] = JavaPreset(config.name, config.executable, None, config)
                         names.add(config.name)
 
                 elif str(info.path.absolute()) not in presets:
@@ -711,23 +708,25 @@ class CraftSwitcher(EventListener):
                         name = f"java-{info.java_major_version}"
                         if name in names:
                             continue
+                        executable = str(info.path)
                     else:
                         # 設定済み
                         name = config.name
+                        executable = config.executable
 
-                    presets[str(info.path.absolute())] = JavaPreset(name, info, config)
+                    presets[str(info.path.absolute())] = JavaPreset(name, executable, info, config)
                     names.add(name)
 
         # update list
         self.java_presets.clear()
         self.java_presets.extend(presets.values())
         if default_java_info:
-            self.java_presets.insert(0, JavaPreset("default", default_java_info, None))
+            self.java_presets.insert(0, JavaPreset("default", "java", default_java_info, None))
         self.java_detections.clear()
         self.java_detections.extend(detections.values())
 
         perf_time = round((time.perf_counter() - perf_time) * 1000)
-        major_vers = sorted(set(p.major_version for p in presets.values()))
+        major_vers = sorted(set(p.major_version for p in presets.values() if p.info))
         log.info("Java versions found (available presets: %s): %s",
                  sum(bool(p.info) for p in presets.values()), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)

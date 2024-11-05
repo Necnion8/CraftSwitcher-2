@@ -313,19 +313,10 @@ class APIHandler(object):
 
                 presets.append(model.JavaPreset(
                     name=preset.name,
-                    executable=preset.config and preset.config.executable or str(preset.path),
+                    executable=preset.executable,
                     info=preset.info and model.JavaExecutableInfo.create(preset.info),
                     available=bool(preset.info),
                     registered=registered,
-                ))
-
-            for c_preset in config_presets:
-                presets.append(model.JavaPreset(
-                    name=c_preset.name,
-                    executable=c_preset.executable,
-                    info=None,
-                    available=False,
-                    registered=True,
                 ))
 
             return presets
@@ -342,22 +333,11 @@ class APIHandler(object):
                 registered = preset.config and preset.config in config_presets or False
                 return model.JavaPreset(
                     name=preset.name,
-                    executable=preset.config and preset.config.executable or str(preset.path),
+                    executable=preset.executable,
                     info=preset.info and model.JavaExecutableInfo.create(preset.info),
                     available=bool(preset.info),
                     registered=registered,
                 )
-
-            else:
-                for c_preset in config_presets:
-                    if c_preset.name == name:
-                        return model.JavaPreset(
-                            name=c_preset.name,
-                            executable=c_preset.executable,
-                            info=None,
-                            available=False,
-                            registered=True,
-                        )
 
             raise APIErrorCode.UNKNOWN_JAVA_PRESET.of(f"Not found preset: {name!r}")
 
@@ -378,7 +358,7 @@ class APIHandler(object):
 
             return model.JavaPreset(
                 name=preset.name,
-                executable=preset.config and preset.config.executable or str(preset.path),
+                executable=preset.executable,
                 info=preset.info and model.JavaExecutableInfo.create(preset.info),
                 available=bool(preset.info),
                 registered=True,
