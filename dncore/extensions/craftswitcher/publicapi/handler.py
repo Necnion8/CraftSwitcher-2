@@ -293,12 +293,12 @@ class APIHandler(object):
             return await _get_config_server_global()
 
         @api.get(
-            "/java/list",
+            "/java/preset/list",
             dependencies=[Depends(self.get_authorized_user), ],
             summary="Javaプリセット一覧",
             description="登録されているJavaプリセットを返します (自動検出したものを含みます)",
         )
-        def _get_java_list() -> list[model.JavaPreset]:
+        def _get_java_preset_list() -> list[model.JavaPreset]:
             presets = []  # type: list[model.JavaPreset]
             config_presets = list(self.inst.config.java.presets)  # type: list[JavaPresetConfig]
 
@@ -330,6 +330,27 @@ class APIHandler(object):
 
             return presets
 
+        @api.post(
+            "/java/preset",
+            dependencies=[Depends(self.get_authorized_user), ],
+            summary="Javaプリセットを登録",
+        )
+        async def _add_java_preset(
+            name: str = Query(description="プリセット名"),
+            executable: str = Query(description="Javaコマンドかパス"),
+        ):
+            pass
+
+        @api.delete(
+            "/java/preset",
+            dependencies=[Depends(self.get_authorized_user), ],
+            summary="Javaプリセットを削除",
+        )
+        async def _remove_java_preset(
+            name: str = Query(description="プリセット名"),
+        ):
+            pass
+
         @api.get(
             "/java/detect/list",
             dependencies=[Depends(self.get_authorized_user), ],
@@ -345,7 +366,7 @@ class APIHandler(object):
         )
         async def _post_java_rescan() -> list[model.JavaPreset]:
             await self.inst.scan_java_executables()
-            return _get_java_list()
+            return _get_java_preset_list()
 
         @api.websocket(
             "/ws",
