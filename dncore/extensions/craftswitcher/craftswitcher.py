@@ -627,8 +627,10 @@ class CraftSwitcher(EventListener):
         # check
         presets = {}  # type: dict[str, JavaPreset]
         names = set()
-        detections = []  # type: list[JavaExecutableInfo]
+        detections = {}  # type: dict[str, JavaExecutableInfo]
+
         if tasks:
+            log.debug("Testing %s java executables", len(tasks))
             for info, config in await asyncio.gather(*tasks):  # type: JavaExecutableInfo | None, JavaPresetConfig | None
                 if not info:
                     # 設定済みand利用不可
@@ -639,7 +641,7 @@ class CraftSwitcher(EventListener):
                 elif str(info.path.absolute()) not in presets:
                     # 自動検出(名前あたり１つ)
                     if not config:
-                        detections.append(info)
+                        detections[str(info.path.absolute())] = info
                         name = f"java-{info.java_major_version}"
                         if name in names:
                             continue
@@ -652,11 +654,11 @@ class CraftSwitcher(EventListener):
 
         # update list
         self.java_presets.clear()
-        self.java_presets.extend(list(presets.values()))
+        self.java_presets.extend(presets.values())
         if default_java_info:
             self.java_presets.insert(0, JavaPreset("default", default_java_info, None))
         self.java_detections.clear()
-        self.java_detections.extend(detections)
+        self.java_detections.extend(detections.values())
 
         perf_time = round((time.perf_counter() - perf_time) * 1000)
         major_vers = sorted(set(p.major_version for p in presets.values()))
