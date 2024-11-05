@@ -1,6 +1,8 @@
 import asyncio
 
 import uvicorn
+from starlette.exceptions import HTTPException
+from starlette.staticfiles import StaticFiles
 
 
 class UvicornServer(object):
@@ -28,3 +30,14 @@ class UvicornServer(object):
             self._runner.cancel()
         self._server = self._runner = None
 
+
+class FallbackStaticFiles(StaticFiles):
+    fallback_path = "index.html"
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as e:
+            if e.status_code == 404:
+                return await super().get_response(self.fallback_path, scope)
+            raise

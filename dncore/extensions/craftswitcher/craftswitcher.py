@@ -11,7 +11,6 @@ from typing import Coroutine, TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
 from . import utilscreen as screen
@@ -30,6 +29,7 @@ from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
+from .publicapi.server import FallbackStaticFiles
 from .serverprocess import ServerProcessList, ServerProcess
 from .utiljava import JavaPreset, check_java_executable
 from .utils import *
@@ -94,7 +94,7 @@ class CraftSwitcher(EventListener):
         self.api_handler = APIHandler(self, api, db)
 
         if web_root_dir:
-            api.mount("/", StaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
+            api.mount("/", FallbackStaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
 
         #
         self._initialized = False
