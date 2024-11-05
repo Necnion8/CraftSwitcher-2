@@ -330,9 +330,9 @@ class APIHandler(object):
             return presets
 
         @api.post(
-            "/java/rescan",
+            "/java/detect/rescan",
             dependencies=[Depends(self.get_authorized_user), ],
-            summary="利用可能なJavaを再検出",
+            summary="Javaを再検出し、プリセットとリストを更新します",
         )
         async def _post_java_rescan() -> list[model.JavaPreset]:
             await self.inst.scan_java_executables()
