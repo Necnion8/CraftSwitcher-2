@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dncore.event import EventListener, onevent
 from . import utilscreen as screen
-from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo, ProcessInfo
+from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
 from .config import SwitcherConfig, ServerConfig, JavaPresetConfig
 from .database import SwitcherDatabase
 from .database.model import User
@@ -28,7 +28,7 @@ from .files.event import WatchdogEvent
 from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
-from .publicapi.model import FileInfo, FileTask
+from .publicapi.model import FileInfo, FileTask, ServerStatusInfo
 from .publicapi.server import FallbackStaticFiles
 from .repomov1 import ReportModuleServer
 from .serverprocess import ServerProcessList, ServerProcess
@@ -906,6 +906,37 @@ class CraftSwitcher(EventListener):
         task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))
         return task
 
+    def get_server_status(self, server: ServerProcess):
+        report = self.repomo_server.get_status(server.id)
+
+        total = report and report.total_memory
+        free = report and report.free_memory
+
+        return ServerStatusInfo(
+            id=server.id,
+            process=ServerStatusInfo.Process(
+                cpu_usage=p_info.cpu_usage,
+                mem_used=p_info.memory_used_size,
+                mem_virtual_used=p_info.memory_virtual_used_size,
+            ) if (p_info := server.get_perf_info()) else None,
+            jvm=ServerStatusInfo.JVM(
+                cpu_usage=None if (val := report.cpu_usage) is None else val * 100,
+                mem_used=None if total is None or free is None else total - free,
+                mem_total=None if total is None else total,
+            ) if report else None,
+            game=ServerStatusInfo.Game(
+                ticks=None if (val := report.tps) is None else val,
+                max_players=None if (val := report.max_players) is None else val,
+                online_players=None if (val := report.players) is None else len(val),
+                players=None if report.players is None else [
+                    dict(
+                        uuid=str(p_uuid),  # type: str
+                        name=p_name,  # type: str
+                    ) for p_uuid, p_name in report.players.items()
+                ],
+            ) if report else None,
+        )
+
     # public api
 
     async def start_api_server(self, *, force=False):
@@ -970,46 +1001,6 @@ class CraftSwitcher(EventListener):
 
         sys_mem = system_memory(swap=True)
         sys_perf = system_perf()
-        reporter = self.repomo_server
-
-        servers_info = {}  # type: dict[ServerProcess, ProcessInfo]
-        for server in self.servers.values():
-            if not server or not server.perfmon:
-                continue
-
-            if _info := server.get_perf_info():
-                servers_info[server] = _info
-
-        def create_server_info(s: ServerProcess, i: ProcessInfo):
-            report = reporter.get_status(s.id)
-
-            total = report and report.total_memory
-            free = report and report.free_memory
-
-            return dict(
-                id=s.id,
-                process=dict(
-                    cpu_usage=i.cpu_usage,  # type: float
-                    mem_used=i.memory_used_size,  # type: int
-                    mem_virtual_used=i.memory_virtual_used_size,  # type: int
-                ),
-                jvm=dict(
-                    cpu_usage=-1.0 if (val := report and report.cpu_usage) is None else val * 100,  # type: float
-                    mem_used=-1 if total is None or free is None else total - free,  # type: int
-                    mem_total=-1 if total is None else total,  # type: int
-                ),
-                game=dict(
-                    ticks=-1.0 if (val := report and report.tps) is None else val,  # type: float
-                    max_players=-1 if (val := report and report.max_players) is None else val,  # type: int
-                    online_players=-1 if (val := report and report.players) is None else len(val),  # type: int
-                    players=[] if not report or report.players is None else [
-                        dict(
-                            uuid=str(p_uuid),  # type: str
-                            name=p_name,  # type: str
-                        ) for p_uuid, p_name in report.players.items()
-                    ],
-                ),
-            )
 
         progress_data = dict(
             type="progress",
@@ -1027,7 +1018,11 @@ class CraftSwitcher(EventListener):
                     swap_available=sys_mem.swap_available_bytes,
                 ),
             ),
-            servers=[create_server_info(s, i) for s, i in servers_info.items()],
+            servers=[
+                self.get_server_status(s).model_dump(mode="json")
+                for s in self.servers.values()
+                if s and s.state.is_running
+            ],
         )
         await self.api_handler.broadcast_websocket(progress_data)
 

@@ -695,6 +695,9 @@ class ServerProcess(object):
                 self.log.warning("Failed to get performance info: No such process")
         return None
 
+    def get_status_info(self):
+        return getinst().get_server_status(self)
+
     def get_source_id(self, *, generate=True):
         source_id = self._config.source_id
         if source_id is None and generate:

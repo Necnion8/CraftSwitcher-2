@@ -140,6 +140,33 @@ class ServerGlobalConfig(BaseModel):
             return key.replace("__", ".")
 
 
+class ServerStatusInfo(BaseModel):
+    class Process(BaseModel):
+        cpu_usage: float = Field(description="CPU使用率 (%)")
+        mem_used: int = Field(description="メモリ使用量 (bytes)")
+        mem_virtual_used: int = Field(description="メモリ使用量 (仮想メモリを含む) (bytes)")
+
+    class JVM(BaseModel):
+        cpu_usage: float | None = Field(description="CPU使用率 (%)")
+        mem_used: int | None = Field(description="メモリ使用量 (bytes)")
+        mem_total: int | None = Field(description="メモリ合計 (bytes)")
+
+    class Game(BaseModel):
+        class Player(BaseModel):
+            uuid: str
+            name: str
+
+        ticks: float | None = Field(description="1秒あたりのゲームティック数")
+        max_players: int | None = Field(description="最大プレイヤー数")
+        online_players: int | None = Field(description="ログインしているプレイヤー数 (今のところ .players と同じ数です)")
+        players: list[Player] | None = Field(description="ログインしているプレイヤー")
+
+    id: str = Field(description="サーバーID")
+    process: Process | None = Field(description="Switcherがプロセスを見失っている時に null")
+    jvm: JVM | None = Field(description="連携が無効かアクティブでない時に null")
+    game: Game | None = Field(description="連携が無効かアクティブでない、または非対応サーバーの時に null")
+
+
 class FileInfo(BaseModel):
     name: str = Field(description="拡張子を含むファイル名")
     path: str = Field(description="ディレクトリパス")
