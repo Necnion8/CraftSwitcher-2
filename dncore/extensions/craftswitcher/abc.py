@@ -34,6 +34,19 @@ class ServerState(Enum):
     def __lt__(self, other: "ServerState"):
         return _SERVER_STATE_VALUE.get(self, -1) < _SERVER_STATE_VALUE.get(other, -1)
 
+    @property
+    def old_value(self):
+        return _SERVER_STATE_OLD_VALUE.index(self)
+
+    @classmethod
+    def of_old_value(cls, int_value: int):
+        if 0 <= int_value < len(_SERVER_STATE_OLD_VALUE):
+            try:
+                return _SERVER_STATE_OLD_VALUE[int_value]
+            except IndexError:
+                pass
+        return cls.UNKNOWN
+
 
 _SERVER_STATE_VALUE = {
     ServerState.UNKNOWN: -1,
@@ -43,6 +56,14 @@ _SERVER_STATE_VALUE = {
     ServerState.STARTED: 3,
     ServerState.RUNNING: 3,
 }
+
+_SERVER_STATE_OLD_VALUE = [
+    ServerState.STOPPED,
+    ServerState.STARTED,
+    ServerState.STARTING,
+    ServerState.STOPPING,
+    ServerState.RUNNING,
+]
 
 
 class _ServerType:

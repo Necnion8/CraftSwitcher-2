@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from dncore.event import EventListener, onevent
 from . import utilscreen as screen
-from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
+from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo, ProcessInfo
 from .config import SwitcherConfig, ServerConfig, JavaPresetConfig
 from .database import SwitcherDatabase
 from .database.model import User
@@ -30,6 +30,7 @@ from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask
 from .publicapi.server import FallbackStaticFiles
+from .repomov1 import ReportModuleServer
 from .serverprocess import ServerProcessList, ServerProcess
 from .utiljava import JavaPreset, check_java_executable
 from .utils import *
@@ -58,6 +59,7 @@ class CraftSwitcher(EventListener):
         self.database = db = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.repomo_server = ReportModuleServer(loop)
         self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl
@@ -165,6 +167,7 @@ class CraftSwitcher(EventListener):
 
         await self.files.start()
         await self.start_api_server()
+        await self.repomo_server.open()
 
         await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
@@ -227,6 +230,11 @@ class CraftSwitcher(EventListener):
                 await self.shutdown_all_servers(exclude_screen=self.config.screen.enable_keep_server_on_shutdown)
             except Exception as e:
                 log.warning("Exception in shutdown servers", exc_info=e)
+
+            try:
+                await self.repomo_server.close()
+            except Exception as e:
+                log.warning("Exception in close repomo", exc_info=e)
 
             try:
                 await self.close_api_server()
@@ -351,6 +359,7 @@ class CraftSwitcher(EventListener):
             server_id=server_id,
             config=config,
             global_config=self.config.server_defaults,
+            repomo_config=self.config.repomo,
             max_logs_line=self.config.max_console_lines_in_memory,
         )
 
@@ -961,14 +970,46 @@ class CraftSwitcher(EventListener):
 
         sys_mem = system_memory(swap=True)
         sys_perf = system_perf()
+        reporter = self.repomo_server
 
-        servers_info = {}
+        servers_info = {}  # type: dict[ServerProcess, ProcessInfo]
         for server in self.servers.values():
             if not server or not server.perfmon:
                 continue
 
             if _info := server.get_perf_info():
                 servers_info[server] = _info
+
+        def create_server_info(s: ServerProcess, i: ProcessInfo):
+            report = reporter.get_status(s.id)
+
+            total = report and report.total_memory
+            free = report and report.free_memory
+
+            return dict(
+                id=s.id,
+                process=dict(
+                    cpu_usage=i.cpu_usage,  # type: float
+                    mem_used=i.memory_used_size,  # type: int
+                    mem_virtual_used=i.memory_virtual_used_size,  # type: int
+                ),
+                jvm=dict(
+                    cpu_usage=-1.0 if (val := report and report.cpu_usage) is None else val * 100,  # type: float
+                    mem_used=-1 if total is None or free is None else total - free,  # type: int
+                    mem_total=-1 if total is None else total,  # type: int
+                ),
+                game=dict(
+                    ticks=-1.0 if (val := report and report.tps) is None else val,  # type: float
+                    max_players=-1 if (val := report and report.max_players) is None else val,  # type: int
+                    online_players=-1 if (val := report and report.players) is None else len(val),  # type: int
+                    players=[] if not report or report.players is None else [
+                        dict(
+                            uuid=str(p_uuid),  # type: str
+                            name=p_name,  # type: str
+                        ) for p_uuid, p_name in report.players.items()
+                    ],
+                ),
+            )
 
         progress_data = dict(
             type="progress",
@@ -986,33 +1027,25 @@ class CraftSwitcher(EventListener):
                     swap_available=sys_mem.swap_available_bytes,
                 ),
             ),
-            servers=[
-                dict(
-                    id=s.id,
-                    process=dict(
-                        cpu_usage=i.cpu_usage,
-                        mem_used=i.memory_used_size,
-                        mem_virtual_used=i.memory_virtual_used_size,
-                    ),
-                    jvm=dict(  # TODO: impl jvm perf info
-                        cpu_usage=-1,
-                        mem_used=-1,
-                        mem_total=-1,
-                    ),
-                    game=dict(
-                        ticks=-1,
-                    ),
-                )
-                for s, i in servers_info.items()
-            ],
+            servers=[create_server_info(s, i) for s, i in servers_info.items()],
         )
         await self.api_handler.broadcast_websocket(progress_data)
 
     # events
 
     @onevent(monitor=True)
+    async def on_server_created(self, event: ServerCreatedEvent):
+        await self.repomo_server.handle_on_server_add(event.server.id)
+
+    @onevent(monitor=True)
+    async def on_server_deleted(self, event: ServerDeletedEvent):
+        await self.repomo_server.handle_on_server_remove(event.server.id)
+
+    @onevent(monitor=True)
     async def on_change_state(self, event: ServerChangeStateEvent):
         server = event.server
+
+        await self.repomo_server.handle_on_server_state_update(server.id, event.new_state)
 
         if server.state is ServerState.STOPPED:
             # queue removes

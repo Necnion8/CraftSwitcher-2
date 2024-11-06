@@ -20,7 +20,7 @@ import psutil
 
 from . import errors, utilscreen as screen
 from .abc import ServerState
-from .config import ServerConfig, ServerGlobalConfig
+from .config import ServerConfig, ServerGlobalConfig, ReportModule as ReportModuleConfig
 from .event import *
 from .jardl import ServerBuilder, ServerBuildStatus
 from .utiljava import JavaPreset
@@ -170,7 +170,7 @@ class ServerProcess(object):
     def __init__(
             self, loop: asyncio.AbstractEventLoop,
             directory: Path, server_id: str,
-            config: ServerConfig, global_config: ServerGlobalConfig,
+            config: ServerConfig, global_config: ServerGlobalConfig, repomo_config: ReportModuleConfig,
             *, max_logs_line: int = None,
     ):
         self.log = ServerLoggerAdapter(_log, server_id)
@@ -179,6 +179,7 @@ class ServerProcess(object):
         self.id = server_id
         self._config = config
         self.config = ServerProcess.Config(config, global_config)
+        self.repomo_config = repomo_config
 
         self.term_size = 200, 25
         self.wrapper = None  # type: ProcessWrapper | None
@@ -344,8 +345,14 @@ class ServerProcess(object):
             ]
 
             if self.config.launch_option.enable_reporter_agent:
-                # TODO: add agent option
-                pass
+                agent_file = Path(self.repomo_config.agent_file)
+                if agent_file.is_file():
+                    for idx, part in enumerate(args):
+                        if part == "-jar":
+                            args.insert(idx, "-javaagent:" + str(agent_file.absolute()) + f"={self.id}")
+                            break
+                else:
+                    self.log.warning("Agent file not exists: %s", agent_file)
 
         _event = await call_event(ServerLaunchOptionBuildEvent(self, args, is_generated=generated_arguments))
         return _event.args

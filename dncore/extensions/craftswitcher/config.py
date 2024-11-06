@@ -136,13 +136,9 @@ class ServerGlobalConfig(ConfigValues):
     shutdown_timeout = 30
 
 
-class PublicApiServer(ConfigValues):
-    enable = True
-    bind_host = "0.0.0.0"
-    bind_port = 8080
-    # SSLキーファイルのパス
-    ssl_keyfile: str | None = None
-    ssl_certfile: str | None = None
+class ReportModule(ConfigValues):
+    # Java Agent ファイルのパス
+    agent_file = "./CraftSwitcherReportModule-1.1.3_libs.jar"
 
 
 class JavaPresetConfig(ConfigValues):
@@ -168,6 +164,15 @@ class Screen(ConfigValues):
 
     # CraftSwitcherが停止する時にサーバーを停止させません
     enable_keep_server_on_shutdown = True
+
+
+class PublicApiServer(ConfigValues):
+    enable = True
+    bind_host = "0.0.0.0"
+    bind_port = 8080
+    # SSLキーファイルのパス
+    ssl_keyfile: str | None = None
+    ssl_certfile: str | None = None
 
 
 class DiscordActivity(ConfigValues):
@@ -236,6 +241,9 @@ class SwitcherConfig(FileConfigValues):
 
     # サーバーの保管に使うパス (※ 通常は変更する必要はありません)
     servers_location: str = "/"
+
+    # サーバー連携モジュール設定
+    repomo: ReportModule
 
     # Java 設定
     java: JavaConfigSection
