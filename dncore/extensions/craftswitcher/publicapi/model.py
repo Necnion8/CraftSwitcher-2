@@ -20,6 +20,33 @@ class SwitcherConfig(BaseModel):
     max_console_lines_in_memory: int = Field(10_000, description="コンソールログをメモリに保持する行数 (サーバーごと)")
 
 
+class ServerStatusInfo(BaseModel):
+    class Process(BaseModel):
+        cpu_usage: float = Field(description="CPU使用率 (%)")
+        mem_used: int = Field(description="メモリ使用量 (bytes)")
+        mem_virtual_used: int = Field(description="メモリ使用量 (仮想メモリを含む) (bytes)")
+
+    class JVM(BaseModel):
+        cpu_usage: float | None = Field(description="CPU使用率 (%)")
+        mem_used: int | None = Field(description="メモリ使用量 (bytes)")
+        mem_total: int | None = Field(description="メモリ合計 (bytes)")
+
+    class Game(BaseModel):
+        class Player(BaseModel):
+            uuid: str
+            name: str
+
+        ticks: float | None = Field(description="1秒あたりのゲームティック数")
+        max_players: int | None = Field(description="最大プレイヤー数")
+        online_players: int | None = Field(description="ログインしているプレイヤー数 (今のところ .players と同じ数です)")
+        players: list[Player] | None = Field(description="ログインしているプレイヤー")
+
+    id: str = Field(description="サーバーID")
+    process: Process | None = Field(description="Switcherがプロセスを見失っている時に null")
+    jvm: JVM | None = Field(description="連携が無効かアクティブでない時に null")
+    game: Game | None = Field(description="連携が無効かアクティブでない、または非対応サーバーの時に null")
+
+
 class Server(BaseModel):
     id: str = Field(description="サーバーID 小文字のみ")
     name: str | None = Field(description="表示名")
@@ -28,9 +55,10 @@ class Server(BaseModel):
     directory: str | None = Field(description="サーバーがある場所のパス。rootDirに属さないサーバーは null")
     is_loaded: bool = Field(description="サーバー設定がロードされているか")
     build_status: ServerBuildStatus | None = Field(description="ビルドステータス")
+    status: ServerStatusInfo | None = Field(description="サーバーとプロセスの情報")
 
     @classmethod
-    def create(cls, server: "ServerProcess", directory: str | None):
+    def create(cls, server: "ServerProcess", directory: str | None, include_status: bool):
         return cls(
             id=server.id,
             name=server.config.name,
@@ -39,6 +67,7 @@ class Server(BaseModel):
             directory=directory,
             is_loaded=True,
             build_status=server.build_status,
+            status=server.get_status_info() if include_status else None,
         )
 
     @classmethod
@@ -51,6 +80,7 @@ class Server(BaseModel):
             directory=directory,
             is_loaded=False,
             build_status=None,
+            status=None,
         )
 
 
@@ -138,33 +168,6 @@ class ServerGlobalConfig(BaseModel):
         @staticmethod
         def alias_generator(key: str):
             return key.replace("__", ".")
-
-
-class ServerStatusInfo(BaseModel):
-    class Process(BaseModel):
-        cpu_usage: float = Field(description="CPU使用率 (%)")
-        mem_used: int = Field(description="メモリ使用量 (bytes)")
-        mem_virtual_used: int = Field(description="メモリ使用量 (仮想メモリを含む) (bytes)")
-
-    class JVM(BaseModel):
-        cpu_usage: float | None = Field(description="CPU使用率 (%)")
-        mem_used: int | None = Field(description="メモリ使用量 (bytes)")
-        mem_total: int | None = Field(description="メモリ合計 (bytes)")
-
-    class Game(BaseModel):
-        class Player(BaseModel):
-            uuid: str
-            name: str
-
-        ticks: float | None = Field(description="1秒あたりのゲームティック数")
-        max_players: int | None = Field(description="最大プレイヤー数")
-        online_players: int | None = Field(description="ログインしているプレイヤー数 (今のところ .players と同じ数です)")
-        players: list[Player] | None = Field(description="ログインしているプレイヤー")
-
-    id: str = Field(description="サーバーID")
-    process: Process | None = Field(description="Switcherがプロセスを見失っている時に null")
-    jvm: JVM | None = Field(description="連携が無効かアクティブでない時に null")
-    game: Game | None = Field(description="連携が無効かアクティブでない、または非対応サーバーの時に null")
 
 
 class FileInfo(BaseModel):

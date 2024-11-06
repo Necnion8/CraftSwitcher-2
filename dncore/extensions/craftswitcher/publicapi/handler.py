@@ -530,7 +530,10 @@ class APIHandler(object):
             summary="登録サーバーの一覧",
             description="登録されているサーバーを返します",
         )
-        async def _list(only_loaded: bool = False, ) -> list[model.Server]:
+        async def _list(
+            only_loaded: bool = False,
+            include_status: bool = Query(False, description="サーバーとプロセスの情報を取得するか"),
+        ) -> list[model.Server]:
             ls = []  # type: list[model.Server]
 
             for server_id, server in servers.items():
@@ -539,7 +542,7 @@ class APIHandler(object):
                         server_swi_path = inst.swipath_server(server)
                     except ValueError:
                         server_swi_path = None
-                    ls.append(model.Server.create(server, server_swi_path))
+                    ls.append(model.Server.create(server, server_swi_path, include_status))
                 elif not only_loaded:
                     try:
                         server_dir = self.inst.config.servers[server_id]
@@ -674,7 +677,10 @@ class APIHandler(object):
             "/server/{server_id}",
             summary="サーバー情報を取得",
         )
-        def _get(server_id: str) -> model.Server:
+        def _get(
+            server_id: str,
+            include_status: bool = Query(False, description="サーバーとプロセスの情報を取得するか"),
+        ) -> model.Server:
             server_id = server_id.lower()
             try:
                 server = servers[server_id]
@@ -696,7 +702,7 @@ class APIHandler(object):
             except ValueError:
                 server_swi_path = None
 
-            return model.Server.create(server, server_swi_path)
+            return model.Server.create(server, server_swi_path, include_status)
 
         @api.post(
             "/server/{server_id}",

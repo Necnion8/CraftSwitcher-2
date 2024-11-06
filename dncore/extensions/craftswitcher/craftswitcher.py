@@ -907,6 +907,9 @@ class CraftSwitcher(EventListener):
         return task
 
     def get_server_status(self, server: ServerProcess):
+        if not server.state.is_running:
+            return None
+
         report = self.repomo_server.get_status(server.id)
 
         total = report and report.total_memory
