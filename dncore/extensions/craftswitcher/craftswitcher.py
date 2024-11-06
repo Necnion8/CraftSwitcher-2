@@ -932,9 +932,9 @@ class CraftSwitcher(EventListener):
                 max_players=None if (val := report.max_players) is None else val,
                 online_players=None if (val := report.players) is None else len(val),
                 players=None if report.players is None else [
-                    dict(
-                        uuid=str(p_uuid),  # type: str
-                        name=p_name,  # type: str
+                    ServerStatusInfo.Game.Player(
+                        uuid=str(p_uuid),
+                        name=p_name,
                     ) for p_uuid, p_name in report.players.items()
                 ],
             ) if report else None,
