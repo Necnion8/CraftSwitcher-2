@@ -577,7 +577,11 @@ class ServerProcess(object):
         self.log.info(f"Killing {self.id} server process...")
         self.shutdown_to_restart = False
         self._detaching_screen = False
-        self.wrapper.kill()
+
+        if self._current_screen_name:
+            screen.kill_screen(self._current_screen_name)
+        else:
+            self.wrapper.kill()
 
     async def wait_for_shutdown(self, *, timeout: int = None):
         if timeout is None:

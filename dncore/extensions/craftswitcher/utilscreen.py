@@ -6,6 +6,7 @@ __all__ = [
     "list_names",
     "list_screens",
     "get_screen",
+    "kill_screen",
     "new_session_commands",
     "attach_commands",
     "is_available",
@@ -55,6 +56,10 @@ def get_screen(name: str):
         if name == name_:
             return ScreenSession(int(pid), name, date, ScreenStatus(status))
     return None
+
+
+def kill_screen(id_or_name):
+    getoutput(f"screen -XS '{id_or_name}' quit")
 
 
 def new_session_commands(session_name: str, *,
