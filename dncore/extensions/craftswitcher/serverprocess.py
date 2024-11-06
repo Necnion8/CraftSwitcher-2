@@ -552,7 +552,7 @@ class ServerProcess(object):
             raise errors.NotRunningError
 
         self.log.info(f"Sending command to {self.id} server: {command}")
-        self.wrapper.write(command + "\n")  # TODO: 既に入力されているテキストを消さないといけない
+        self.wrapper.write(command + "\r\n")  # TODO: 既に入力されているテキストを消さないといけない
 
     async def stop(self):
         if not self._is_running:
