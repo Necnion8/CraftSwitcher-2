@@ -52,25 +52,29 @@
 ※ macOSは未確認。おそらく動作？
 
 ## 対応サーバー
-| サーバー          | 基本操作 | 鯖内連携 | ダウンロード | ビルド |                             URL                              |
-|:--------------|:----:|:----:|:------:|:---:|:------------------------------------------------------------:|
-| Vanilla       |  ?   |  ✕   |   〇    |  -  | [Minecraft](https://www.minecraft.net/ja-jp/download/server) |     |     |
-| Spigot        |  ?   |  ✕   |   〇    |  〇  |    [SpigotMC](https://www.spigotmc.org/wiki/buildtools/)     |     |     |
-| Paper         |  ?   |  ✕   |   〇    |  -  |         [PaperMC](https://papermc.io/software/paper)         |     |     |
-| Purpur        |  ?   |  ✕   |   〇    |  -  |              [PurpurMC](https://purpurmc.org/)               |     |     |
-| Folia         |  ?   |  ✕   |   〇    |  -  |         [PaperMC](https://papermc.io/software/folia)         |     |     |
-| # ***mod***   |
-| Forge         |  ?   |  ✕   |   〇    |  〇  |     [Minecraft Forge](https://files.minecraftforge.net/)     |     |     |
-| Mohist        |  ?   |  ✕   |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/mohist)       |     |     |
-| NeoForge      |  ?   |  ✕   |   〇    |  〇  |             [NeoForged](https://neoforged.net/)              |     |     |
-| Youer         |  ?   |  ✕   |   ?    |  ?  |       [MohistMC](https://mohistmc.com/software/youer)        |     |     |
-| Fabric        |  ?   |  ✕   |   〇    |  -  |              [FabricMC](https://fabricmc.net/)               |     |     |
-| Quilt         |  ?   |  ✕   |   〇    |  〇  |               [QuiltMC](https://quiltmc.org/)                |
-| Banner        |  ?   |  ✕   |   〇    |  -  |       [MohistMC](https://mohistmc.com/software/banner)       |     |     |
-| # ***proxy*** |
-| BungeeCord    |  ?   |  ✕   |   〇    |  -  |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |     |     |
-| Waterfall     |  ?   |  ✕   |   〇    |  -  |       [PaperMC](https://papermc.io/software/waterfall)       |     |     |
-| Velocity      |  ?   |  ✕   |   〇    |  -  |       [PaperMC](https://papermc.io/software/velocity)        |     |     |
+| サーバー               | 基本操作 | 鯖内連携<sup>※2</sup> |                  ダウンロード                   |                             開発元                              |
+|:-------------------|:----:|:-----------------:|:-----------------------------------------:|:------------------------------------------------------------:|
+| Vanilla            |  〇   |         ✕         |                     〇                     | [Minecraft](https://www.minecraft.net/ja-jp/download/server) |
+| Spigot             |  〇   |    1.8 ~ 1.17     | 〇<sup style="position:absolute;">※1</sup> |    [SpigotMC](https://www.spigotmc.org/wiki/buildtools/)     |
+| Paper              |  〇   |    1.8 ~ 1.17     |                     〇                     |         [PaperMC](https://papermc.io/software/paper)         |
+| Purpur             |  〇   |    1.8 ~ 1.17     |                     〇                     |              [PurpurMC](https://purpurmc.org/)               |
+| Folia              |  〇   |         ✕         |                     〇                     |         [PaperMC](https://papermc.io/software/folia)         |
+| # ***mod***        |
+| Forge              |  〇   |         ✕         | 〇<sup style="position:absolute;">※1</sup> |     [Minecraft Forge](https://files.minecraftforge.net/)     |
+| Mohist             |  〇   |         ✕         |                     〇                     |       [MohistMC](https://mohistmc.com/software/mohist)       |
+| NeoForge           |  〇   |         ✕         | 〇<sup style="position:absolute;">※1</sup> |             [NeoForged](https://neoforged.net/)              |
+| Youer<sup>※3</sup> |  ?   |         ✕         |                     ?                     |       [MohistMC](https://mohistmc.com/software/youer)        |
+| Fabric             |  〇   |         ✕         |                     〇                     |              [FabricMC](https://fabricmc.net/)               |
+| Quilt              |  〇   |         ✕         | 〇<sup style="position:absolute;">※1</sup> |               [QuiltMC](https://quiltmc.org/)                |
+| Banner             |  〇   |         ✕         |                     〇                     |       [MohistMC](https://mohistmc.com/software/banner)       |
+| # ***proxy***      |
+| BungeeCord         |  〇   |         〇         |                     〇                     |    [SpigotMC](https://www.spigotmc.org/wiki/bungeecord/)     |
+| Waterfall          |  〇   |         〇         |                     〇                     |       [PaperMC](https://papermc.io/software/waterfall)       |
+| Velocity           |  〇   |         ✕         |                     〇                     |       [PaperMC](https://papermc.io/software/velocity)        |
+
+<sup>※1</sup>ビルドが必要ですが、自動でセットアップします<br>
+<sup>※2</sup>旧版連携モジュールで仮対応<br>
+<sup>※3</sup>正式リリースされてないため未確認
 
 ## 導入と起動
 ```bash
