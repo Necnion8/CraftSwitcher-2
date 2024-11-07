@@ -430,11 +430,8 @@ class APIHandler(object):
         )
         async def _login(request: Request, response: Response, form_data: OAuth2PasswordRequestForm = Depends()) -> dict:
             user = await self.database.get_user(form_data.username)
-            if not user:
+            if not user or not db.verify_hash(form_data.password, user.password):
                 raise APIErrorCode.INVALID_AUTHENTICATION_CREDENTIALS.of("Invalid authentication credentials", 401)
-
-            if not db.verify_hash(form_data.password, user.password):
-                raise APIErrorCode.INCORRECT_USERNAME_OR_PASSWORD.of("Incorrect username or password")
 
             _, token, expires_datetime = await db.update_user_token(
                 user=user,
