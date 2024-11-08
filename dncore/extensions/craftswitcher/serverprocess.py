@@ -1,6 +1,5 @@
 import asyncio
 import asyncio.subprocess as subprocess
-import collections
 import datetime
 import logging
 import os
@@ -27,22 +26,6 @@ from .utiljava import JavaPreset
 from .utils import *
 
 _log = logging.getLogger(__name__)
-
-
-class LineBuffer(object):
-    def __init__(self):
-        self._buffer = ""
-
-    def put(self, data: str):
-        buf = (self._buffer + data).replace("\r\n", "\n")
-        if 1_000_000 < len(buf):  # 最大 1000KB でカット
-            buf = buf[-1_000_000:]
-        try:
-            while (idx := buf.find("\n")) != -1:
-                line, buf = buf[:idx], buf[idx+1:]
-                yield line.rsplit("\r", 1)[-1]
-        finally:
-            self._buffer = buf
 
 
 class ServerProcess(object):
@@ -187,7 +170,6 @@ class ServerProcess(object):
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
         self._builder = None  # type: ServerBuilder | None
         self._logs = self._create_logs_list(max_logs_line)
-        self._logs_buffer = LineBuffer()
         self._process_pid = None  # type: int | None
         #
         self.shutdown_to_restart = False
@@ -249,9 +231,12 @@ class ServerProcess(object):
 
     def _create_logs_list(self, max_lines: int = None):
         try:
-            return collections.deque(self._logs, maxlen=max_lines)
+            _old = self._logs
         except AttributeError:
-            return collections.deque(maxlen=max_lines)
+            return Logs(maxlen=max_lines)
+        _new = Logs(self._logs, maxlen=max_lines)
+        _new._buffer = _old._buffer
+        return _new
 
     @property
     def players(self) -> list:
@@ -293,8 +278,7 @@ class ServerProcess(object):
             call_event(ServerProcessReadEvent(self, data))  # イベント負荷を要検証
 
             _lines = []
-            for line in self._logs_buffer.put(data):
-                self._logs.append(line)
+            for line in self._logs.put_data(data):
                 _lines.append(line)
                 self.log.debug(f"[OUTPUT]: {line!r}")
             if _lines:

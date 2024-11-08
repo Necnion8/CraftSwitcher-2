@@ -632,17 +632,17 @@ class APIHandler(object):
             summary="サーバープロセスの出力ログ",
         )
         def _logs_latest(
-                server: "ServerProcess" = Depends(getserver),
-                max_lines: int | None = Query(None, ge=1, description=(
-                        "取得する最大行数。null でキャッシュされている全ての行を出力します。"
-                )),
+            server: "ServerProcess" = Depends(getserver),
+            max_lines: int | None = Query(None, ge=1, description=(
+                "取得する最大行数。null でキャッシュされている全ての行を出力します。"
+            )),
+            include_buffer: bool = Query(False, description="改行されていない行を含みます"),
         ) -> list[str]:
             logs = server.logs
-
-            if max_lines is None:
-                return list(reversed(logs))
-
-            return [logs[-(1+i)] for i in range(max_lines) if i < len(logs)]
+            ls = list(logs) if max_lines is None else list(logs)[-max_lines+include_buffer:]
+            if include_buffer:
+                ls.append(logs.buffer)
+            return ls
 
         @api.post(
             "/server/{server_id}/import",

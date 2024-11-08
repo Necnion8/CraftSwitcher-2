@@ -5,6 +5,7 @@ import locale
 import logging
 import platform
 import uuid
+from collections import deque
 from logging import getLogger
 from pathlib import Path
 from typing import TypeVar, TYPE_CHECKING, Any, MutableMapping, Callable, Awaitable
@@ -33,6 +34,7 @@ __all__ = [
     "ProcessPerformanceMonitor",
     "ServerLoggerAdapter",
     "AsyncCallTimer",
+    "Logs",
     "getinst",
 ]
 
@@ -178,6 +180,28 @@ class AsyncCallTimer(object):
                 return await func(*args)
             return cls(wrapped, delay, period)
         return _wrap
+
+
+class Logs(deque[str]):
+    _max_buffer_size = 1_000_000  # 1000KB
+    _buffer = ""
+
+    @property
+    def buffer(self):
+        return self._buffer
+
+    def put_data(self, data: str):
+        buf = (self._buffer + data).replace("\r\n", "\n")
+        if self._max_buffer_size < len(buf):
+            buf = buf[-self._max_buffer_size:]
+        try:
+            while (idx := buf.find("\n")) != -1:
+                line, buf = buf[:idx], buf[idx+1:]
+                line = line.rsplit("\r", 1)[-1]
+                self.append(line)
+                yield line
+        finally:
+            self._buffer = buf
 
 
 def getinst() -> "CraftSwitcher":
