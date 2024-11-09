@@ -86,13 +86,14 @@ class ServerBuild(object):
     def __init__(self, mc_version: str, build: str, download_url: str = None, download_filename: str = None,
                  downloaded_path: Path = None,
                  *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False,
-                 work_dir: str = None, ):
+                 work_dir: str = None, require_jdk: bool = None, ):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
         self.download_filename = download_filename
         self.downloaded_path = downloaded_path
         self.java_major_version = java_major_version
+        self.require_jdk = require_jdk
         self.updated_datetime = updated_datetime
         self.recommended = recommended
         self.work_dir = work_dir

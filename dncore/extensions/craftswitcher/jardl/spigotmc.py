@@ -63,7 +63,7 @@ class SpigotServerDownloader(ServerDownloader):
         for match in VERSION_PATTERN.finditer(content):
             ver = match.group("v").decode("utf-8")
             version = ServerMCVersion(ver, [
-                SpigotBuild(ver, "latest", download_url=dl_url, work_dir=".spigot-builder"),
+                SpigotBuild(ver, "latest", download_url=dl_url, work_dir=".spigot-builder", require_jdk=True),
             ])
             _versions.append(version)
 
