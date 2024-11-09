@@ -335,6 +335,7 @@ class JavaExecutableInfo(BaseModel):
     class_version: int | None = None
     vendor: str | None = None
     vendor_version: str | None = None
+    is_jdk: bool = False
 
     @classmethod
     def create(cls, info: abc.JavaExecutableInfo):
@@ -347,6 +348,7 @@ class JavaExecutableInfo(BaseModel):
             class_version=info.class_version,
             vendor=info.vendor,
             vendor_version=info.vendor_version,
+            is_jdk=info.is_jdk,
         )
 
 

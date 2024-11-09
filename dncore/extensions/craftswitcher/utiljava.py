@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .abc import JavaExecutableInfo
-from .utils import subprocess_encoding
+from .utils import subprocess_encoding, is_windows
 
 if TYPE_CHECKING:
     pass
+
 
 __all__ = [
     "parse_java_major_version",
@@ -49,6 +50,7 @@ async def check_java_executable(path: Path) -> "JavaExecutableInfo | None":
     )
 
     java_home = str(path.parent.parent)
+    javac_name = "javac.exe" if is_windows() else "javac"
 
     if await p.wait() == 0:
         data_values = [
@@ -89,6 +91,7 @@ async def check_java_executable(path: Path) -> "JavaExecutableInfo | None":
                 runtime_version=runtime_version,
                 vendor=data_values[4][1] or None,
                 vendor_version=data_values[5][1] or None,
+                is_jdk=(Path(java_home_path) / "bin" / javac_name).exists(),
             )
 
     p = await asyncio.create_subprocess_exec(
@@ -110,6 +113,7 @@ async def check_java_executable(path: Path) -> "JavaExecutableInfo | None":
                 runtime_version=runtime_version,
                 java_home_path=java_home,
                 java_major_version=parse_java_major_version(runtime_version),
+                is_jdk=(path.parent / javac_name).exists(),
             )
     except Exception as e:
         log.warning("Failed to check java executable (simple test): %s", str(path), exc_info=e)

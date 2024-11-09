@@ -169,3 +169,4 @@ class JavaExecutableInfo(NamedTuple):
     class_version: int | None = None
     vendor: str | None = None
     vendor_version: str | None = None
+    is_jdk: bool = False
