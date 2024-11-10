@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "create_backup_filename",
+    "create_snapshot_backup_filename",
     "Backupper",
 ]
 log = getLogger(__name__)
@@ -32,6 +33,10 @@ def create_backup_filename(comments: str = None):
             archive_file_name += f"_{comments}"
 
     return archive_file_name
+
+
+def create_snapshot_backup_filename():
+    return create_backup_filename(None)
 
 
 class Backupper(object):
@@ -69,16 +74,10 @@ class Backupper(object):
         if server in self._tasks:
             raise AlreadyBackupError("Already running backup")
 
-        if not server.directory.is_dir():
+        server_dir = server.directory
+        if not server_dir.is_dir():
             raise NotADirectoryError("Server directory is not exists or directory")
 
-        return self._start_backup_server(server, server.directory, comments=comments)
-
-    def _start_backup_server(self, server: "ServerProcess", server_dir: Path, *, comments: str | None) -> BackupTask:
-        """
-        バックアップタスクを作成し、開始します。
-        :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
-        """
         from ..database.model import Backup
 
         archive_file_name = create_backup_filename(comments)
@@ -88,6 +87,7 @@ class Backupper(object):
         archive_path_name = Path(server.get_source_id()) / archive_file_name
         archive_path = self.backups_dir / archive_path_name
         if not archive_path.parent.is_dir():
+            log.debug("creating backup directory: %s", archive_path.parent)
             archive_path.parent.mkdir(parents=True)
 
         async def _do() -> int:
@@ -152,3 +152,39 @@ class Backupper(object):
 
         await self._db.remove_backup(backup)
         server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
+
+    async def create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
+        """
+        指定サーバーのスナップショットバックアップを作成します
+
+        :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
+        :except AlreadyBackupError: すでにバックアップを実行している場合
+        :except NotADirectoryError: サーバーディレクトリが存在しないか、ディレクトリでない場合
+        """
+        if server in self._tasks:
+            raise AlreadyBackupError("Already running backup")
+
+        server_dir = server.directory
+        if not server_dir.is_dir():
+            raise NotADirectoryError("Server directory is not exists or directory")
+
+        dst_path_name = Path(server.get_source_id()) / "snapshots" / create_snapshot_backup_filename()
+        dst_path = self.backups_dir / dst_path_name
+        if dst_path.is_dir():
+            log.debug("creating backup directory: %s", dst_path)
+            dst_path.mkdir(parents=True)
+
+        pass  # TODO: implement file process
+
+        server.log.info("Starting snapshot backup: %s", dst_path)
+        fut = asyncio.get_running_loop().create_task(_do())
+        task = self._tasks[server] = BackupTask(
+            task_id=self._files._add_task_id(),
+            src=server_dir,
+            fut=fut,
+            server=server,
+            comments=comments,
+        )
+
+        self._files.add_task(task)
+        return task

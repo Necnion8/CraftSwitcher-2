@@ -1,7 +1,8 @@
 import asyncio
+import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ..files import FileTask, FileEventType
 
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "SnapshotStatus",
+    "FileInfo",
+    "FileDifference",
     "BackupTask",
 ]
 
@@ -19,6 +22,21 @@ class SnapshotStatus(Enum):
     LINK = 0
     CREATE = 1
     UPDATE = 2
+
+
+class FileInfo(NamedTuple):
+    size: int
+    update: datetime.datetime
+
+    def __eq__(self, other: "FileInfo"):
+        return self.size == other.size and self.update == other.update
+
+
+class FileDifference(NamedTuple):
+    path: Path
+    old_info: FileInfo | None
+    new_info: FileInfo | None
+    status: SnapshotStatus
 
 
 class BackupTask(FileTask[int]):
