@@ -147,7 +147,11 @@ class SwitcherDatabase(object):
 
     async def get_backups(self, source: UUID) -> list[Backup]:
         async with self.session() as db:
-            result = await db.execute(select(Backup).where(Backup.source == source))
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
             return [r[0] for r in result.all()]
 
     async def get_backup(self, backup_id: int) -> Backup | None:
@@ -176,6 +180,31 @@ class SwitcherDatabase(object):
                 else:
                     await db.execute(delete(Backup).where(Backup.id == backup))
                 await db.commit()
+
+    async def get_snapshots(self, source: UUID) -> list[Snapshot]:
+        async with self.session() as db:
+            result = await db.execute(
+                select(Snapshot)
+                .where(Snapshot.source == source)
+                .order_by(Snapshot.created)
+            )
+            return [r[0] for r in result.all()]
+
+    async def get_snapshot(self, snapshot_id: int) -> Snapshot | None:
+        async with self.session() as db:
+            result = await db.execute(select(Snapshot).where(Snapshot.id == snapshot_id))
+            try:
+                return result.one()[0]
+            except NoResultFound:
+                return None
+
+    async def get_snapshot_files(self, snapshot_id: int) -> list[SnapshotFile] | None:
+        async with self.session() as db:
+            result = await db.execute(select(SnapshotFile).where(SnapshotFile.snapshot_id == snapshot_id))
+            try:
+                return [r[0] for r in result.all()]
+            except NoResultFound:
+                return None
 
     async def add_snapshot(self, snapshot: Snapshot, files: list[SnapshotFile]):
         def _apply_id(s_id: int, f: SnapshotFile):

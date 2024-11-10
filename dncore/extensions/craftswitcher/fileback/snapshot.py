@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from pathlib import Path
 
@@ -8,6 +9,7 @@ __all__ = [
     "compare_files_diff",
     "get_file_info",
     "scan_files",
+    "async_scan_files",
 ]
 
 
@@ -40,10 +42,10 @@ def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, File
             # update or no updated
             status = SnapshotStatus.LINK if f_info == old_f_info else SnapshotStatus.UPDATE
 
-        files.append(FileDifference(Path(path), old_f_info, f_info, status))
+        files.append(FileDifference(path, old_f_info, f_info, status))
 
     # deletes in new
-    files.extend(FileDifference(Path(p), i, None, SnapshotStatus.DELETE) for p, i in old_files.items())
+    files.extend(FileDifference(p, i, None, SnapshotStatus.DELETE) for p, i in old_files.items())
     return files
 
 
@@ -58,3 +60,7 @@ def get_file_info(path: Path):
 def scan_files(src_dir: Path) -> dict[str, FileInfo]:
     return {p.relative_to(src_dir).as_posix(): get_file_info(p)
             for p in src_dir.glob("**/*") if p.is_file()}
+
+
+async def async_scan_files(src_dir: Path) -> dict[str, FileInfo]:
+    return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)

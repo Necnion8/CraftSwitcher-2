@@ -33,7 +33,7 @@ class FileInfo(NamedTuple):
 
 
 class FileDifference(NamedTuple):
-    path: Path
+    path: str
     old_info: FileInfo | None
     new_info: FileInfo | None
     status: SnapshotStatus

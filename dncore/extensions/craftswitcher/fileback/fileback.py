@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import re
 from logging import getLogger
 from pathlib import Path
@@ -154,6 +155,16 @@ class Backupper(object):
         await self._db.remove_backup(backup)
         server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
+    async def get_snapshot_file_info(self, snapshot_id: int) -> dict[str, FileInfo] | None:
+        files = await self._db.get_snapshot_files(snapshot_id)
+        if files is None:
+            return
+
+        return {
+            file.path: FileInfo(file.size, file.modified.replace(tzinfo=datetime.timezone.utc))
+            for file in files if SnapshotStatus.DELETE != file.status
+        }
+
     async def test_create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
         """
         指定サーバーのスナップショットバックアップを作成します
@@ -182,7 +193,7 @@ class Backupper(object):
 
         async def _do():
             try:
-                files = await asyncio.get_running_loop().run_in_executor(None, scan_files, server_dir)
+                files = await async_scan_files(server_dir)
                 _files = [
                     SnapshotFile(
                         path=path,
@@ -193,7 +204,7 @@ class Backupper(object):
                     ) for path, f_info in files.items()
                 ]
             except Exception as e:
-                server.log.exception("Failed to server backup", exc_info=e)
+                server.log.exception("Failed to server snapshot backup", exc_info=e)
                 raise
             finally:
                 if self._tasks.get(server) is task:
@@ -203,7 +214,7 @@ class Backupper(object):
                 snapshot_id = await self._db.add_snapshot(
                     Snapshot(id=None, source=UUID(source_id), created=created, comments=comments), _files)
             except Exception as e:
-                server.log.error("Failed to add backup to database", exc_info=e)
+                server.log.error("Failed to add snapshot backup to database", exc_info=e)
                 raise
 
             server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
@@ -220,3 +231,34 @@ class Backupper(object):
 
         self._files.add_task(task)
         return task
+
+    async def test_compare_last_snapshot(self, server: "ServerProcess"):
+        source_id = server.get_source_id()
+        snapshots = await self._db.get_snapshots(UUID(source_id))
+        if not snapshots:
+            log.warning("No snapshots")
+            await self.test_create_snapshot(server, comments="first")
+            return
+
+        snapshot = snapshots[-1]
+        old_files = await self.get_snapshot_file_info(snapshot.id)
+        files = await async_scan_files(server.directory)
+
+        from ..database.model import Snapshot, SnapshotFile
+
+        s_files = [
+            SnapshotFile(
+                path=entry.path,
+                status=entry.status,
+                modified=i.update if (i := entry.new_info) else None,
+                size=i.size if (i := entry.new_info) else None,
+                hash=None,
+            ) for entry in compare_files_diff(old_files, files)
+        ]
+
+        try:
+            snapshot_id = await self._db.add_snapshot(
+                Snapshot(id=None, source=UUID(source_id), created=datetime_now(), comments=None), s_files)
+        except Exception as e:
+            server.log.error("Failed to add snapshot backup to database", exc_info=e)
+            raise
