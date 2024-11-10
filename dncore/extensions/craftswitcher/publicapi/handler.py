@@ -717,6 +717,8 @@ class APIHandler(object):
                 raise APIErrorCode.ALREADY_EXISTS_ID.of("Already exists server id")
 
             server_dir = realpath(param.directory)
+            if server_dir.exists():
+                raise APIErrorCode.ALREADY_EXISTS_PATH.of("Already exists server directory")
             if not server_dir.parent.is_dir():
                 raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not exists parent directory")
 

@@ -770,9 +770,8 @@ class CraftSwitcher(EventListener):
 
         この操作により、サーバーディレクトリにサーバー設定ファイルが保存されます。
 
-        既に存在するIDの場合は :class:`ValueError` を。
-
-        親ディレクトリが存在しない場合は :class:`NotADirectoryError` を発生させます。
+        :except ValueError: 既に存在するID
+        :except NotADirectoryError: 親ディレクトリが存在しない
         """
         server_id = safe_server_id(server_id)
         if server_id in self.servers:
