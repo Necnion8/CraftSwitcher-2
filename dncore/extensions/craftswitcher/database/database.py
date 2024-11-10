@@ -8,8 +8,7 @@ from uuid import UUID
 from passlib.context import CryptContext
 from sqlalchemy import URL, select, delete
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, AsyncEngine, create_async_engine
 
 from .model import *
 from ..utils import datetime_now
@@ -177,3 +176,18 @@ class SwitcherDatabase(object):
                 else:
                     await db.execute(delete(Backup).where(Backup.id == backup))
                 await db.commit()
+
+    async def add_snapshot(self, snapshot: Snapshot, files: list[SnapshotFile]):
+        def _apply_id(s_id: int, f: SnapshotFile):
+            f.snapshot_id = s_id
+            return f
+
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(snapshot)
+                await db.flush()
+                await db.refresh(snapshot)
+                snapshot_id = snapshot.id
+                db.add_all(_apply_id(snapshot_id, f) for f in files)
+                await db.commit()
+                return snapshot_id

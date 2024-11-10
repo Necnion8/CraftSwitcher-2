@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from .abc import *
+from .snapshot import *
 from ..errors import AlreadyBackupError
 from ..utils import datetime_now
 
@@ -153,7 +154,7 @@ class Backupper(object):
         await self._db.remove_backup(backup)
         server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
-    async def create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
+    async def test_create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
         """
         指定サーバーのスナップショットバックアップを作成します
 
@@ -168,15 +169,46 @@ class Backupper(object):
         if not server_dir.is_dir():
             raise NotADirectoryError("Server directory is not exists or directory")
 
-        dst_path_name = Path(server.get_source_id()) / "snapshots" / create_snapshot_backup_filename()
+        from ..database.model import Snapshot, SnapshotFile
+
+        source_id = server.get_source_id()
+        dst_path_name = Path(source_id) / "snapshots" / create_snapshot_backup_filename()
         dst_path = self.backups_dir / dst_path_name
-        if dst_path.is_dir():
+        if not dst_path.is_dir():
             log.debug("creating backup directory: %s", dst_path)
             dst_path.mkdir(parents=True)
 
-        pass  # TODO: implement file process
+        created = datetime_now()
 
-        server.log.info("Starting snapshot backup: %s", dst_path)
+        async def _do():
+            try:
+                files = await asyncio.get_running_loop().run_in_executor(None, scan_files, server_dir)
+                _files = [
+                    SnapshotFile(
+                        path=path,
+                        status=SnapshotStatus.CREATE,
+                        modified=f_info.update,
+                        size=f_info.size,
+                        hash=None,
+                    ) for path, f_info in files.items()
+                ]
+            except Exception as e:
+                server.log.exception("Failed to server backup", exc_info=e)
+                raise
+            finally:
+                if self._tasks.get(server) is task:
+                    _ = self._tasks.pop(server, None)
+
+            try:
+                snapshot_id = await self._db.add_snapshot(
+                    Snapshot(id=None, source=UUID(source_id), created=created, comments=comments), _files)
+            except Exception as e:
+                server.log.error("Failed to add backup to database", exc_info=e)
+                raise
+
+            server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
+
+        server.log.info("Starting snapshot backup: %s", dst_path_name)
         fut = asyncio.get_running_loop().create_task(_do())
         task = self._tasks[server] = BackupTask(
             task_id=self._files._add_task_id(),

@@ -1,13 +1,17 @@
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
+from ..fileback.abc import SnapshotStatus
+
 __all__ = [
     "Base",
     "User",
     "Backup",
-    # "Snapshot",
+    "Snapshot",
+    "SnapshotFile",
     # "TrashFile",
 ]
+
 
 Base = declarative_base()
 
@@ -64,23 +68,34 @@ class Backup(Base):
     comments = Column(String, nullable=True, default=None)
 
 
-# class Snapshot(Base):
-#     __tablename__ = "snapshots"
-#     __table_args__ = {
-#         "sqlite_autoincrement": True,
-#     }
-#
-#     source = Column(Uuid, nullable=False)
-#     created = Column(DateTime(), nullable=False)
-#     path = Column(String, nullable=False)
-#     status = Column(EnumType(enum_class=SnapshotStatus), nullable=False)
-#     modified = Column(DateTime(), nullable=True)
-#     size = Column(Integer, nullable=True)
-#     hash = Column(String, nullable=True)
-#
-#     __mapper_args__ = {
-#         "primary_key": [source, path]
-#     }
+class Snapshot(Base):
+    __tablename__ = "snapshots"
+    __table_args__ = {
+        "sqlite_autoincrement": True,
+    }
+
+    id = Column(Integer, primary_key=True)
+    source = Column(Uuid, nullable=False)
+    created = Column(DateTime(), nullable=False)
+    comments = Column(String, nullable=True, default=None)
+
+
+class SnapshotFile(Base):
+    __tablename__ = "snapshot_files"
+    __table_args__ = {
+        "sqlite_autoincrement": True,
+    }
+
+    snapshot_id = Column(Integer, nullable=False)
+    path = Column(String, nullable=False)
+    status = Column(EnumType(enum_class=SnapshotStatus), nullable=False)
+    modified = Column(DateTime(), nullable=True)
+    size = Column(Integer, nullable=True)
+    hash = Column(String, nullable=True)
+
+    __mapper_args__ = {
+        "primary_key": [snapshot_id, path]
+    }
 
 
 # class TrashFile(Base):
