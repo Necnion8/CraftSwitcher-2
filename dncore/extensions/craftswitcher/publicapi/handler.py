@@ -148,6 +148,32 @@ class APIHandler(object):
                     else:
                         log.debug("WS#%s : Failed to write to process", client.id)
 
+                elif request_type == "server_process_set_term_size":
+                    try:
+                        server_id = data["server"]
+                        cols = int(data["cols"])
+                        rows = int(data["rows"])
+                    except KeyError as e:
+                        log.debug("WS#%s : No '%s' specified for data", client.id, e)
+                        continue
+                    except ValueError as e:
+                        log.debug("WS#%s : Not int '%s'", client.id, e)
+                        continue
+
+                    try:
+                        server = self.servers[server_id]
+                    except KeyError:
+                        log.debug("WS#%s : Unknown server: %s", client.id, server_id)
+                        continue
+                    if server:
+                        try:
+                            server.set_term_size(cols, rows)
+                        except Exception as e:
+                            server.log.warning(
+                                "Exception in set term size to server by WS#%s", client.id, exc_info=e)
+                    else:
+                        log.debug("WS#%s : Failed to set term size: Not loaded server", client.id)
+
                 elif request_type == "add_watchdog_path":
                     try:
                         path = data["path"]

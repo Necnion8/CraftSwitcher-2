@@ -267,6 +267,11 @@ class ServerProcess(object):
         self.log.debug(f"Memory check -> Available:{round(mem_available, 1):,}MB, Require:{round(required, 1):,}MB")
         return mem_available > required
 
+    def set_term_size(self, cols: int, rows: int):
+        self.term_size = (cols, rows)
+        if self.wrapper:
+            self.wrapper.set_size((cols, rows))
+
     async def _term_read(self, data: str):
         if self.builder and self.builder.state == ServerBuildStatus.PENDING:
             try:
@@ -876,6 +881,9 @@ class ProcessWrapper:
     async def flush(self):
         raise NotImplementedError
 
+    def set_size(self, size: tuple[int, int]):
+        raise NotImplementedError
+
     @property
     def exit_status(self) -> int | None:
         raise NotImplementedError
@@ -951,6 +959,9 @@ if sys.platform == "win32":
 
         async def flush(self):
             pass
+
+        def set_size(self, size: tuple[int, int]):
+            self.pty.set_size(size[0], size[1])
 
         @property
         def exit_status(self) -> int | None:
