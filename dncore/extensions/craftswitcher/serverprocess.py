@@ -1,5 +1,4 @@
 import asyncio
-import asyncio.subprocess as subprocess
 import datetime
 import logging
 import os
@@ -165,6 +164,7 @@ class ServerProcess(object):
         self.repomo_config = repomo_config
 
         self.term_size = 200, 25
+        # self.term_size = 97, 30
         self.wrapper = None  # type: ProcessWrapper | None
         self._state = ServerState.STOPPED
         self._perf_mon = None  # type: ProcessPerformanceMonitor | None
@@ -273,6 +273,7 @@ class ServerProcess(object):
             self.wrapper.set_size((cols, rows))
 
     async def _term_read(self, data: str):
+        self.log.info(f"|{data!r}|")
         if self.builder and self.builder.state == ServerBuildStatus.PENDING:
             try:
                 await self.builder._read(data)
@@ -285,7 +286,7 @@ class ServerProcess(object):
             _lines = []
             for line in self._logs.put_data(data):
                 _lines.append(line)
-                self.log.debug(f"[OUTPUT]: {line!r}")
+                # self.log.debug(f"[OUTPUT]: {line!r}")
             if _lines:
                 call_event(ServerProcessReadLinesEvent(self, _lines))  # イベント負荷を要検証
 
@@ -975,70 +976,62 @@ if sys.platform == "win32":
     PtyProcessWrapper = WinPtyProcessWrapper
 
 else:
-    import pty
+    from ptyprocess import PtyProcessUnicode
 
     class UnixPtyProcessWrapper(ProcessWrapper):
-        def __init__(self, pid: int, cwd: Path, args: list[str], process: subprocess.Process, fd: int):
+        def __init__(self, pid: int, cwd: Path, args: list[str], process: PtyProcessUnicode):
             super().__init__(pid, cwd, args)
             self.process = process
-            self.fd = fd
 
         @classmethod
         async def spawn(
                 cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
                 *, read_handler: Callable[[str], Awaitable[None]],
         ) -> "UnixPtyProcessWrapper":
-            master, slave = pty.openpty()
-            try:
-                p = await asyncio.create_subprocess_exec(
-                    *args,
-                    stdin=slave, stdout=slave, stderr=slave, cwd=cwd, env=env, close_fds=True, preexec_fn=os.setpgrp,
-                )
-            except Exception as e:
-                raise RuntimeError("Unable to create_subprocess_exec") from e
-
-            finally:
-                os.close(slave)
-
+            print("SPAWN=")
+            print(args, cwd, env)
+            p = PtyProcessUnicode.spawn(
+                args,
+                cwd=cwd, env=env, preexec_fn=os.setpgrp, dimensions=(term_size[1], term_size[0]),
+            )
             loop = asyncio.get_running_loop()
 
-            wrapper = cls(p.pid, cwd, args, p, master)
+            wrapper = cls(p.pid, cwd, args, p)
             loop.create_task(wrapper._loop_read_handler(read_handler))
             loop.run_in_executor(None, wrapper._loop_reader)
             return wrapper
 
         def _loop_reader(self):
-            fd = self.fd
-            os_read = os.read
+            process_read = self.process.read
             queue_put = self._read_queue.put_nowait
-            _decode = bytes.decode
 
             try:
                 while True:
-                    try:
-                        data = os_read(fd, 1024 * 8)
-                    except OSError:
-                        break
-                    queue_put(_decode(data, "utf-8", errors="ignore"))
-            except Exception as e:
-                _log.exception("Exception in os.read", exc_info=e)
-            finally:
+                    data = process_read(1024 * 8)
+                    queue_put(data)
+            except EOFError:
                 queue_put(EOFError)
+            except Exception as e:
+                _log.exception("Exception in read pty process", exc_info=e)
 
         def write(self, data: str):
-            os.write(self.fd, data.encode("utf-8"))
+            self.process.write(data)
 
         async def flush(self):
-            pass
+            self.process.flush()
+
+        def set_size(self, size: tuple[int, int]):
+            self.set_size((size[1], size[0]))
 
         @property
         def exit_status(self) -> int | None:
-            return self.process.returncode
+            return self.process.exitstatus
 
         async def wait(self) -> int:
-            return await self.process.wait()
+            return await asyncio.get_running_loop().run_in_executor(None, self.process.wait)
 
         def kill(self, sig: signal.Signals = signal.SIGTERM):
-            self.process.send_signal(sig)
+            self.process.kill(sig)
+
 
     PtyProcessWrapper = UnixPtyProcessWrapper
