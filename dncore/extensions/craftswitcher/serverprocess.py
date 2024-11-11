@@ -976,6 +976,9 @@ if sys.platform == "win32":
 
 else:
     import pty
+    import termios
+    import fcntl
+    import struct
 
     class UnixPtyProcessWrapper(ProcessWrapper):
         def __init__(self, pid: int, cwd: Path, args: list[str], process: subprocess.Process, fd: int):
@@ -1005,6 +1008,7 @@ else:
             wrapper = cls(p.pid, cwd, args, p, master)
             loop.create_task(wrapper._loop_read_handler(read_handler))
             loop.run_in_executor(None, wrapper._loop_reader)
+            wrapper.set_size(term_size)
             return wrapper
 
         def _loop_reader(self):
@@ -1030,6 +1034,10 @@ else:
 
         async def flush(self):
             pass
+
+        def set_size(self, size: tuple[int, int]):
+            winsize = struct.pack("HHHH", size[1], size[0], 0, 0)
+            fcntl.ioctl(self.fd, termios.TIOCSWINSZ, winsize)
 
         @property
         def exit_status(self) -> int | None:
