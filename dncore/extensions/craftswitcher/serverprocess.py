@@ -1036,6 +1036,9 @@ else:
             pass
 
         def set_size(self, size: tuple[int, int]):
+            """
+            https://stackoverflow.com/a/6420070
+            """
             winsize = struct.pack("HHHH", size[1], size[0], 0, 0)
             fcntl.ioctl(self.fd, termios.TIOCSWINSZ, winsize)
 
