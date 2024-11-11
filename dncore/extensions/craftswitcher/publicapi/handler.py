@@ -734,6 +734,7 @@ class APIHandler(object):
             config.launch_option.min_heap_memory = param.launch_option.min_heap_memory
             config.launch_option.enable_free_memory_check = param.launch_option.enable_free_memory_check
             config.launch_option.enable_reporter_agent = param.launch_option.enable_reporter_agent
+            config.launch_option.enable_screen = param.launch_option.enable_screen
             config.enable_launch_command = param.enable_launch_command
             config.launch_command = param.launch_command
             config.stop_command = param.stop_command

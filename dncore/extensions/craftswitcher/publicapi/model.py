@@ -108,6 +108,7 @@ class CreateServerParam(BaseModel):
         min_heap_memory: int | None
         enable_free_memory_check: bool | None
         enable_reporter_agent: bool | None
+        enable_screen: bool | None
 
     name: str | None
     directory: str
