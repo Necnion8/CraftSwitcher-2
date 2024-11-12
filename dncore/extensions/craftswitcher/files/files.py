@@ -338,7 +338,7 @@ class FileManager(object):
                         pass
                     raise
 
-        task = self.create_task(  # TODO: srcがPathしか受け入れられないために、ソースURLが設定できない
+        task = self.create_task(
             FileEventType.DOWNLOAD, dst, dst, asyncio.create_task(_download()),
             server, src_swi_path, dst_swi_path, )
         return task

@@ -239,8 +239,11 @@ class ServerProcess(object):
         return _new
 
     @property
-    def players(self) -> list:
-        return list()  # TODO: impl players
+    def players(self):
+        if (info := self.get_status_info()) and (game_info := info.game):
+            if game_info.players is not None:
+                return game_info.players
+        return None
 
     @property
     def perfmon(self) -> "ProcessPerformanceMonitor | None":

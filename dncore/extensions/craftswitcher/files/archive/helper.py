@@ -120,7 +120,7 @@ class ZipArchiveHelper(ArchiveHelper):
                 _args[0] = len(files)
 
                 for count, child in enumerate(files):
-                    fz.extract(child, extract_dir)  # FIXME: unsafe path eg. '..' and absolute path
+                    fz.extract(child, extract_dir)
                     completed.put_nowait(child)
 
         fut = asyncio.get_running_loop().run_in_executor(self.executor, _in_thread)

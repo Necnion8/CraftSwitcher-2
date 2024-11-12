@@ -45,7 +45,7 @@ class CraftSwitcherPlugin(Plugin, SwitcherExtension):
             (s for s in self.servers.values() if s and conf.target_server.is_target(s)),
             key=lambda s: s.state,
         )
-        players = sum(len(s.players) for s in servers)
+        players = sum(len(s.players or []) for s in servers)
 
         if not servers:
             setting = conf.no_server
