@@ -189,13 +189,15 @@ class CraftSwitcher(EventListener):
     async def _test(self, arg: str):
         return await getattr(self, f"_test_{arg}")()
 
+    _test_server_id = "020debb7-8a4f-4fd1-be75-330e3df79150"
+    _test_server_id = "ngnklife"
     async def _test_2(self):
-        server = self.servers["020debb7-8a4f-4fd1-be75-330e3df79150"]
+        server = self.servers[self._test_server_id]
         # task = await self.backups.test_create_snapshot(server, comments="Testing")
         await self.backups.test_create_snapshot(server)
 
     async def _test_1(self):
-        server = self.servers["020debb7-8a4f-4fd1-be75-330e3df79150"]
+        server = self.servers[self._test_server_id]
         from uuid import UUID
         source_id = UUID(server.get_source_id())
 

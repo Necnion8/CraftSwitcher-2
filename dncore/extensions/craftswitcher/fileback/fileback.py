@@ -161,8 +161,11 @@ class Backupper(object):
             return
 
         return {
-            file.path: FileInfo(file.size, file.modified.replace(tzinfo=datetime.timezone.utc))
-            for file in files if SnapshotStatus.DELETE != file.status
+            file.path: FileInfo(
+                size=file.size,
+                modified_datetime=file.modified.replace(tzinfo=datetime.timezone.utc),
+                is_dir=file.type.value == 1,
+            ) for file in files if SnapshotStatus.DELETE != file.status
         }
 
     async def test_create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
@@ -180,7 +183,7 @@ class Backupper(object):
         if not server_dir.is_dir():
             raise NotADirectoryError("Server directory is not exists or directory")
 
-        from ..database.model import Snapshot, SnapshotFile
+        from ..database.model import Snapshot, SnapshotFile, FileType
 
         source_id = server.get_source_id()
         snap_dir = Path(source_id) / "snapshots"
@@ -208,22 +211,25 @@ class Backupper(object):
                     old_dir = None
 
                 action = "scan current files"
-                files = await async_scan_files(server_dir)
+                files, _scan_errors = await async_scan_files(server_dir)
 
                 action = "process diff"
+                files_diff = compare_files_diff(old_files or {}, files)
                 snap_files = [
                     SnapshotFile(
                         path=entry.path,
                         status=entry.status,
-                        modified=i.update if (i := entry.new_info) else None,
+                        modified=i.modified_datetime if (i := entry.new_info) else None,
                         size=i.size if (i := entry.new_info) else None,
-                        hash=None,
-                    ) for entry in compare_files_diff(old_files or {}, files)
+                        type=[
+                            FileType.FILE, FileType.DIRECTORY
+                        ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
+                    ) for entry in files_diff
                 ]
 
                 action = "creating snapshot files"
                 errors = await async_create_files_diff(
-                    SnapshotResult(server_dir, old_dir, snap_files), dst_path,
+                    SnapshotResult(server_dir, old_dir, files_diff), dst_path,
                 )  # TODO: エラーをフロントエンドにレポートする
 
             except Exception as e:

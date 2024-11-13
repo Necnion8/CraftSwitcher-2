@@ -19,17 +19,22 @@ __all__ = [
 
 class SnapshotStatus(Enum):
     DELETE = -1
-    LINK = 0
-    CREATE = 1
-    UPDATE = 2
+    NO_CHANGE = 0
+    UPDATE = 1
+    CREATE = 2
 
 
 class FileInfo(NamedTuple):
     size: int
-    update: datetime.datetime
+    modified_datetime: datetime.datetime
+    is_dir: bool
 
     def __eq__(self, other: "FileInfo"):
-        return self.size == other.size and self.update == other.update
+        if self.is_dir != other.is_dir:
+            return False
+        if self.is_dir and other.is_dir:
+            return True
+        return self.size == other.size and self.modified_datetime == other.modified_datetime
 
 
 class FileDifference(NamedTuple):

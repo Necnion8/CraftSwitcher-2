@@ -43,7 +43,7 @@ def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, File
             status = SnapshotStatus.CREATE
         else:
             # update or no updated
-            status = SnapshotStatus.LINK if f_info == old_f_info else SnapshotStatus.UPDATE
+            status = SnapshotStatus.NO_CHANGE if f_info == old_f_info else SnapshotStatus.UPDATE
 
         files.append(FileDifference(path, old_f_info, f_info, status))
 
@@ -55,17 +55,28 @@ def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, File
 def get_file_info(path: Path):
     stat = path.stat()
     return FileInfo(
-        stat.st_size,
-        datetime.datetime.fromtimestamp(stat.st_mtime).astimezone(datetime.timezone.utc),
+        size=stat.st_size,
+        modified_datetime=datetime.datetime.fromtimestamp(stat.st_mtime).astimezone(datetime.timezone.utc),
+        is_dir=path.is_dir(),
     )
 
 
-def scan_files(src_dir: Path) -> dict[str, FileInfo]:
-    return {p.relative_to(src_dir).as_posix(): get_file_info(p)
-            for p in src_dir.glob("**/*") if p.is_file()}
+def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+    files = {}  # type: dict[str, FileInfo]
+    errors = {}  # type: dict[str, Exception]
+
+    for path in src_dir.glob("**/*"):  # type: Path
+        path_name = path.relative_to(src_dir).as_posix()
+        try:
+            files[path_name] = get_file_info(path)
+        except Exception as e:
+            log.warning("Failed to get file info: %s: %s", type(e).__name__, str(e))
+            errors[path_name] = e
+
+    return files, errors
 
 
-async def async_scan_files(src_dir: Path) -> dict[str, FileInfo]:
+async def async_scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
     return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)
 
 
@@ -80,37 +91,59 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
 
     errors = []  # type: list[tuple[FileDifference, Exception]]
     for file in result.files:
-        if SnapshotStatus.LINK == file.status:
-            try:
-                old_file_path = result.old_dir / file.path
-                dst_file_path = dst_dir / file.path
+
+        if SnapshotStatus.NO_CHANGE == file.status:
+            if file.new_info.is_dir:
                 try:
-                    dst_file_path.parent.mkdir(parents=True, exist_ok=True)
-                    dst_file_path.hardlink_to(old_file_path)
+                    dst_file_path = dst_dir / file.path
+                    try:
+                        dst_file_path.mkdir(exist_ok=True)
+                    except Exception as e:
+                        log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
+                        errors.append((file, e))
                 except Exception as e:
-                    log.warning("Failed to link file: %s:%s: %s TO %s",
-                                type(e).__name__, str(e), old_file_path, dst_file_path)
+                    log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
                     errors.append((file, e))
-            except Exception as e:
-                log.warning("Failed to link file: %s:%s: %s",
-                            type(e).__name__, str(e), file.path)
-                errors.append((file, e))
+
+            else:
+                try:
+                    old_file_path = result.old_dir / file.path
+                    dst_file_path = dst_dir / file.path
+                    try:
+                        dst_file_path.parent.mkdir(parents=True, exist_ok=True)
+                        dst_file_path.hardlink_to(old_file_path)
+                    except Exception as e:
+                        log.warning("Failed to link file: %s: %s", type(e).__name__, str(e))
+                        errors.append((file, e))
+                except Exception as e:
+                    log.warning("Failed to link file: %s: %s: %s", type(e).__name__, str(e), file.path)
+                    errors.append((file, e))
 
         elif file.status in (SnapshotStatus.CREATE, SnapshotStatus.UPDATE, ):
-            try:
-                src_file_path = result.src_dir / file.path
-                dst_file_path = dst_dir / file.path
+            if file.new_info.is_dir:
                 try:
-                    dst_file_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src_file_path, dst_file_path)
+                    dst_file_path = dst_dir / file.path
+                    try:
+                        dst_file_path.mkdir(exist_ok=True)
+                    except Exception as e:
+                        log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
+                        errors.append((file, e))
                 except Exception as e:
-                    log.warning("Failed to copy file: %s:%s: %s TO %s",
-                                type(e).__name__, str(e), src_file_path, dst_file_path)
+                    log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
                     errors.append((file, e))
-            except Exception as e:
-                log.warning("Failed to copy file: %s:%s: %s",
-                            type(e).__name__, str(e), file.path)
-                errors.append((file, e))
+
+            else:
+                try:
+                    src_file_path = result.src_dir / file.path
+                    dst_file_path = dst_dir / file.path
+                    try:
+                        shutil.copy2(src_file_path, dst_file_path)
+                    except Exception as e:
+                        log.warning("Failed to copy file: %s: %s", type(e).__name__, str(e))
+                        errors.append((file, e))
+                except Exception as e:
+                    log.warning("Failed to copy file: %s: %s: %s", type(e).__name__, str(e), file.path)
+                    errors.append((file, e))
 
         elif SnapshotStatus.DELETE == file.status:
             pass

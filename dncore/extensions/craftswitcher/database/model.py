@@ -1,3 +1,5 @@
+from enum import Enum
+
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
@@ -6,6 +8,7 @@ from ..fileback.abc import SnapshotStatus
 __all__ = [
     "Base",
     "User",
+    "FileType",
     "Backup",
     "Snapshot",
     "SnapshotFile",
@@ -54,6 +57,11 @@ class User(Base):
     permission = Column(Integer, nullable=False, default=0)
 
 
+class FileType(Enum):
+    FILE = 0
+    DIRECTORY = 1
+
+
 class Backup(Base):
     __tablename__ = "backups"
     __table_args__ = {
@@ -92,7 +100,8 @@ class SnapshotFile(Base):
     status = Column(EnumType(enum_class=SnapshotStatus), nullable=False)
     modified = Column(DateTime(), nullable=True)
     size = Column(Integer, nullable=True)
-    hash = Column(String, nullable=True)
+    type = Column(EnumType(enum_class=FileType), nullable=False)
+    hash_md5 = Column(String, nullable=True)
 
     __mapper_args__ = {
         "primary_key": [snapshot_id, path]
