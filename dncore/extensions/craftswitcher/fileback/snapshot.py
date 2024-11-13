@@ -54,6 +54,17 @@ def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, File
 
 def get_file_info(path: Path):
     stat = path.stat()
+    # if path.is_file():
+    #     import hashlib
+    #     b = hashlib.md5()
+    #     # b = hashlib.sha1()
+    #     # b = hashlib.sha256()
+    #     with path.open("rb") as f:
+    #         for chunk in iter(lambda: f.read(2048 * b.block_size), b""):
+    #             b.update(chunk)
+    #     checksum = b.hexdigest()
+    #     get_file_info._all.append(checksum)
+
     return FileInfo(
         size=stat.st_size,
         modified_datetime=datetime.datetime.fromtimestamp(stat.st_mtime).astimezone(datetime.timezone.utc),
@@ -76,8 +87,54 @@ def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]
     return files, errors
 
 
+# async def async_scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+#     return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)
+
 async def async_scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
-    return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)
+    from concurrent.futures import ThreadPoolExecutor
+    import queue, threading
+    pool = ThreadPoolExecutor()
+    lock = threading.Lock()
+
+    files = {}  # type: dict[str, FileInfo]
+    errors = {}  # type: dict[str, Exception]
+
+    def worker():
+        _files = {}
+        _errors = {}
+        for path_ in iter(q.get, None):
+            try:
+                path_name = path_.relative_to(src_dir).as_posix()
+                try:
+                    info = get_file_info(path_)
+                except Exception as e:
+                    log.warning("Failed to get file info: %s: %s", type(e).__name__, str(e))
+                    _errors[path_name] = e
+                else:
+                    _files[path_name] = info
+            finally:
+                q.task_done()
+        return _files, _errors
+
+    q = queue.Queue()  # type: queue.Queue[Path]
+    workers = [pool.submit(worker) for _ in range(2)]
+
+    total = 0
+    for path in src_dir.glob("**/*"):  # type: Path
+        q.put(path)
+        total += 1
+
+    [q.put(None) for _ in range(len(workers))]
+    # await asyncio.get_running_loop().run_in_executor(None, pool.shutdown)
+
+    for worker in workers:
+        _f, _e = worker.result()
+        log.warning(f"w -> {len(_f) + len(_e)}")
+        files.update(_f)
+        errors.update(_e)
+
+    log.error(f"TOTAL COUNT -> {total} | RESULT COUNT -> {len(files) + len(errors)}")
+    return files, errors
 
 
 def create_files_diff(result: SnapshotResult, dst_dir: Path):
@@ -90,7 +147,9 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
         raise NotADirectoryError("destination directory is not exists or directory")
 
     errors = []  # type: list[tuple[FileDifference, Exception]]
-    for file in sorted(result.files, key=lambda f: (not (f.new_info or f.old_info).is_dir, f.path.count("/"))):
+    for file in sorted(result.files, key=lambda f: (not (f.new_info and f.new_info.is_dir), f.path.count("/"))):
+        _is_dir = file.new_info and file.new_info.is_dir
+        # log.warning(f"- {_is_dir} - {file.path.count('/')} - {file.status.name} - {file.path}")
         if SnapshotStatus.DELETE == file.status:
             continue
 
