@@ -90,7 +90,9 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
         raise NotADirectoryError("destination directory is not exists or directory")
 
     errors = []  # type: list[tuple[FileDifference, Exception]]
-    for file in result.files:
+    for file in sorted(result.files, key=lambda f: (not (f.new_info or f.old_info).is_dir, f.path.count("/"))):
+        if SnapshotStatus.DELETE == file.status:
+            continue
 
         if SnapshotStatus.NO_CHANGE == file.status:
             if file.new_info.is_dir:
@@ -144,9 +146,6 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                 except Exception as e:
                     log.warning("Failed to copy file: %s: %s: %s", type(e).__name__, str(e), file.path)
                     errors.append((file, e))
-
-        elif SnapshotStatus.DELETE == file.status:
-            pass
 
         else:
             errors.append((file, NotImplementedError(f"Unknown snapshot status: {file.status.name}")))
