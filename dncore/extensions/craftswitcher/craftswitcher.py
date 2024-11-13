@@ -186,10 +186,53 @@ class CraftSwitcher(EventListener):
 
         asyncio.create_task(self.scan_java_executables())
 
-    async def _test(self):
+    async def _test(self, arg: str):
+        return await getattr(self, f"_test_{arg}")()
+
+    async def _test_2(self):
         server = self.servers["020debb7-8a4f-4fd1-be75-330e3df79150"]
         # task = await self.backups.test_create_snapshot(server, comments="Testing")
-        await self.backups.test_compare_last_snapshot(server)
+        await self.backups.test_create_snapshot(server)
+
+    async def _test_1(self):
+        server = self.servers["020debb7-8a4f-4fd1-be75-330e3df79150"]
+        from uuid import UUID
+        source_id = UUID(server.get_source_id())
+
+        last = (await self.database.get_snapshots(source_id))[-1]
+        snapshot_dir = self.backups.backups_dir / source_id.hex / "snapshots" / last.directory  # type: Path
+
+        log.info(f"Last snapshot id: {last.id}")
+
+        total_size = 0
+        used_size = 0
+        linked_file = 0
+        total_file = 0
+
+        for c in snapshot_dir.glob("**/*"):  # type: Path
+            stat = c.stat()
+            if c.is_dir():
+                logo = " DIR"
+            elif 1 < stat.st_nlink:
+                logo = "LINK"
+                log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+                total_size += stat.st_size
+                total_file += 1
+                linked_file += 1
+                continue
+            elif c.is_file():
+                logo = "FILE"
+                total_size += stat.st_size
+                used_size += stat.st_size
+                total_file += 1
+            else:
+                logo = "----"
+
+            log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+
+        log.info(f"Last snapshot id: {last.id}")
+        log.info(f"Total file size: {total_size / 1024 / 1024:.0f} MB (total {total_file} files)")
+        log.info(f"Used file size: {used_size / 1024 / 1024:.0f} MB (total {linked_file} links)")
 
         #
 

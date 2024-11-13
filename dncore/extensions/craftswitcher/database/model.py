@@ -77,6 +77,7 @@ class Snapshot(Base):
     id = Column(Integer, primary_key=True)
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
+    directory = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
 
 

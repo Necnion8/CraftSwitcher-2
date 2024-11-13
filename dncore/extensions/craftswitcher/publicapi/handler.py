@@ -2,7 +2,7 @@ import asyncio
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
+from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
@@ -1621,8 +1621,7 @@ class APIHandler(object):
             return True
 
         @api.get("/test")
-        async def _test():
-            self.inst.loop.create_task(self.inst._test())
-            return True
+        async def _test(arg: Literal["1", "2", "3", "4", "5", "6", "7", "8", "9"] = "1"):
+            return await self.inst._test(arg)
 
         return api

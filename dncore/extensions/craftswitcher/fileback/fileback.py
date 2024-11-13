@@ -183,7 +183,9 @@ class Backupper(object):
         from ..database.model import Snapshot, SnapshotFile
 
         source_id = server.get_source_id()
-        dst_path_name = Path(source_id) / "snapshots" / create_snapshot_backup_filename()
+        snap_dir = Path(source_id) / "snapshots"
+        dst_dir_name = create_snapshot_backup_filename()
+        dst_path_name = snap_dir / dst_dir_name
         dst_path = self.backups_dir / dst_path_name
         if not dst_path.is_dir():
             log.debug("creating backup directory: %s", dst_path)
@@ -191,33 +193,61 @@ class Backupper(object):
 
         created = datetime_now()
 
+        # last snapshot
+        snapshots = await self._db.get_snapshots(UUID(source_id))
+        last_snapshot = snapshots[-1] if snapshots else None
+
         async def _do():
+            action = "get snapshot latest"
             try:
+                if last_snapshot:
+                    old_files = await self.get_snapshot_file_info(last_snapshot.id)
+                    old_dir = self.backups_dir / snap_dir / last_snapshot.directory  # type: Path | None
+                else:
+                    old_files = None
+                    old_dir = None
+
+                action = "scan current files"
                 files = await async_scan_files(server_dir)
-                _files = [
+
+                action = "process diff"
+                snap_files = [
                     SnapshotFile(
-                        path=path,
-                        status=SnapshotStatus.CREATE,
-                        modified=f_info.update,
-                        size=f_info.size,
+                        path=entry.path,
+                        status=entry.status,
+                        modified=i.update if (i := entry.new_info) else None,
+                        size=i.size if (i := entry.new_info) else None,
                         hash=None,
-                    ) for path, f_info in files.items()
+                    ) for entry in compare_files_diff(old_files or {}, files)
                 ]
+
+                action = "creating snapshot files"
+                errors = await async_create_files_diff(
+                    SnapshotResult(server_dir, old_dir, snap_files), dst_path,
+                )  # TODO: エラーをフロントエンドにレポートする
+
             except Exception as e:
-                server.log.exception("Failed to server snapshot backup", exc_info=e)
+                server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
                 raise
             finally:
                 if self._tasks.get(server) is task:
                     _ = self._tasks.pop(server, None)
 
             try:
-                snapshot_id = await self._db.add_snapshot(
-                    Snapshot(id=None, source=UUID(source_id), created=created, comments=comments), _files)
+                snapshot_id = await self._db.add_snapshot(Snapshot(
+                    id=None,
+                    source=UUID(source_id),
+                    created=created,
+                    directory=dst_dir_name,
+                    comments=comments,
+                ), snap_files)  # TODO: エラーしたファイルをデータベースに登録しないように除外する
+
             except Exception as e:
                 server.log.error("Failed to add snapshot backup to database", exc_info=e)
                 raise
 
             server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
+            return snapshot_id
 
         server.log.info("Starting snapshot backup: %s", dst_path_name)
         fut = asyncio.get_running_loop().create_task(_do())
@@ -231,34 +261,3 @@ class Backupper(object):
 
         self._files.add_task(task)
         return task
-
-    async def test_compare_last_snapshot(self, server: "ServerProcess"):
-        source_id = server.get_source_id()
-        snapshots = await self._db.get_snapshots(UUID(source_id))
-        if not snapshots:
-            log.warning("No snapshots")
-            await self.test_create_snapshot(server, comments="first")
-            return
-
-        snapshot = snapshots[-1]
-        old_files = await self.get_snapshot_file_info(snapshot.id)
-        files = await async_scan_files(server.directory)
-
-        from ..database.model import Snapshot, SnapshotFile
-
-        s_files = [
-            SnapshotFile(
-                path=entry.path,
-                status=entry.status,
-                modified=i.update if (i := entry.new_info) else None,
-                size=i.size if (i := entry.new_info) else None,
-                hash=None,
-            ) for entry in compare_files_diff(old_files, files)
-        ]
-
-        try:
-            snapshot_id = await self._db.add_snapshot(
-                Snapshot(id=None, source=UUID(source_id), created=datetime_now(), comments=None), s_files)
-        except Exception as e:
-            server.log.error("Failed to add snapshot backup to database", exc_info=e)
-            raise

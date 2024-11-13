@@ -19,7 +19,7 @@ log = getLogger(__name__)
 
 
 class SnapshotResult(object):
-    def __init__(self, src_dir: Path, old_dir: Path, files: list[FileDifference]):
+    def __init__(self, src_dir: Path, old_dir: Path | None, files: list[FileDifference]):
         """
         :param src_dir: 現在のファイルが格納されているディレクトリ
         :param old_dir: 古いファイル(前回のバックアップ)が格納されているディレクトリ
@@ -71,27 +71,45 @@ async def async_scan_files(src_dir: Path) -> dict[str, FileInfo]:
 
 def create_files_diff(result: SnapshotResult, dst_dir: Path):
     """
+    スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
     """
+    if not dst_dir.is_dir():
+        raise NotADirectoryError("destination directory is not exists or directory")
+
     errors = []  # type: list[tuple[FileDifference, Exception]]
     for file in result.files:
-        src_file_path = result.src_dir / file.path
-        old_file_path = result.old_dir / file.path
-        dst_file_path = dst_dir / file.path
-
         if SnapshotStatus.LINK == file.status:
             try:
-                old_file_path.symlink_to(dst_file_path)
+                old_file_path = result.old_dir / file.path
+                dst_file_path = dst_dir / file.path
+                try:
+                    dst_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    dst_file_path.hardlink_to(old_file_path)
+                except Exception as e:
+                    log.warning("Failed to link file: %s:%s: %s TO %s",
+                                type(e).__name__, str(e), old_file_path, dst_file_path)
+                    errors.append((file, e))
             except Exception as e:
-                log.warning("Failed to link file: %s TO %s", old_file_path, dst_file_path)
+                log.warning("Failed to link file: %s:%s: %s",
+                            type(e).__name__, str(e), file.path)
                 errors.append((file, e))
 
         elif file.status in (SnapshotStatus.CREATE, SnapshotStatus.UPDATE, ):
             try:
-                shutil.copy2(src_file_path, dst_file_path)
+                src_file_path = result.src_dir / file.path
+                dst_file_path = dst_dir / file.path
+                try:
+                    dst_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_file_path, dst_file_path)
+                except Exception as e:
+                    log.warning("Failed to copy file: %s:%s: %s TO %s",
+                                type(e).__name__, str(e), src_file_path, dst_file_path)
+                    errors.append((file, e))
             except Exception as e:
-                log.warning("Failed to copy file: %s TO %s", src_file_path, dst_file_path)
+                log.warning("Failed to copy file: %s:%s: %s",
+                            type(e).__name__, str(e), file.path)
                 errors.append((file, e))
 
         elif SnapshotStatus.DELETE == file.status:
@@ -99,13 +117,14 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
 
         else:
             errors.append((file, NotImplementedError(f"Unknown snapshot status: {file.status.name}")))
-            log.warning("Unknown snapshot status: %s", file.status)
+            log.warning("Unknown snapshot status: %s: %s", file.status, file.path)
 
     return errors
 
 
 async def async_create_files_diff(result: SnapshotResult, dst_dir: Path):
     """
+    スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
     """
