@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import re
+import time
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -203,20 +204,26 @@ class Backupper(object):
         async def _do():
             action = "get snapshot latest"
             try:
+                starts = time.perf_counter()
+                tim = time.perf_counter()
                 if last_snapshot:
                     old_files = await self.get_snapshot_file_info(last_snapshot.id)
                     old_dir = self.backups_dir / snap_dir / last_snapshot.directory  # type: Path | None
                 else:
                     old_files = None
                     old_dir = None
+                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                tim = time.perf_counter()
 
                 action = "scan current files"
                 files, _scan_errors = await async_scan_files(server_dir)
+                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                tim = time.perf_counter()
 
                 action = "process diff"
                 files_diff = compare_files_diff(old_files or {}, files)
-                snap_files = [
-                    SnapshotFile(
+                snap_files = {
+                    entry.path: SnapshotFile(
                         path=entry.path,
                         status=entry.status,
                         modified=i.modified_datetime if (i := entry.new_info) else None,
@@ -225,12 +232,19 @@ class Backupper(object):
                             FileType.FILE, FileType.DIRECTORY
                         ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
                     ) for entry in files_diff
-                ]
+                }
+                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                tim = time.perf_counter()
 
                 action = "creating snapshot files"
                 errors = await async_create_files_diff(
                     SnapshotResult(server_dir, old_dir, files_diff), dst_path,
                 )  # TODO: エラーをフロントエンドにレポートする
+
+                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                tim = time.perf_counter()
+
+                log.error("TOTAL TIME -> %sms", round((tim - starts) * 1000))
 
             except Exception as e:
                 server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
@@ -240,19 +254,31 @@ class Backupper(object):
                     _ = self._tasks.pop(server, None)
 
             try:
+                for _file, _error in errors:
+                    snap_files.pop(_file.path)
+
                 snapshot_id = await self._db.add_snapshot(Snapshot(
                     id=None,
                     source=UUID(source_id),
                     created=created,
                     directory=dst_dir_name,
                     comments=comments,
-                ), snap_files)  # TODO: エラーしたファイルをデータベースに登録しないように除外する
+                ), list(snap_files.values()))
 
             except Exception as e:
                 server.log.error("Failed to add snapshot backup to database", exc_info=e)
                 raise
 
             server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
+
+            if _scan_errors:
+                log.warning(f"scan errors: {len(_scan_errors)}")
+                for _e in _scan_errors:
+                    log.info(f"- {_e}")
+            if errors:
+                log.warning(f"io errors: {len(errors)}")
+                for _e in errors:
+                    log.info(f"- {_e[0].path}")
             return snapshot_id
 
         server.log.info("Starting snapshot backup: %s", dst_path_name)

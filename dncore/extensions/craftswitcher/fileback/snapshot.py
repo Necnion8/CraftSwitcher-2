@@ -112,7 +112,6 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                     old_file_path = result.old_dir / file.path
                     dst_file_path = dst_dir / file.path
                     try:
-                        dst_file_path.parent.mkdir(parents=True, exist_ok=True)
                         dst_file_path.hardlink_to(old_file_path)
                     except Exception as e:
                         log.warning("Failed to link file: %s: %s", type(e).__name__, str(e))
