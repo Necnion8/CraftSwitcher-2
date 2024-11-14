@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 import shutil
 from logging import getLogger
 from pathlib import Path
@@ -9,7 +10,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Dep
 from fastapi.exceptions import WebSocketException
 from fastapi.params import Form, Query
 from fastapi.requests import HTTPConnection
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
@@ -1146,6 +1147,36 @@ class APIHandler(object):
                 raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of(str(e))
             return [model.ArchiveFile.create(arc_file) for arc_file in arc_files]
 
+        @api.get(
+            "/file/archive/file",
+            summary="アーカイブに含まれるファイルの取得",
+        )
+        async def _archive_extract_file(
+            path: PairPath = Depends(get_path_of_root("アーカイブファイルのパス", is_file=True)),
+            filename: str = Query(description="取得するファイルのパス"),
+            password: str | None = Form(None),
+            ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
+
+        ) -> StreamingResponse:
+            chunk_size = 1024 * 512
+
+            helper = self.files.find_archive_helper(path.real, ignore_suffix=ignore_suffix)
+            if not helper:
+                raise APIErrorCode.NO_SUPPORTED_ARCHIVE_FORMAT.of("No supported archive helper")
+
+            async def _processing():
+                try:
+                    # noinspection PyTypeChecker
+                    async for chunk in helper.extract_archived_file(
+                        path.real, filename, password=password, chunk_size=chunk_size,
+                    ):
+                        yield chunk
+
+                except FileNotFoundError:
+                    raise APIErrorCode.NOT_EXISTS_FILE.of("File not found in archive")
+
+            return StreamingResponse(_processing(), media_type=mimetypes.guess_type(filename)[0] or None)
+
         @api.post(
             "/file/archive/extract",
             summary="アーカイブの展開",
@@ -1298,6 +1329,19 @@ class APIHandler(object):
                 ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
         ) -> list[model.ArchiveFile]:
             return await _archive_files(path, password, ignore_suffix)
+
+        @api.get(
+            "/server/{server_id}/file/archive/file",
+            summary="アーカイブに含まれるファイルの取得",
+        )
+        async def _server_archive_extract_file(
+            path: PairPath = Depends(get_path_of_server_root("アーカイブファイルのパス", is_file=True)),
+            filename: str = Query(description="取得するファイルのパス"),
+            password: str | None = Form(None),
+            ignore_suffix: bool = Query(False, description="拡張子に関わらずファイルを処理する"),
+
+        ) -> StreamingResponse:
+            return await _archive_extract_file(path, filename, password, ignore_suffix)
 
         @api.post(
             "/server/{server_id}/file/archive/extract",

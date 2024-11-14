@@ -3,7 +3,7 @@ import concurrent.futures
 import os.path
 import zipfile
 from pathlib import Path
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, AsyncIterable
 
 from .abc import ArchiveProgress, ArchiveFile
 
@@ -35,6 +35,14 @@ class ArchiveHelper:
                               ) -> AsyncGenerator[ArchiveProgress, None]:
         """
         archive_path を開き、extract_dir に全ファイルを展開します
+        """
+        raise NotImplementedError
+
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        """
+        archive_path を開き、対象のファイルを読み取ります
+        :error FileNotFoundError: 指定されたファイルがアーカイブ内に存在しない
         """
         raise NotImplementedError
 
@@ -141,6 +149,39 @@ class ZipArchiveHelper(ArchiveHelper):
                 yield ArchiveProgress(0)
 
         await fut
+
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        q = asyncio.Queue(maxsize=8)
+        loop = asyncio.get_running_loop()
+        interrupt = asyncio.Event()
+
+        def _reader():
+            with zipfile.ZipFile(archive_path, "r") as fz:
+                if password is not None:
+                    fz.setpassword(password.encode("utf-8"))
+
+                files = fz.namelist()
+                if filename not in files:
+                    raise FileNotFoundError(filename)
+
+                with fz.open(filename, "r") as f:
+                    while (chunk := f.read(chunk_size)) and not interrupt.is_set():
+                        asyncio.run_coroutine_threadsafe(q.put(chunk), loop)
+                asyncio.run_coroutine_threadsafe(q.put(None), loop)
+
+        task = loop.run_in_executor(None, _reader())
+
+        try:
+            while _chunk := await q.get():
+                yield _chunk
+        finally:
+            interrupt.set()
+            task.cancel()
+            try:
+                await task
+            except (Exception,):
+                pass
 
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
         def _in_thread():

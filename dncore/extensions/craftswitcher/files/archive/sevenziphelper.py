@@ -3,7 +3,7 @@ import collections
 import re
 import shutil
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, AsyncIterable
 
 from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 
@@ -178,6 +178,27 @@ class SevenZipHelper(ArchiveHelper):
                                    f"=== LAST OUTPUT ===\n"
                                    + b"\n".join(last_logs).decode("utf-8") +
                                    "\n=== LAST OUTPUT ===")
+
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        for _file in await self.list_archive(archive_path, password):
+            if _file.filename == filename:
+                break
+        else:
+            raise FileNotFoundError(filename)
+
+        proc = await subprocess.create_subprocess_exec(
+            self.command_name,
+            "e",
+            "-so", "-y", "-sccUTF-8", f"-p{password or ''}",
+            "--", str(archive_path), filename,
+            stdout=subprocess.PIPE,
+        )
+
+        while chunk := await proc.stdout.read(chunk_size):
+            yield chunk
+
+        await proc.wait()
 
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
 
