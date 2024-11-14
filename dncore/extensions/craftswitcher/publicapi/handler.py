@@ -654,6 +654,28 @@ class APIHandler(object):
             return model.ServerOperationResult.success(server.id)
 
         @api.get(
+            "/server/{server_id}/term/size",
+            summary="疑似端末のウインドウサイズを取得",
+            description="幅x高のカーソル数を返します",
+        )
+        def _get_term_size(
+            server: "ServerProcess" = Depends(getserver),
+        ) -> tuple[int, int]:
+            return server.term_size
+
+        @api.post(
+            "/server/{server_id}/term/size",
+            summary="疑似端末のウインドウサイズを設定",
+            description="幅x高のカーソル数を返します",
+        )
+        def _set_term_size(
+            cols: int, rows: int,
+            server: "ServerProcess" = Depends(getserver),
+        ) -> tuple[int, int]:
+            server.set_term_size(cols, rows)
+            return server.term_size
+
+        @api.get(
             "/server/{server_id}/logs/latest",
             summary="サーバープロセスの出力ログ",
         )
