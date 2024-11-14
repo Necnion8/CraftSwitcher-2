@@ -32,6 +32,7 @@ class SevenZipHelper(ArchiveHelper):
             "-bso1", "-bse1",
             "-y", "-x!*", "-p"
             "--", str(file_path),
+            stdout=subprocess.PIPE,
         )
 
         detect_encrypted_archive = False
