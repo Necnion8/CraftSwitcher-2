@@ -194,7 +194,7 @@ class CraftSwitcher(EventListener):
     async def _test_2(self):
         server = self.servers[self._test_server_id]
         # task = await self.backups.test_create_snapshot(server, comments="Testing")
-        await self.backups.test_create_snapshot(server)
+        await self.backups.create_snapshot(server)
 
     async def _test_1(self):
         server = self.servers[self._test_server_id]

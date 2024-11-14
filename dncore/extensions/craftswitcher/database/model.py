@@ -1,17 +1,15 @@
-from enum import Enum
-
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
-from ..fileback.abc import SnapshotStatus
+from ..fileback.abc import SnapshotStatus, SnapshotFileErrorType, FileType
 
 __all__ = [
     "Base",
     "User",
-    "FileType",
     "Backup",
     "Snapshot",
     "SnapshotFile",
+    "SnapshotErrorFile",
     # "TrashFile",
 ]
 
@@ -57,11 +55,6 @@ class User(Base):
     permission = Column(Integer, nullable=False, default=0)
 
 
-class FileType(Enum):
-    FILE = 0
-    DIRECTORY = 1
-
-
 class Backup(Base):
     __tablename__ = "backups"
     __table_args__ = {
@@ -87,6 +80,9 @@ class Snapshot(Base):
     created = Column(DateTime(), nullable=False)
     directory = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
+    total_files = Column(Integer, nullable=False)
+    total_files_size = Column(Integer, nullable=False)
+    error_files = Column(Integer, nullable=False)
 
 
 class SnapshotFile(Base):
@@ -102,6 +98,23 @@ class SnapshotFile(Base):
     size = Column(Integer, nullable=True)
     type = Column(EnumType(enum_class=FileType), nullable=False)
     hash_md5 = Column(String, nullable=True)
+
+    __mapper_args__ = {
+        "primary_key": [snapshot_id, path]
+    }
+
+
+class SnapshotErrorFile(Base):
+    __tablename__ = "snapshot_error_files"
+    __table_args__ = {
+        "sqlite_autoincrement": True,
+    }
+
+    snapshot_id = Column(Integer, nullable=False)
+    path = Column(String, nullable=False)
+    error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)
+    error_message = Column(String, nullable=True)
+    type = Column(EnumType(enum_class=FileType), nullable=True)
 
     __mapper_args__ = {
         "primary_key": [snapshot_id, path]

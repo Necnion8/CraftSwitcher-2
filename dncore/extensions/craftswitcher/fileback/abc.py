@@ -10,11 +10,18 @@ if TYPE_CHECKING:
     from ..serverprocess import ServerProcess
 
 __all__ = [
+    "FileType",
     "SnapshotStatus",
+    "SnapshotFileErrorType",
     "FileInfo",
     "FileDifference",
     "BackupTask",
 ]
+
+
+class FileType(Enum):
+    FILE = 0
+    DIRECTORY = 1
 
 
 class SnapshotStatus(Enum):
@@ -22,6 +29,14 @@ class SnapshotStatus(Enum):
     NO_CHANGE = 0
     UPDATE = 1
     CREATE = 2
+
+
+class SnapshotFileErrorType(Enum):
+    UNKNOWN = -1
+    SCAN = 0
+    CREATE_DIRECTORY = 1
+    CREATE_LINK = 2
+    COPY_FILE = 3
 
 
 class FileInfo(NamedTuple):

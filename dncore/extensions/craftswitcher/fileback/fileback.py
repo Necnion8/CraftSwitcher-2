@@ -157,6 +157,10 @@ class Backupper(object):
         server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
     async def get_snapshot_file_info(self, snapshot_id: int) -> dict[str, FileInfo] | None:
+        """
+        データベースからスナップショットのファイル一覧を取得します
+        :return: ファイルパスとFileInfoのマップ
+        """
         files = await self._db.get_snapshot_files(snapshot_id)
         if files is None:
             return
@@ -169,9 +173,11 @@ class Backupper(object):
             ) for file in files if SnapshotStatus.DELETE != file.status
         }
 
-    async def test_create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
+    async def create_snapshot(self, server: "ServerProcess", comments: str = None) -> BackupTask:
         """
         指定サーバーのスナップショットバックアップを作成します
+
+        データベースから前回のリストを参照し、存在する場合は増分処理します。
 
         :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
         :except AlreadyBackupError: すでにバックアップを実行している場合
@@ -184,7 +190,7 @@ class Backupper(object):
         if not server_dir.is_dir():
             raise NotADirectoryError("Server directory is not exists or directory")
 
-        from ..database.model import Snapshot, SnapshotFile, FileType
+        from ..database.model import Snapshot, SnapshotFile, SnapshotErrorFile
 
         source_id = server.get_source_id()
         snap_dir = Path(source_id) / "snapshots"
@@ -202,83 +208,93 @@ class Backupper(object):
         last_snapshot = snapshots[-1] if snapshots else None
 
         async def _do():
-            action = "get snapshot latest"
             try:
-                starts = time.perf_counter()
-                tim = time.perf_counter()
-                if last_snapshot:
-                    old_files = await self.get_snapshot_file_info(last_snapshot.id)
-                    old_dir = self.backups_dir / snap_dir / last_snapshot.directory  # type: Path | None
-                else:
-                    old_files = None
-                    old_dir = None
-                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
-                tim = time.perf_counter()
+                action = "get snapshot latest"
+                try:
+                    starts = time.perf_counter()
+                    tim = time.perf_counter()
+                    if last_snapshot:
+                        old_files = await self.get_snapshot_file_info(last_snapshot.id)
+                        old_dir = self.backups_dir / snap_dir / last_snapshot.directory  # type: Path | None
+                    else:
+                        old_files = None
+                        old_dir = None
+                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    tim = time.perf_counter()
 
-                action = "scan current files"
-                files, _scan_errors = await async_scan_files(server_dir)
-                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
-                tim = time.perf_counter()
+                    action = "scan current files"
+                    files, _scan_errors = await async_scan_files(server_dir)
+                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    tim = time.perf_counter()
 
-                action = "process diff"
-                files_diff = compare_files_diff(old_files or {}, files)
-                snap_files = {
-                    entry.path: SnapshotFile(
-                        path=entry.path,
-                        status=entry.status,
-                        modified=i.modified_datetime if (i := entry.new_info) else None,
-                        size=i.size if (i := entry.new_info) else None,
-                        type=[
-                            FileType.FILE, FileType.DIRECTORY
-                        ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
-                    ) for entry in files_diff
-                }
-                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
-                tim = time.perf_counter()
+                    action = "process diff"
+                    files_diff = compare_files_diff(old_files or {}, files)
+                    snap_files = {
+                        entry.path: SnapshotFile(
+                            path=entry.path,
+                            status=entry.status,
+                            modified=i.modified_datetime if (i := entry.new_info) else None,
+                            size=i.size if (i := entry.new_info) else None,
+                            type=[
+                                FileType.FILE, FileType.DIRECTORY
+                            ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
+                        ) for entry in files_diff
+                    }
+                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    tim = time.perf_counter()
 
-                action = "creating snapshot files"
-                errors = await async_create_files_diff(
-                    SnapshotResult(server_dir, old_dir, files_diff), dst_path,
-                )  # TODO: エラーをフロントエンドにレポートする
+                    action = "creating snapshot files"
+                    errors = await async_create_files_diff(
+                        SnapshotResult(server_dir, old_dir, files_diff), dst_path,
+                    )  # TODO: エラーをフロントエンドにレポートする
 
-                log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
-                tim = time.perf_counter()
+                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    tim = time.perf_counter()
 
-                log.error("TOTAL TIME -> %sms", round((tim - starts) * 1000))
+                    log.error("TOTAL TIME -> %sms", round((tim - starts) * 1000))
 
-            except Exception as e:
-                server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
-                raise
+                except Exception as e:
+                    server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
+                    raise
+
+                try:
+                    snap_error_files = [SnapshotErrorFile(
+                        snapshot_id=None,
+                        path=_p,
+                        error_type=SnapshotFileErrorType.SCAN,
+                        error_message=f"{type(_e).__name__}: {_e}",
+                        type=None,
+                    ) for _p, _e in _scan_errors.items()]  # type: list[SnapshotErrorFile]
+
+                    for _file, _error, _err_type in errors:
+                        snap_files.pop(_file.path)
+                        snap_error_files.append(SnapshotErrorFile(
+                            snapshot_id=None,
+                            path=_file.path,
+                            error_type=_err_type,
+                            error_message=f"{type(_error).__name__}: {_error}",
+                            type=FileType.DIRECTORY if _file.new_info and _file.new_info.is_dir else FileType.FILE,
+                        ))
+
+                    snapshot_id = await self._db.add_snapshot(Snapshot(
+                        id=None,
+                        source=UUID(source_id),
+                        created=created,
+                        directory=dst_dir_name,
+                        comments=comments,
+                        total_files=len(files) + len(_scan_errors),
+                        total_files_size=sum(i.size for i in files.values()),
+                        error_files=len(_scan_errors) + len(errors),
+                    ), list(snap_files.values()), snap_error_files)
+
+                except Exception as e:
+                    server.log.error("Failed to add snapshot backup to database", exc_info=e)
+                    raise
             finally:
                 if self._tasks.get(server) is task:
                     _ = self._tasks.pop(server, None)
 
-            try:
-                for _file, _error in errors:
-                    snap_files.pop(_file.path)
-
-                snapshot_id = await self._db.add_snapshot(Snapshot(
-                    id=None,
-                    source=UUID(source_id),
-                    created=created,
-                    directory=dst_dir_name,
-                    comments=comments,
-                ), list(snap_files.values()))
-
-            except Exception as e:
-                server.log.error("Failed to add snapshot backup to database", exc_info=e)
-                raise
-
             server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
-
-            if _scan_errors:
-                log.warning(f"scan errors: {len(_scan_errors)}")
-                for _e in _scan_errors:
-                    log.info(f"- {_e}")
-            if errors:
-                log.warning(f"io errors: {len(errors)}")
-                for _e in errors:
-                    log.info(f"- {_e[0].path}")
             return snapshot_id
 
         server.log.info("Starting snapshot backup: %s", dst_path_name)

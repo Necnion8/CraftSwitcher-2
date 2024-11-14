@@ -206,8 +206,8 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
-    async def add_snapshot(self, snapshot: Snapshot, files: list[SnapshotFile]):
-        def _apply_id(s_id: int, f: SnapshotFile):
+    async def add_snapshot(self, snapshot: Snapshot, files: list[SnapshotFile], errors: list[SnapshotErrorFile]):
+        def _apply_id(s_id: int, f: SnapshotFile | SnapshotErrorFile):
             f.snapshot_id = s_id
             return f
 
@@ -218,5 +218,6 @@ class SwitcherDatabase(object):
                 await db.refresh(snapshot)
                 snapshot_id = snapshot.id
                 db.add_all(_apply_id(snapshot_id, f) for f in files)
+                db.add_all(_apply_id(snapshot_id, f) for f in errors)
                 await db.commit()
                 return snapshot_id
