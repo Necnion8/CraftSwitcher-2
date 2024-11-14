@@ -1,13 +1,6 @@
-import asyncio
 import datetime
 from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
-
-from ..files import FileTask, FileEventType
-
-if TYPE_CHECKING:
-    from ..serverprocess import ServerProcess
+from typing import NamedTuple
 
 __all__ = [
     "FileType",
@@ -15,7 +8,6 @@ __all__ = [
     "SnapshotFileErrorType",
     "FileInfo",
     "FileDifference",
-    "BackupTask",
 ]
 
 
@@ -57,10 +49,3 @@ class FileDifference(NamedTuple):
     old_info: FileInfo | None
     new_info: FileInfo | None
     status: SnapshotStatus
-
-
-class BackupTask(FileTask[int]):
-    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future[int]",
-                 server: "ServerProcess", comments: str | None):
-        super().__init__(task_id, FileEventType.BACKUP, src, None, fut, server)
-        self.comments = comments

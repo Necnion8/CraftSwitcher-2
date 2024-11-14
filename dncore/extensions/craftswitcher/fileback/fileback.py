@@ -10,12 +10,12 @@ from uuid import UUID
 from .abc import *
 from .snapshot import *
 from ..errors import AlreadyBackupError
+from ..files import FileManager, BackupTask, BackupType
 from ..utils import datetime_now
 
 if TYPE_CHECKING:
     from ..config import Backup as BackupConfig
     from ..database import SwitcherDatabase
-    from ..files import FileManager
     from ..serverprocess import ServerProcess
 
 __all__ = [
@@ -128,6 +128,7 @@ class Backupper(object):
             fut=fut,
             server=server,
             comments=comments,
+            backup_type=BackupType.FULL,
         )
 
         self._files.add_task(task)
@@ -305,6 +306,7 @@ class Backupper(object):
             fut=fut,
             server=server,
             comments=comments,
+            backup_type=BackupType.SNAPSHOT,
         )
 
         self._files.add_task(task)

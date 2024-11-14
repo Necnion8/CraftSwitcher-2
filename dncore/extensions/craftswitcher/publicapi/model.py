@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
 from dncore.extensions.craftswitcher.files import abc as fabc
+from dncore.extensions.craftswitcher.files.abc import BackupType
 from dncore.extensions.craftswitcher.files.archive import abc as aabc
 from dncore.extensions.craftswitcher.jardl import ServerBuildStatus
 
@@ -215,7 +216,9 @@ class FileTask(BaseModel):
     server: str | None = Field(description="対象のサーバー。値がある場合、xxx_path はサーバーディレクトリからの相対パス。")
 
     @classmethod
-    def create(cls, task: "fabc.FileTask"):
+    def create(cls, task: "fabc.FileTask | fabc.BackupTask"):
+        if isinstance(task, fabc.BackupTask):
+            return BackupTask.create(task)
         return cls(
             id=task.id,
             type=task.type,
@@ -224,6 +227,27 @@ class FileTask(BaseModel):
             src=task.src_swi_path,
             dst=task.dst_swi_path,
             server=task.server.id if task.server else None,
+        )
+
+
+class BackupTask(FileTask):
+    comments: str | None = Field(description="バックアップメモ")
+    backup_type: BackupType
+    backup_id: int | None = Field(description="バックアップID (完了後にセット)")
+
+    @classmethod
+    def create(cls, task: "fabc.BackupTask"):
+        return cls(
+            id=task.id,
+            type=task.type,
+            progress=task.progress,
+            result=task.result,
+            src=task.src_swi_path,
+            dst=task.dst_swi_path,
+            server=task.server.id if task.server else None,
+            comments=task.comments,
+            backup_type=task.backup_type,
+            backup_id=task.backup_id,
         )
 
 

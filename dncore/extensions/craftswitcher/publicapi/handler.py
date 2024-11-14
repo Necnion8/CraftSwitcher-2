@@ -965,7 +965,7 @@ class APIHandler(object):
             summary="ファイルタスクの一覧",
             description="実行中のファイル操作タスクのリストを返す",
         )
-        def _file_tasks() -> list[model.FileTask]:
+        def _file_tasks() -> list[model.FileTask | model.BackupTask]:
             return [model.FileTask.create(task) for task in self.files.tasks]
 
         @api.get(
