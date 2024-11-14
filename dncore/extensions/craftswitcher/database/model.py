@@ -93,10 +93,10 @@ class SnapshotFile(Base):
 
     snapshot_id = Column(Integer, nullable=False)
     path = Column(String, nullable=False)
+    type = Column(EnumType(enum_class=FileType), nullable=False)
+    size = Column(Integer, nullable=True)
     status = Column(EnumType(enum_class=SnapshotStatus), nullable=False)
     modified = Column(DateTime(), nullable=True)
-    size = Column(Integer, nullable=True)
-    type = Column(EnumType(enum_class=FileType), nullable=False)
     hash_md5 = Column(String, nullable=True)
 
     __mapper_args__ = {
@@ -112,9 +112,9 @@ class SnapshotErrorFile(Base):
 
     snapshot_id = Column(Integer, nullable=False)
     path = Column(String, nullable=False)
+    type = Column(EnumType(enum_class=FileType), nullable=True)
     error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)
     error_message = Column(String, nullable=True)
-    type = Column(EnumType(enum_class=FileType), nullable=True)
 
     __mapper_args__ = {
         "primary_key": [snapshot_id, path]

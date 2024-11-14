@@ -247,7 +247,7 @@ class Backupper(object):
                     action = "creating snapshot files"
                     errors = await async_create_files_diff(
                         SnapshotResult(server_dir, old_dir, files_diff), dst_path,
-                    )  # TODO: エラーをフロントエンドにレポートする
+                    )
 
                     log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
