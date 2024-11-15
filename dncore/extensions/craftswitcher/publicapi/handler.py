@@ -1359,10 +1359,47 @@ class APIHandler(object):
             return server
 
         @api.get(
+            "/backups",
+            summary="バックアップID一覧",
+        )
+        async def _get_backups() -> list[model.BackupId]:
+            servers = {
+                s.get_source_id(generate=False): s_id
+                for s_id, s in self.servers.items() if s
+            }
+            return [
+                model.BackupId(id=backup_id, source=source_id, server=servers.get(source_id.hex))
+                for backup_id, source_id in await db.get_backup_ids()
+            ]
+
+        @api.get(
+            "/backup/{backup_id}",
+            summary="バックアップの情報",
+        )
+        async def _get_backup(backup_id: int) -> model.Backup:
+            backup = await db.get_backup_or_snapshot(backup_id)
+            if not backup:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
+
+            return model.Backup.create(backup)
+
+        @api.delete(
+            "/backup/{backup_id}",
+            summary="バックアップの削除",
+            description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
+        )
+        async def _delete_backup(backup_id: int) -> bool:
+            try:
+                await self.backups.delete_backup(None, backup_id)
+            except ValueError as e:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
+            return True
+
+        @api.get(
             "/server/{server_id}/backups",
             summary="バックアップ一覧",
         )
-        async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
+        async def _get_server_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
             return [
                 model.Backup.create(b)
                 for b in await db.get_backups_or_snapshots(UUID(server.get_source_id()))
@@ -1372,7 +1409,7 @@ class APIHandler(object):
             "/server/{server_id}/backup",
             summary="実行中のバックアップタスクを取得",
         )
-        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> model.BackupTask | None:
+        def _get_server_backup_running(server: "ServerProcess" = Depends(getserver)) -> model.BackupTask | None:
             task = self.backups.get_running_task_by_server(server)
             return task and model.BackupTask.create(task) or None
 
@@ -1381,7 +1418,7 @@ class APIHandler(object):
             summary="バックアップを開始",
             description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
         )
-        async def _post_backup(
+        async def _post_server_backup(
             server: "ServerProcess" = Depends(getserver),
             comments: str | None = None,
             snapshot: bool = False,
@@ -1399,19 +1436,15 @@ class APIHandler(object):
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの情報",
         )
-        async def _get_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
-            backup = await db.get_backup_or_snapshot(backup_id)
-            if not backup:
-                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
-
-            return model.Backup.create(backup)
+        async def _get_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
+            return await _get_backup(backup_id)
 
         @api.delete(
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの削除",
             description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
         )
-        async def _delete_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
+        async def _delete_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
             try:
                 await self.backups.delete_backup(server, backup_id)
             except ValueError as e:

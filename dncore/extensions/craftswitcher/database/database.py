@@ -146,13 +146,13 @@ class SwitcherDatabase(object):
 
     # backupper
 
-    async def get_backup_ids(self) -> list[UUID]:
+    async def get_backup_ids(self) -> list[tuple[int, UUID]]:
         """
-        データベース内の全バックアップIDを返します
+        データベース内の全バックアップIDとソースIDを返します
         """
         async with self.session() as db:
-            result = await db.execute(select(Backup.id).order_by(Backup.created))
-            return [r[0] for r in result.all()]
+            result = await db.execute(select(Backup.id, Backup.source).order_by(Backup.created))
+            return [(r[0], r[1]) for r in result.all()]
 
     async def get_backups_or_snapshots(self, source: UUID) -> list[Backup]:
         """

@@ -386,6 +386,12 @@ class JavaPreset(BaseModel):
     registered: bool = Field(False, description="登録されている")
 
 
+class BackupId(BaseModel):
+    id: int
+    source: UUID
+    server: str | None = Field(description="ソースIDに紐づくサーバー")
+
+
 class Backup(BaseModel):
     id: int
     type: BackupType

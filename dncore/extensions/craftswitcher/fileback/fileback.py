@@ -90,7 +90,7 @@ class Backupper(object):
         archive_path_name = Path(server.get_source_id()) / archive_file_name
         archive_path = self.backups_dir / archive_path_name
         if not archive_path.parent.is_dir():
-            log.debug("creating backup directory: %s", archive_path.parent)
+            server.log.debug("creating backup directory: %s", archive_path.parent)
             archive_path.parent.mkdir(parents=True)
 
         async def _do() -> int:
@@ -139,7 +139,7 @@ class Backupper(object):
         self._files.add_task(task)
         return task
 
-    async def delete_backup(self, server: "ServerProcess", backup_id: int):
+    async def delete_backup(self, server: "ServerProcess | None", backup_id: int):
         """
         指定されたバックアップをファイルとデータベースから削除します
 
@@ -149,7 +149,8 @@ class Backupper(object):
         if not backup:
             raise ValueError("Not found backup")
 
-        server.log.info("Deleting backup: %s", backup_id)
+        _log = server and server.log or log
+        _log.info("Deleting backup: %s", backup_id)
         await self._db.remove_backup_or_snapshot(backup)
 
         backup_path = Path(self.backups_dir / backup.path)
@@ -157,11 +158,11 @@ class Backupper(object):
             try:
                 await self._files.delete(backup_path, server)
             except Exception as e:
-                server.log.warning(f"Failed to delete backup file: {e}: {backup_path}")
+                _log.warning(f"Failed to delete backup file: {e}: {backup_path}")
         else:
-            log.warning("Backup file not exists: %s", backup_path)
+            _log.warning("Backup file not exists: %s", backup_path)
 
-        server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
+        _log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
     async def get_snapshot_file_info(self, backup_id: int) -> dict[str, FileInfo] | None:
         """
@@ -203,7 +204,7 @@ class Backupper(object):
         dst_path_name = Path(source_id) / "snapshots" / create_snapshot_backup_filename()
         dst_path = self.backups_dir / dst_path_name
         if not dst_path.is_dir():
-            log.debug("creating backup directory: %s", dst_path)
+            server.log.debug("creating backup directory: %s", dst_path)
             dst_path.mkdir(parents=True)
 
         created = datetime_now()
@@ -222,12 +223,12 @@ class Backupper(object):
                             old_dir = self.backups_dir / last_snapshot.path  # type: Path | None
                             break
 
-                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "scan current files"
                     files, _scan_errors = await async_scan_files(server_dir)
-                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "process diff"
@@ -243,7 +244,7 @@ class Backupper(object):
                             ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
                         ) for entry in files_diff
                     }
-                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "creating snapshot files"
@@ -251,7 +252,7 @@ class Backupper(object):
                         SnapshotResult(server_dir, old_dir, files_diff), dst_path,
                     )
 
-                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
 
                 except Exception as e:
                     server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
