@@ -1364,52 +1364,47 @@ class APIHandler(object):
         )
         async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
             return [
-                model.Backup(
-                    id=backup.id,
-                    created=backup.created,
-                    path=backup.path,
-                    size=backup.size,
-                    comments=backup.comments,
-                ) for backup in await db.get_backups(UUID(server.get_source_id()))
+                model.Backup.create(b)
+                for b in await db.get_backups_or_snapshots(UUID(server.get_source_id()))
             ]
 
         @api.get(
             "/server/{server_id}/backup",
-            summary="バックアップ実行中かどうか",
+            summary="実行中のバックアップタスクを取得",
         )
-        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:
+        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> model.BackupTask | None:
             task = self.backups.get_running_task_by_server(server)
-            return bool(task)
+            return task and model.BackupTask.create(task) or None
 
         @api.post(
             "/server/{server_id}/backup",
             summary="バックアップを開始",
             description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
         )
-        async def _post_backup(server: "ServerProcess" = Depends(getserver), comments: str | None = None) -> bool:
-            task = self.backups.get_running_task_by_server(server)
-            if task:
+        async def _post_backup(
+            server: "ServerProcess" = Depends(getserver),
+            comments: str | None = None,
+            snapshot: bool = False,
+        ) -> model.BackupTask:
+            if self.backups.get_running_task_by_server(server):
                 raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
 
-            _ = await self.backups.create_backup(server, comments)
-            return True
+            if snapshot:
+                task = await self.backups.create_snapshot(server, comments)
+            else:
+                task = await self.backups.create_backup(server, comments)
+            return model.BackupTask.create(task)
 
         @api.get(
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの情報",
         )
         async def _get_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
-            backup = await db.get_backup(backup_id)
+            backup = await db.get_backup_or_snapshot(backup_id)
             if not backup:
                 raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
 
-            return model.Backup(
-                id=backup.id,
-                created=backup.created,
-                path=backup.path,
-                size=backup.size,
-                comments=backup.comments,
-            )
+            return model.Backup.create(backup)
 
         @api.delete(
             "/server/{server_id}/backup/{backup_id}",

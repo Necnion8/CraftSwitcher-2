@@ -1,6 +1,7 @@
 import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -387,7 +388,27 @@ class JavaPreset(BaseModel):
 
 class Backup(BaseModel):
     id: int
+    type: BackupType
+    source: UUID
     created: datetime.datetime
     path: str
-    size: int
     comments: str | None
+    total_files: int
+    total_files_size: int
+    error_files: int
+    final_size: int | None = Field(description="バックアップ後のサイズ。スナップショットでは null になります。")
+
+    @classmethod
+    def create(cls, backup: "db.Backup"):
+        return cls(
+            id=backup.id,
+            type=backup.type,
+            source=backup.source,
+            created=backup.created,
+            path=backup.path,
+            comments=backup.comments,
+            total_files=backup.total_files,
+            total_files_size=backup.total_files_size,
+            error_files=backup.error_files,
+            final_size=backup.final_size,
+        )

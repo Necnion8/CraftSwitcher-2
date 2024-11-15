@@ -191,9 +191,13 @@ class CraftSwitcher(EventListener):
 
     _test_server_id = "020debb7-8a4f-4fd1-be75-330e3df79150"
     _test_server_id = "ngnklife"
+
+    async def _test_3(self):
+        server = self.servers[self._test_server_id]
+        await self.backups.create_backup(server)
+
     async def _test_2(self):
         server = self.servers[self._test_server_id]
-        # task = await self.backups.test_create_snapshot(server, comments="Testing")
         await self.backups.create_snapshot(server)
 
     async def _test_1(self):
@@ -201,40 +205,41 @@ class CraftSwitcher(EventListener):
         from uuid import UUID
         source_id = UUID(server.get_source_id())
 
-        last = (await self.database.get_snapshots(source_id))[-1]
-        snapshot_dir = self.backups.backups_dir / source_id.hex / "snapshots" / last.directory  # type: Path
+        last = (await self.database.get_backups_or_snapshots(source_id))[-1]
+        snapshot_dir = self.backups.backups_dir / last.path  # type: Path
 
-        log.info(f"Last snapshot id: {last.id}")
+        log.info(f"Last backup id: {last.id} ({last.type})")
 
-        total_size = 0
-        used_size = 0
-        linked_file = 0
-        total_file = 0
+        if last.type.value == "snapshot":
+            total_size = 0
+            used_size = 0
+            linked_file = 0
+            total_file = 0
 
-        for c in snapshot_dir.glob("**/*"):  # type: Path
-            stat = c.stat()
-            if c.is_dir():
-                logo = " DIR"
-            elif 1 < stat.st_nlink:
-                logo = "LINK"
+            for c in snapshot_dir.glob("**/*"):  # type: Path
+                stat = c.stat()
+                if c.is_dir():
+                    logo = " DIR"
+                elif 1 < stat.st_nlink:
+                    logo = "LINK"
+                    log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+                    total_size += stat.st_size
+                    total_file += 1
+                    linked_file += 1
+                    continue
+                elif c.is_file():
+                    logo = "FILE"
+                    total_size += stat.st_size
+                    used_size += stat.st_size
+                    total_file += 1
+                else:
+                    logo = "----"
+
                 log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
-                total_size += stat.st_size
-                total_file += 1
-                linked_file += 1
-                continue
-            elif c.is_file():
-                logo = "FILE"
-                total_size += stat.st_size
-                used_size += stat.st_size
-                total_file += 1
-            else:
-                logo = "----"
 
-            log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
-
-        log.info(f"Last snapshot id: {last.id}")
-        log.info(f"Total file size: {total_size / 1024 / 1024:.0f} MB (total {total_file} files)")
-        log.info(f"Used file size: {used_size / 1024 / 1024:.0f} MB (total {linked_file} links)")
+            log.info(f"Last snapshot id: {last.id}")
+            log.info(f"Total file size: {total_size / 1024 / 1024:.0f} MB (total {total_file} files)")
+            log.info(f"Used file size: {used_size / 1024 / 1024:.0f} MB (total {linked_file} links)")
 
         #
 

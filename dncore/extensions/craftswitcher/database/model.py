@@ -2,17 +2,16 @@ from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
 from ..fileback.abc import SnapshotStatus, SnapshotFileErrorType, FileType
+from ..files import BackupType
 
 __all__ = [
     "Base",
     "User",
     "Backup",
-    "Snapshot",
     "SnapshotFile",
     "SnapshotErrorFile",
     # "TrashFile",
 ]
-
 
 Base = declarative_base()
 
@@ -24,19 +23,28 @@ class EnumType(TypeDecorator):
 
     def __init__(self, *args, **kwargs):
         self.enum_class = kwargs.pop('enum_class')
+        if kwargs.pop("map_to_int", None):
+            self.enum_int_vals = [e.value for e in self.enum_class]
+            self.enum_vals = list(self.enum_class)
         TypeDecorator.__init__(self, *args, **kwargs)
 
     def process_bind_param(self, value, dialect):
         if value is not None:
             if not isinstance(value, self.enum_class):
                 raise TypeError("Value should %s type" % self.enum_class)
-            return value.value
+            try:
+                return self.enum_int_vals.index(value.value)
+            except AttributeError:
+                return value.value
 
     def process_result_value(self, value, dialect):
         if value is not None:
-            if not isinstance(value, int):
-                raise TypeError("value should have int type")
-            return self.enum_class(value)
+            try:
+                return self.enum_vals[value]
+            except AttributeError:
+                if not isinstance(value, int):
+                    raise TypeError("value should have int type")
+                return self.enum_class(value)
 
 
 class User(Base):
@@ -62,27 +70,15 @@ class Backup(Base):
     }
 
     id = Column(Integer, primary_key=True)
+    type = Column(EnumType(enum_class=BackupType, map_to_int=True))
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
     path = Column(String, nullable=False)
-    size = Column(Integer, nullable=False)
-    comments = Column(String, nullable=True, default=None)
-
-
-class Snapshot(Base):
-    __tablename__ = "snapshots"
-    __table_args__ = {
-        "sqlite_autoincrement": True,
-    }
-
-    id = Column(Integer, primary_key=True)
-    source = Column(Uuid, nullable=False)
-    created = Column(DateTime(), nullable=False)
-    directory = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
     total_files = Column(Integer, nullable=False)
     total_files_size = Column(Integer, nullable=False)
     error_files = Column(Integer, nullable=False)
+    final_size = Column(Integer, nullable=True)
 
 
 class SnapshotFile(Base):
@@ -91,7 +87,7 @@ class SnapshotFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    snapshot_id = Column(Integer, nullable=False)
+    backup_id = Column(Integer, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=False)
     size = Column(Integer, nullable=True)
@@ -100,7 +96,7 @@ class SnapshotFile(Base):
     hash_md5 = Column(String, nullable=True)
 
     __mapper_args__ = {
-        "primary_key": [snapshot_id, path]
+        "primary_key": [backup_id, path]
     }
 
 
@@ -110,14 +106,14 @@ class SnapshotErrorFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    snapshot_id = Column(Integer, nullable=False)
+    backup_id = Column(Integer, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=True)
     error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)
     error_message = Column(String, nullable=True)
 
     __mapper_args__ = {
-        "primary_key": [snapshot_id, path]
+        "primary_key": [backup_id, path]
     }
 
 
