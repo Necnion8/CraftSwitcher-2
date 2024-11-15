@@ -144,7 +144,9 @@ class Backupper(object):
         if not backup:
             raise ValueError("Not found backup")
 
-        server.log.debug("Deleting backup: %s", backup_id)
+        server.log.info("Deleting backup: %s", backup_id)
+        await self._db.remove_backup(backup)
+
         backup_path = Path(self.backups_dir / backup.path)
         if backup_path.is_file():
             try:
@@ -154,7 +156,6 @@ class Backupper(object):
         else:
             log.warning("Backup file not exists: %s", backup_path)
 
-        await self._db.remove_backup(backup)
         server.log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
     async def get_snapshot_file_info(self, snapshot_id: int) -> dict[str, FileInfo] | None:
@@ -178,7 +179,7 @@ class Backupper(object):
         """
         指定サーバーのスナップショットバックアップを作成します
 
-        データベースから前回のリストを参照し、存在する場合は増分処理します。
+        データベースから前回のリストを参照し、存在する場合は増分処理(ハードリンク)します。
 
         :except NoArchiveHelperError: 対応するアーカイブヘルパーが見つからない
         :except AlreadyBackupError: すでにバックアップを実行している場合
@@ -209,10 +210,10 @@ class Backupper(object):
         last_snapshot = snapshots[-1] if snapshots else None
 
         async def _do():
+            starts = time.perf_counter()
             try:
                 action = "get snapshot latest"
                 try:
-                    starts = time.perf_counter()
                     tim = time.perf_counter()
                     if last_snapshot:
                         old_files = await self.get_snapshot_file_info(last_snapshot.id)
@@ -220,12 +221,12 @@ class Backupper(object):
                     else:
                         old_files = None
                         old_dir = None
-                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "scan current files"
                     files, _scan_errors = await async_scan_files(server_dir)
-                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "process diff"
@@ -241,7 +242,7 @@ class Backupper(object):
                             ][(i := (entry.new_info or entry.old_info)) and i.is_dir],
                         ) for entry in files_diff
                     }
-                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
                     action = "creating snapshot files"
@@ -249,10 +250,8 @@ class Backupper(object):
                         SnapshotResult(server_dir, old_dir, files_diff), dst_path,
                     )
 
-                    log.error("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
+                    log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
-
-                    log.error("TOTAL TIME -> %sms", round((tim - starts) * 1000))
 
                 except Exception as e:
                     server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
@@ -277,15 +276,25 @@ class Backupper(object):
                             type=FileType.DIRECTORY if _file.new_info and _file.new_info.is_dir else FileType.FILE,
                         ))
 
+                    total_files_count = len(files) + len(_scan_errors)
+                    error_files_count = len(_scan_errors) + len(errors)
+                    total_files_size = sum(i.size for i in files.values())
+                    _copied_files = [
+                        f.new_info.size for f in files_diff
+                        if f.new_info and f.status in (SnapshotStatus.CREATE, SnapshotStatus.UPDATE)
+                    ]
+                    copied_files_count = len(_copied_files)
+                    copied_files_size = sum(_copied_files)
+
                     snapshot_id = await self._db.add_snapshot(Snapshot(
                         id=None,
                         source=UUID(source_id),
                         created=created,
                         directory=dst_dir_name,
                         comments=comments,
-                        total_files=len(files) + len(_scan_errors),
-                        total_files_size=sum(i.size for i in files.values()),
-                        error_files=len(_scan_errors) + len(errors),
+                        total_files=total_files_count,
+                        total_files_size=total_files_size,
+                        error_files=error_files_count,
                     ), list(snap_files.values()), snap_error_files)
 
                 except Exception as e:
@@ -296,6 +305,11 @@ class Backupper(object):
                     _ = self._tasks.pop(server, None)
 
             server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
+            server.log.info(f"  Total {total_files_count:,} files ({total_files_size / 1024 / 1024:,.0f} MB)")
+            server.log.info(f"  Copied {copied_files_count:,} files ({copied_files_size / 1024 / 1024:,.0f} MB)")
+            if error_files_count:
+                server.log.warning(f"  Error {error_files_count:,} files")
+            server.log.info(f"  Total time: {time.perf_counter() - starts:.1f}s")
             return snapshot_id
 
         server.log.info("Starting snapshot backup: %s", dst_path_name)
@@ -311,3 +325,27 @@ class Backupper(object):
 
         self._files.add_task(task)
         return task
+
+    async def delete_snapshot(self, server: "ServerProcess", snapshot_id: int):
+        """
+        指定されたIDのスナップショットをファイルとデータベースから削除します
+
+        :except ValueError: 存在しないスナップショットID
+        """
+        snapshot = await self._db.get_snapshot(snapshot_id)
+        if not snapshot:
+            raise ValueError("Not found snapshot")
+
+        server.log.info("Deleting snapshot: %s", snapshot_id)
+        await self._db.remove_snapshot(snapshot)
+
+        snapshot_path = self.backups_dir / Path(snapshot.source.hex) / "snapshots" / snapshot.path
+        if snapshot_path.exists():
+            try:
+                await self._files.delete(snapshot_path, server)
+            except Exception as e:
+                server.log.warning(f"Failed to delete snapshot file: {e}: {snapshot_path}")
+        else:
+            log.warning("Backup file not exists: %s", snapshot_path)
+
+        server.log.info("Completed delete snapshot: %s (id: %s)", snapshot_path, snapshot.id)

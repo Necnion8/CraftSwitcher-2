@@ -221,3 +221,17 @@ class SwitcherDatabase(object):
                 db.add_all(_apply_id(snapshot_id, f) for f in errors)
                 await db.commit()
                 return snapshot_id
+
+    async def remove_snapshot(self, snapshot: Snapshot | int):
+        async with self._commit_lock:
+            async with self.session() as db:
+                if isinstance(snapshot, Snapshot):
+                    await db.delete(snapshot)
+                    snapshot_id = snapshot.id
+                else:
+                    await db.execute(delete(Snapshot).where(Snapshot.id == snapshot))
+                    snapshot_id = snapshot
+
+                await db.delete(select(SnapshotFile).where(SnapshotFile.snapshot_id == snapshot_id))
+                await db.delete(select(SnapshotErrorFile).where(SnapshotErrorFile.snapshot_id == snapshot_id))
+                await db.commit()
