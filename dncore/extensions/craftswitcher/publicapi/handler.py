@@ -323,9 +323,15 @@ class APIHandler(object):
             "/java/preset/list",
             dependencies=[Depends(self.get_authorized_user), ],
             summary="Javaプリセット一覧",
-            description="登録されているJavaプリセットを返します (自動検出したものを含みます)",
+            description=(
+                    "登録されているJavaプリセットを返します (自動検出したものを含みます)\n\n"
+                    "`server_type` と `server_version` を指定することで、Javaプリセットがサーバーに推奨されるか評価します。"
+            ),
         )
-        def _get_java_preset_list() -> list[model.JavaPreset]:
+        def _get_java_preset_list(
+            server_type: ServerType | None = None,
+            server_version: str | None = None,
+        ) -> list[model.JavaPreset]:
             presets = []  # type: list[model.JavaPreset]
             config_presets = list(self.inst.config.java.presets)  # type: list[JavaPresetConfig]
 
@@ -344,6 +350,7 @@ class APIHandler(object):
                     info=preset.info and model.JavaExecutableInfo.create(preset.info),
                     available=bool(preset.info),
                     registered=registered,
+                    recommended=0 if server_type and server_version else None,
                 ))
 
             return presets

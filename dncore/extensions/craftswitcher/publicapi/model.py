@@ -360,6 +360,7 @@ class JavaPreset(BaseModel):
     info: JavaExecutableInfo | None = Field(description="Java 情報")
     available: bool = Field(False, description="利用可能")
     registered: bool = Field(False, description="登録されている")
+    recommended: int | None = Field(None, description="リクエストによって推奨される度合い\n\n値が高ければより推奨され、0 または -1 は評価されないか推奨されません。")
 
 
 class Backup(BaseModel):
