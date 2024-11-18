@@ -328,21 +328,34 @@ class APIHandler(object):
                     "`server_type` と `server_version` を指定することで、Javaプリセットがサーバーに推奨されるか評価します。"
             ),
         )
-        def _get_java_preset_list(
+        async def _get_java_preset_list(
             server_type: ServerType | None = None,
             server_version: str | None = None,
         ) -> list[model.JavaPreset]:
             presets = []  # type: list[model.JavaPreset]
             config_presets = list(self.inst.config.java.presets)  # type: list[JavaPresetConfig]
 
-            for preset in self.inst.java_presets:
-                registered = False
+            java_major_version = None
+            if server_type and server_version:
                 try:
-                    config_presets.remove(preset.config)
-                except ValueError:
-                    pass
-                else:
-                    registered = True
+                    java_major_version = await self.inst.get_java_version_from_server_type(server_type, server_version)
+                except Exception as e:
+                    log.warning(f"Failed to get java version by server type: {e}")
+
+            for preset in self.inst.java_presets:
+                registered = preset.config in config_presets
+
+                recommended = None
+                if server_type and server_version and preset.info:
+                    if java_major_version:
+                        if java_major_version == preset.major_version:
+                            recommended = 2
+                        elif java_major_version < preset.major_version:
+                            recommended = 1
+                        else:
+                            recommended = -1
+                    else:
+                        recommended = 0
 
                 presets.append(model.JavaPreset(
                     name=preset.name,
@@ -350,7 +363,7 @@ class APIHandler(object):
                     info=preset.info and model.JavaExecutableInfo.create(preset.info),
                     available=bool(preset.info),
                     registered=registered,
-                    recommended=0 if server_type and server_version else None,
+                    recommended=recommended,
                 ))
 
             return presets

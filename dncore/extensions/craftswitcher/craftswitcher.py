@@ -505,7 +505,35 @@ class CraftSwitcher(EventListener):
                 downloaders.remove(downloader)
             except ValueError:
                 pass
-    
+
+    async def get_java_version_from_server_type(self, server_type: ServerType, server_version: str) -> int | None:
+        if server_type.spec.is_proxy:
+            return {
+                # https://docs.papermc.io/velocity/getting-started#installing-java
+                ServerType.VELOCITY: 17,
+                # https://www.spigotmc.org/wiki/bungeecord-installation/#installing-bungeecord-on-linux
+                ServerType.BUNGEECORD: 8,
+                ServerType.WATERFALL: 8,
+
+            }.get(server_type)
+
+        else:
+            try:
+                downloader = self.server_downloaders[ServerType.VANILLA][0]
+            except (KeyError, IndexError):
+                return
+
+            for ver in await downloader.list_versions():
+                if ver.mc_version != server_version:
+                    continue
+
+                for build in reversed(await ver.list_builds()):
+                    if major_version := build.java_major_version:
+                        return major_version
+                break
+
+        return None
+
     # util
 
     def create_file_info(self, realpath: Path, *, root_dir: Path = None):
