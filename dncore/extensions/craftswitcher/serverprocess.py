@@ -146,6 +146,10 @@ class ServerProcess(object):
         def last_backup_at(self):
             return self._config.last_backup_at
 
+        @property
+        def installer(self):
+            return self._config.installer
+
     def __init__(
             self, loop: asyncio.AbstractEventLoop,
             directory: Path, server_id: str,

@@ -71,6 +71,13 @@ class LaunchOption(ConfigValues):
     enable_screen: bool | None
 
 
+class ServerInstallerInfo(ConfigValues):
+    type: ServerType | None = None
+    version: str | None = None
+    build: str | None = None
+    require_build: bool | None = None
+
+
 class ServerConfig(FileConfigValues):
     # 表示名
     name: str | None
@@ -103,6 +110,9 @@ class ServerConfig(FileConfigValues):
     last_launch_at: datetime.datetime | None
     # 最後にバックアップした日付
     last_backup_at: datetime.datetime | None
+
+    # 使用したサーバーインストーラー
+    installer: ServerInstallerInfo
 
     # ファイル識別用
     source_id: str | None

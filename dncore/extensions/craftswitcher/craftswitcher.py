@@ -945,15 +945,21 @@ class CraftSwitcher(EventListener):
                 return
 
             jar_build.downloaded_path = dst
+            config = server._config
+
             if jar_build.is_require_build():
                 server.builder = await jar_build.setup_builder(server, dst)
 
             else:
-                config = server._config
                 config.type = server_type
                 config.enable_launch_command = False
                 config.launch_option.jar_file = dst.name
-                config.save()
+
+            config.installer.type = server_type
+            config.installer.version = jar_build.mc_version
+            config.installer.build = jar_build.build
+            config.installer.require_build = jar_build.is_require_build()
+            config.save()
 
         task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))
         return task

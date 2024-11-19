@@ -148,6 +148,10 @@ class ServerConfig(BaseModel):
     created_at: datetime.datetime | None = Field(None, description="作成された日付")
     last_launch_at: datetime.datetime | None = Field(None, description="最後に起動した日付")
     last_backup_at: datetime.datetime | None = Field(None, description="最後にバックアップした日付")
+    installer__type: abc.ServerType | None = Field(None, description="インストールされたサーバーの種類")
+    installer__version: str | None = Field(None, description="インストールされたサーバーバージョン")
+    installer__build: str | None = Field(None, description="インストールされたサーバービルド")
+    installer__require_build: bool | None = Field(None, description="ビルドが必要なインストーラー")
 
     class Config:
         @staticmethod
