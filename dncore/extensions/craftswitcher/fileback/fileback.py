@@ -26,9 +26,8 @@ __all__ = [
 log = getLogger(__name__)
 
 
-def create_backup_filename(comments: str = None):
-    backup_dt = datetime_now()
-    archive_file_name = backup_dt.strftime("%Y%m%d_%H%M%S")
+def create_backup_filename(dt: datetime.datetime, comments: str = None):
+    archive_file_name = dt.strftime("%Y%m%d_%H%M%S")
 
     if comments:
         comments = re.sub(r"[\\/:*?\"<>|]+", "_", comments)
@@ -38,8 +37,8 @@ def create_backup_filename(comments: str = None):
     return archive_file_name
 
 
-def create_snapshot_backup_filename():
-    return create_backup_filename(None)
+def create_snapshot_backup_filename(dt: datetime.datetime):
+    return create_backup_filename(dt, None)
 
 
 class Backupper(object):
@@ -83,7 +82,8 @@ class Backupper(object):
 
         from ..database.model import Backup
 
-        archive_file_name = create_backup_filename(comments)
+        created_dt = datetime_now()
+        archive_file_name = create_backup_filename(created_dt, comments)
         suffix, helper = self._files.find_archive_helper_with_suffixes(["7z", "zip"])
 
         archive_file_name += f".{suffix}"
@@ -109,7 +109,7 @@ class Backupper(object):
                     id=None,
                     type=BackupType.FULL,
                     source=UUID(server.get_source_id()),
-                    created=datetime_now(),
+                    created=created_dt,
                     path=archive_path_name.as_posix(),
                     comments=comments or None,
                     total_files=-1,  # TODO: put from archiver
@@ -120,6 +120,11 @@ class Backupper(object):
 
             except Exception as e:
                 server.log.error("Failed to add backup to database", exc_info=e)
+                if archive_path.is_file():
+                    try:
+                        await self._files.delete(archive_path)
+                    except Exception as e:
+                        server.log.warning(f"Failed to delete failed backup file: {e}")
                 raise
 
             server.log.info("Completed backup: %s (id: %s)", archive_path, backup_id)
@@ -200,14 +205,13 @@ class Backupper(object):
 
         from ..database.model import Backup, SnapshotFile, SnapshotErrorFile
 
+        created_dt = datetime_now()
         source_id = server.get_source_id()
-        dst_path_name = Path(source_id) / "snapshots" / create_snapshot_backup_filename()
+        dst_path_name = Path(source_id) / "snapshots" / create_snapshot_backup_filename(created_dt)
         dst_path = self.backups_dir / dst_path_name
         if not dst_path.is_dir():
             server.log.debug("creating backup directory: %s", dst_path)
             dst_path.mkdir(parents=True)
-
-        created = datetime_now()
 
         async def _do():
             starts = time.perf_counter()
@@ -256,6 +260,11 @@ class Backupper(object):
 
                 except Exception as e:
                     server.log.exception(f"Failed to server snapshot backup: in {action}", exc_info=e)
+                    if dst_path.is_dir():
+                        try:
+                            await self._files.delete(dst_path)
+                        except Exception as e:
+                            server.log.warning(f"Failed to delete failed backup file: {e}")
                     raise
 
                 try:
@@ -289,7 +298,7 @@ class Backupper(object):
                         id=None,
                         type=BackupType.SNAPSHOT,
                         source=UUID(source_id),
-                        created=created,
+                        created=created_dt,
                         path=dst_path_name.as_posix(),
                         comments=comments,
                         total_files=total_files_count,
@@ -300,6 +309,11 @@ class Backupper(object):
 
                 except Exception as e:
                     server.log.error("Failed to add snapshot backup to database", exc_info=e)
+                    if dst_path.is_dir():
+                        try:
+                            await self._files.delete(dst_path)
+                        except Exception as e:
+                            server.log.warning(f"Failed to delete failed backup file: {e}")
                     raise
             finally:
                 if self._tasks.get(server) is task:
