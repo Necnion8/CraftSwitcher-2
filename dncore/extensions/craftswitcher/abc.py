@@ -36,7 +36,10 @@ class ServerState(Enum):
 
     @property
     def old_value(self):
-        return _SERVER_STATE_OLD_VALUE.index(self)
+        try:
+            return _SERVER_STATE_OLD_VALUE.index(self)
+        except ValueError:
+            return -1
 
     @classmethod
     def of_old_value(cls, int_value: int):
