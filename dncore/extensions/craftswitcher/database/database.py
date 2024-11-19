@@ -221,8 +221,8 @@ class SwitcherDatabase(object):
                     await db.execute(delete(Backup).where(Backup.id == backup))
                     backup_id = backup
 
-                await db.delete(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
-                await db.delete(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
+                await db.execute(delete(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+                await db.execute(delete(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
                 await db.commit()
 
     async def get_snapshot_files(self, backup_id: int) -> list[SnapshotFile] | None:
