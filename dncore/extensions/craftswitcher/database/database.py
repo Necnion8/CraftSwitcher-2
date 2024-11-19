@@ -8,10 +8,10 @@ from uuid import UUID
 from passlib.context import CryptContext
 from sqlalchemy import URL, select, delete
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, AsyncEngine, create_async_engine
 
 from .model import *
+from ..files import BackupType
 from ..utils import datetime_now
 
 log = getLogger(__name__)
@@ -146,12 +146,30 @@ class SwitcherDatabase(object):
 
     # backupper
 
-    async def get_backups(self, source: UUID) -> list[Backup]:
+    async def get_backup_ids(self) -> list[tuple[int, UUID]]:
+        """
+        データベース内の全バックアップIDとソースIDを返します
+        """
         async with self.session() as db:
-            result = await db.execute(select(Backup).where(Backup.source == source))
+            result = await db.execute(select(Backup.id, Backup.source).order_by(Backup.created))
+            return [(r[0], r[1]) for r in result.all()]
+
+    async def get_backups_or_snapshots(self, source: UUID) -> list[Backup]:
+        """
+        ソースIDに関連するバックアップを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
             return [r[0] for r in result.all()]
 
-    async def get_backup(self, backup_id: int) -> Backup | None:
+    async def get_backup_or_snapshot(self, backup_id: int) -> Backup | None:
+        """
+        指定IDのバックアップを返します
+        """
         async with self.session() as db:
             result = await db.execute(select(Backup).where(Backup.id == backup_id))
             try:
@@ -159,7 +177,9 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
-    async def add_backup(self, backup: Backup):
+    async def add_full_backup(self, backup: Backup):
+        if backup.type != BackupType.FULL:
+            raise ValueError(f"Not full type backup: {backup.type}")
         async with self._commit_lock:
             async with self.session() as db:
                 db.add(backup)
@@ -169,11 +189,54 @@ class SwitcherDatabase(object):
                 await db.commit()
                 return backup_id
 
-    async def remove_backup(self, backup: Backup | int):
+    async def add_snapshot_backup(self, backup: Backup, files: list[SnapshotFile], errors: list[SnapshotErrorFile]):
+        if backup.type != BackupType.SNAPSHOT:
+            raise ValueError(f"Not snapshot type backup: {backup.type}")
+
+        def _apply_id(s_id: int, f: SnapshotFile | SnapshotErrorFile):
+            f.backup_id = s_id
+            return f
+
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(backup)
+                await db.flush()
+                await db.refresh(backup)
+                backup_id = backup.id
+                db.add_all(_apply_id(backup_id, f) for f in files)
+                db.add_all(_apply_id(backup_id, f) for f in errors)
+                await db.commit()
+                return backup_id
+
+    async def remove_backup_or_snapshot(self, backup: Backup | int):
+        """
+        バックアップと、それに関連づいたスナップショットファイルを全て削除します
+        """
         async with self._commit_lock:
             async with self.session() as db:
                 if isinstance(backup, Backup):
                     await db.delete(backup)
+                    backup_id = backup.id
                 else:
                     await db.execute(delete(Backup).where(Backup.id == backup))
+                    backup_id = backup
+
+                await db.delete(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+                await db.delete(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
                 await db.commit()
+
+    async def get_snapshot_files(self, backup_id: int) -> list[SnapshotFile] | None:
+        async with self.session() as db:
+            result = await db.execute(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+            try:
+                return [r[0] for r in result.all()]
+            except NoResultFound:
+                return None
+
+    async def get_snapshot_errors_files(self, backup_id: int) -> list[SnapshotErrorFile] | None:
+        async with self.session() as db:
+            result = await db.execute(select(SnapshotFile).where(SnapshotErrorFile.backup_id == backup_id))
+            try:
+                return [r[0] for r in result.all()]
+            except NoResultFound:
+                return None

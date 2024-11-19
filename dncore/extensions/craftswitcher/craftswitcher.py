@@ -186,35 +186,60 @@ class CraftSwitcher(EventListener):
 
         asyncio.create_task(self.scan_java_executables())
 
-    async def _test(self):
-        root_dir = self.files.root_dir
-        server_dir = root_dir / "paper1_8"
-        plugins_dir = server_dir / "plugins"
-        plugins = [plugins_dir / "ItemRecall.jar", plugins_dir / "LuckPerms.jar", ]
-        out_file = root_dir / "test.zip"
+    async def _test(self, arg: str):
+        return await getattr(self, f"_test_{arg}")()
 
-        if out_file.is_file():
-            os.remove(out_file)
+    _test_server_id = "020debb7-8a4f-4fd1-be75-330e3df79150"
+    _test_server_id = "ngnklife"
 
-        # configuration
-        zip_out = out_file
-        zip_root = server_dir
-        zip_target = [*plugins, root_dir / "paper1_21" / "eula.txt"]
-        # configuration
+    async def _test_3(self):
+        server = self.servers[self._test_server_id]
+        await self.backups.create_backup(server)
 
-        zip_target = zip_target if isinstance(zip_target, list) else [zip_target]
-        log.info("START MAKE ARCHIVE")
-        # log.debug(f"  output: {zip_out.relative_to(root_dir)}")
-        log.debug(f"  root  : {zip_root.relative_to(root_dir)}")
-        log.debug(f"  target: {', '.join(map(lambda p: str(p.relative_to(root_dir)), zip_target))}")
+    async def _test_2(self):
+        server = self.servers[self._test_server_id]
+        await self.backups.create_snapshot(server)
 
-        task = await self.files.make_archive(zip_out, zip_root, zip_target)
-        await task
+    async def _test_1(self):
+        server = self.servers[self._test_server_id]
+        from uuid import UUID
+        source_id = UUID(server.get_source_id())
 
-        log.info("COMPLETED")
+        last = (await self.database.get_backups_or_snapshots(source_id))[-1]
+        snapshot_dir = self.backups.backups_dir / last.path  # type: Path
 
-        for entry in await self.files.list_archive(zip_out):
-            log.debug(f"- {entry.filename}")
+        log.info(f"Last backup id: {last.id} ({last.type})")
+
+        if last.type.value == "snapshot":
+            total_size = 0
+            used_size = 0
+            linked_file = 0
+            total_file = 0
+
+            for c in snapshot_dir.glob("**/*"):  # type: Path
+                stat = c.stat()
+                if c.is_dir():
+                    logo = " DIR"
+                elif 1 < stat.st_nlink:
+                    logo = "LINK"
+                    log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+                    total_size += stat.st_size
+                    total_file += 1
+                    linked_file += 1
+                    continue
+                elif c.is_file():
+                    logo = "FILE"
+                    total_size += stat.st_size
+                    used_size += stat.st_size
+                    total_file += 1
+                else:
+                    logo = "----"
+
+                log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+
+            log.info(f"Last snapshot id: {last.id}")
+            log.info(f"Total file size: {total_size / 1024 / 1024:.0f} MB (total {total_file} files)")
+            log.info(f"Used file size: {used_size / 1024 / 1024:.0f} MB (total {linked_file} links)")
 
         #
 

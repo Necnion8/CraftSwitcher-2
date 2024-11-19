@@ -3,7 +3,7 @@ import mimetypes
 import shutil
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable
+from typing import TYPE_CHECKING, Any, Coroutine, NamedTuple, Iterable, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Depends, Request, APIRouter
@@ -1037,7 +1037,7 @@ class APIHandler(object):
             summary="ファイルタスクの一覧",
             description="実行中のファイル操作タスクのリストを返す",
         )
-        def _file_tasks() -> list[model.FileTask]:
+        def _file_tasks() -> list[model.FileTask | model.BackupTask]:
             return [model.FileTask.create(task) for task in self.files.tasks]
 
         @api.get(
@@ -1474,64 +1474,92 @@ class APIHandler(object):
             return server
 
         @api.get(
+            "/backups",
+            summary="バックアップID一覧",
+        )
+        async def _get_backups() -> list[model.BackupId]:
+            servers = {
+                s.get_source_id(generate=False): s_id
+                for s_id, s in self.servers.items() if s
+            }
+            return [
+                model.BackupId(id=backup_id, source=source_id, server=servers.get(source_id.hex))
+                for backup_id, source_id in await db.get_backup_ids()
+            ]
+
+        @api.get(
+            "/backup/{backup_id}",
+            summary="バックアップの情報",
+        )
+        async def _get_backup(backup_id: int) -> model.Backup:
+            backup = await db.get_backup_or_snapshot(backup_id)
+            if not backup:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
+
+            return model.Backup.create(backup)
+
+        @api.delete(
+            "/backup/{backup_id}",
+            summary="バックアップの削除",
+            description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
+        )
+        async def _delete_backup(backup_id: int) -> bool:
+            try:
+                await self.backups.delete_backup(None, backup_id)
+            except ValueError as e:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
+            return True
+
+        @api.get(
             "/server/{server_id}/backups",
             summary="バックアップ一覧",
         )
-        async def _get_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
+        async def _get_server_backups(server: "ServerProcess" = Depends(getserver)) -> list[model.Backup]:
             return [
-                model.Backup(
-                    id=backup.id,
-                    created=backup.created,
-                    path=backup.path,
-                    size=backup.size,
-                    comments=backup.comments,
-                ) for backup in await db.get_backups(UUID(server.get_source_id()))
+                model.Backup.create(b)
+                for b in await db.get_backups_or_snapshots(UUID(server.get_source_id()))
             ]
 
         @api.get(
             "/server/{server_id}/backup",
-            summary="バックアップ実行中かどうか",
+            summary="実行中のバックアップタスクを取得",
         )
-        def _get_backup(server: "ServerProcess" = Depends(getserver)) -> bool:
+        def _get_server_backup_running(server: "ServerProcess" = Depends(getserver)) -> model.BackupTask | None:
             task = self.backups.get_running_task_by_server(server)
-            return bool(task)
+            return task and model.BackupTask.create(task) or None
 
         @api.post(
             "/server/{server_id}/backup",
             summary="バックアップを開始",
             description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
         )
-        async def _post_backup(server: "ServerProcess" = Depends(getserver), comments: str | None = None) -> bool:
-            task = self.backups.get_running_task_by_server(server)
-            if task:
+        async def _post_server_backup(
+            server: "ServerProcess" = Depends(getserver),
+            comments: str | None = None,
+            snapshot: bool = False,
+        ) -> model.BackupTask:
+            if self.backups.get_running_task_by_server(server):
                 raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
 
-            _ = await self.backups.create_backup(server, comments)
-            return True
+            if snapshot:
+                task = await self.backups.create_snapshot(server, comments)
+            else:
+                task = await self.backups.create_backup(server, comments)
+            return model.BackupTask.create(task)
 
         @api.get(
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの情報",
         )
-        async def _get_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
-            backup = await db.get_backup(backup_id)
-            if not backup:
-                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
-
-            return model.Backup(
-                id=backup.id,
-                created=backup.created,
-                path=backup.path,
-                size=backup.size,
-                comments=backup.comments,
-            )
+        async def _get_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
+            return await _get_backup(backup_id)
 
         @api.delete(
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの削除",
             description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
         )
-        async def _delete_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
+        async def _delete_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
             try:
                 await self.backups.delete_backup(server, backup_id)
             except ValueError as e:
@@ -1736,8 +1764,7 @@ class APIHandler(object):
             return True
 
         @api.get("/test")
-        async def _test():
-            self.inst.loop.create_task(self.inst._test())
-            return True
+        async def _test(arg: Literal["1", "2", "3", "4", "5", "6", "7", "8", "9"] = "1"):
+            return await self.inst._test(arg)
 
         return api

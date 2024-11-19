@@ -1,8 +1,8 @@
+import asyncio
 from enum import Enum
 from typing import TYPE_CHECKING, TypeVar, Generator, Any, Generic
 
 if TYPE_CHECKING:
-    import asyncio
     from pathlib import Path
     from dncore.extensions.craftswitcher import ServerProcess
 
@@ -10,6 +10,8 @@ __all__ = [
     "FileEventType",
     "FileTaskResult",
     "FileTask",
+    "BackupType",
+    "BackupTask",
 ]
 _T = TypeVar("_T")
 
@@ -30,6 +32,11 @@ class FileTaskResult(Enum):
     PENDING = "pending"
     SUCCESS = "success"
     FAILED = "failed"
+
+
+class BackupType(Enum):
+    FULL = "full"
+    SNAPSHOT = "snapshot"
 
 
 class FileTask(Generic[_T]):
@@ -59,3 +66,18 @@ class FileTask(Generic[_T]):
 
     def __await__(self) -> Generator[Any, None, _T]:
         return self.fut.__await__()
+
+
+class BackupTask(FileTask[int]):
+    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future[int]",
+                 server: "ServerProcess", comments: str | None, backup_type: BackupType):
+        super().__init__(task_id, FileEventType.BACKUP, src, None, fut, server)
+        self.comments = comments
+        self.backup_type = backup_type
+
+    @property
+    def backup_id(self) -> int | None:
+        try:
+            return self.fut.result() if self.fut.done() else None
+        except (asyncio.InvalidStateError, asyncio.CancelledError, Exception, ):
+            pass
