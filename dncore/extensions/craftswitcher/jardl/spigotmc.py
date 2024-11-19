@@ -6,6 +6,7 @@ import aiohttp
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV
 from ..abc import ServerType
+from ..utiljava import JavaPreset
 
 __all__ = [
     "SpigotBuild",
@@ -22,9 +23,10 @@ class SpigotBuilder(ServerBuilder):
 
     async def _call(self, params: ServerBuilder.Parameters):
         self.jar_filename = None
+        java_executable = (self.java_preset and self.java_preset.executable) or self.server.get_java_executable()
         params.cwd = self.build.downloaded_path.parent
         params.args = [
-            self.server.get_java_executable(),
+            java_executable,
             "-jar",
             str(self.build.downloaded_path.name),
             "--compile", "SPIGOT",
@@ -48,8 +50,8 @@ class SpigotBuild(ServerBuild):
     def is_require_build(self):
         return True
 
-    async def setup_builder(self, server, downloaded_path) -> SpigotBuilder:
-        return SpigotBuilder(ServerType.SPIGOT, self, server)
+    async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> SpigotBuilder:
+        return SpigotBuilder(ServerType.SPIGOT, self, server, java_preset)
 
 
 class SpigotServerDownloader(ServerDownloader):

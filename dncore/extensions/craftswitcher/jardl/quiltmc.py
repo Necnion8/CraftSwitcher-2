@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV
 from ..abc import ServerType
 from ..config import ServerConfig
+from ..utiljava import JavaPreset
 
 __all__ = [
     "GameVersionEntry",
@@ -45,9 +46,10 @@ class VersionsInfo(BaseModel):
 
 class ServerInstaller(ServerBuilder):
     async def _call(self, params: ServerBuilder.Parameters):
+        java_executable = (self.java_preset and self.java_preset.executable) or self.server.get_java_executable()
         params.cwd = self.work_dir
         params.args = [
-            self.server.get_java_executable(),
+            java_executable,
             "-jar",
             str(self.build.downloaded_path),
             "install",
@@ -65,8 +67,8 @@ class LoaderVersion(ServerBuild):
     def is_require_build(self):
         return True
 
-    async def setup_builder(self, server, downloaded_path) -> ServerBuilder:
-        return ServerInstaller(ServerType.QUILT, self, server)
+    async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> ServerBuilder:
+        return ServerInstaller(ServerType.QUILT, self, server, java_preset)
 
 
 class GameVersion(ServerMCVersion[LoaderVersion]):

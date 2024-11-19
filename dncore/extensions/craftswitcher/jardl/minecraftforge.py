@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV, SB
 from ..abc import ServerType
 from ..config import ServerConfig
+from ..utiljava import JavaPreset
 
 __all__ = [
     "VersionMetaInfo",
@@ -54,9 +55,10 @@ class ForgeBuilder(ServerBuilder):
         return self.server.directory
 
     async def _call(self, params: ServerBuilder.Parameters):
+        java_executable = (self.java_preset and self.java_preset.executable) or self.server.get_java_executable()
         params.cwd = self.build_root_dir
         params.args = [
-            self.server.get_java_executable(),
+            java_executable,
             "-jar",
             str(self.build.downloaded_path),
             "--installServer",
@@ -142,8 +144,8 @@ class ForgeBuild(ServerBuild):
             self.download_url = DOWNLOAD_URL.format(version=self.build, filename=filename)
         return True
 
-    async def setup_builder(self, server, downloaded_path) -> ForgeBuilder:
-        return ForgeBuilder(ServerType.FORGE, self, server)
+    async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> ForgeBuilder:
+        return ForgeBuilder(ServerType.FORGE, self, server, java_preset)
 
 
 class ForgeServerDownloader(ServerDownloader):

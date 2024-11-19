@@ -897,8 +897,11 @@ class CraftSwitcher(EventListener):
         self.servers.pop(server_id, None)
         self.config.servers.pop(server_id, None)
 
-    async def download_server_jar(self, server: ServerProcess, jar_build: ServerBuild, server_type: ServerType,
-                                  ) -> FileTask:
+    async def download_server_jar(
+        self, server: ServerProcess,
+        jar_build: ServerBuild, server_type: ServerType,
+        builder_java_preset: JavaPreset | None,
+    ) -> FileTask:
         """
         ビルド情報を元に、サーバーファイルまたはインストールファイルをダウンロードします。
 
@@ -948,7 +951,7 @@ class CraftSwitcher(EventListener):
             config = server._config
 
             if jar_build.is_require_build():
-                server.builder = await jar_build.setup_builder(server, dst)
+                server.builder = await jar_build.setup_builder(server, dst, java_preset=builder_java_preset)
 
             else:
                 config.type = server_type

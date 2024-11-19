@@ -38,10 +38,12 @@ class ServerBuilder(object):
             self.env = env
             self.args = []  # type: list[str]
 
-    def __init__(self, server_type: ServerType, build: "ServerBuild", server: "ServerProcess"):
+    def __init__(self, server_type: ServerType, build: "ServerBuild",
+                 server: "ServerProcess", java_preset: "JavaPreset | None"):
         self.server_type = server_type
         self.build = build
         self.server = server
+        self.java_preset = java_preset
         self._state = ServerBuildStatus.STANDBY
         self.jar_filename = None  # type: str | None
         self.work_dir = server.directory / build.work_dir if build.work_dir else None
@@ -122,7 +124,8 @@ class ServerBuild(object):
     async def _fetch_info(self) -> bool:
         return False
 
-    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path) -> ServerBuilder:
+    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path,
+                            *, java_preset: "JavaPreset | None") -> ServerBuilder:
         pass
 
 

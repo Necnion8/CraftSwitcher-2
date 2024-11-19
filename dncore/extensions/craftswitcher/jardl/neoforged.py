@@ -7,6 +7,7 @@ import aiohttp
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV
 from ..abc import ServerType
 from ..config import ServerConfig
+from ..utiljava import JavaPreset
 
 VERSIONS_URL = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 DOWNLOAD_URL = "https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/"
@@ -19,9 +20,10 @@ class NeoForgeBuilder(ServerBuilder):
         return self.server.directory
 
     async def _call(self, params: ServerBuilder.Parameters):
+        java_executable = (self.java_preset and self.java_preset.executable) or self.server.get_java_executable()
         params.cwd = self.build_root_dir
         params.args = [
-            self.server.get_java_executable(),
+            java_executable,
             "-jar",
             str(self.build.downloaded_path),
             "--install-server",
@@ -73,8 +75,8 @@ class NeoForgeBuild(ServerBuild):
     def is_require_build(self):
         return True
 
-    async def setup_builder(self, server, downloaded_path) -> NeoForgeBuilder:
-        return NeoForgeBuilder(ServerType.NEO_FORGE, self, server)
+    async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> NeoForgeBuilder:
+        return NeoForgeBuilder(ServerType.NEO_FORGE, self, server, java_preset)
 
 
 class NeoForgeServerDownloader(ServerDownloader):

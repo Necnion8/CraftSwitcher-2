@@ -437,7 +437,7 @@ class APIHandler(object):
         )
         async def _post_java_rescan() -> list[model.JavaPreset]:
             await self.inst.scan_java_executables()
-            return _get_java_preset_list()
+            return await _get_java_preset_list()
 
         @api.websocket(
             "/ws",
@@ -909,12 +909,17 @@ class APIHandler(object):
             description="ビルドが必要な場合は、サーバーの初回起動時に実行されます。"
         )
         async def _post_install(
-                server_type: ServerType,
-                server: "ServerProcess" = Depends(getserver),
-                build: ServerBuild = Depends(getbuild),
+            server_type: ServerType,
+            server: "ServerProcess" = Depends(getserver),
+            build: ServerBuild = Depends(getbuild),
+            java_preset: str | None = Query(None, description="ビルダーに使用するJavaプリセット名"),
         ) -> model.FileOperationResult:
+            _java_preset = java_preset and self.inst.get_java_preset(java_preset) or None
+            if java_preset and not _java_preset:
+                raise APIErrorCode.UNKNOWN_JAVA_PRESET.of(f"Unknown java preset: {java_preset!r}")
+
             try:
-                task = await self.inst.download_server_jar(server, build, server_type)
+                task = await self.inst.download_server_jar(server, build, server_type, builder_java_preset=_java_preset)
             except NoDownloadFile as e:
                 raise APIErrorCode.NO_AVAILABLE_DOWNLOAD.of(str(e))
             return model.FileOperationResult.pending(task.id)
