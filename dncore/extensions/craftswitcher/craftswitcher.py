@@ -192,9 +192,21 @@ class CraftSwitcher(EventListener):
     _test_server_id = "020debb7-8a4f-4fd1-be75-330e3df79150"
     _test_server_id = "ngnklife"
 
+    async def _test_4(self):
+        server = self.servers[self._test_server_id]
+
+        for backup_id, source_id in reversed(await self.database.get_backup_ids()):
+            if server.get_source_id(generate=False) == source_id.hex:
+                break
+        else:
+            log.info("No backups")
+            return
+
+        await self.backups.restore_backup(server, backup_id)
+
     async def _test_3(self):
         server = self.servers[self._test_server_id]
-        await self.backups.create_backup(server)
+        await self.backups.create_full_backup(server)
 
     async def _test_2(self):
         server = self.servers[self._test_server_id]

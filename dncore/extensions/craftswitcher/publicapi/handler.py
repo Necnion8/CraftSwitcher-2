@@ -1429,7 +1429,7 @@ class APIHandler(object):
             if snapshot:
                 task = await self.backups.create_snapshot(server, comments)
             else:
-                task = await self.backups.create_backup(server, comments)
+                task = await self.backups.create_full_backup(server, comments)
             return model.BackupTask.create(task)
 
         @api.get(

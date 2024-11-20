@@ -16,11 +16,13 @@ from ..utils import datetime_now
 if TYPE_CHECKING:
     from ..config import Backup as BackupConfig
     from ..database import SwitcherDatabase
+    from ..database import model as db
     from ..serverprocess import ServerProcess
 
 __all__ = [
     "create_backup_filename",
     "create_snapshot_backup_filename",
+    "exists_to_rename",
     "Backupper",
 ]
 log = getLogger(__name__)
@@ -39,6 +41,15 @@ def create_backup_filename(dt: datetime.datetime, comments: str = None):
 
 def create_snapshot_backup_filename(dt: datetime.datetime):
     return create_backup_filename(dt, None)
+
+
+def exists_to_rename(base_dir: Path):
+    rename_dir = base_dir
+    n = 0
+    while rename_dir.exists():
+        n += 1
+        rename_dir = base_dir.with_name(base_dir.name + f".{n}")
+    return rename_dir
 
 
 class Backupper(object):
@@ -65,7 +76,7 @@ class Backupper(object):
     def get_running_task_by_server(self, server: "ServerProcess"):
         return self._tasks.get(server)
 
-    async def create_backup(self, server: "ServerProcess", comments: str = None) -> BackupTask:
+    async def create_full_backup(self, server: "ServerProcess", comments: str = None) -> BackupTask:
         """
         指定サーバーのフルバックアップを作成します
 
@@ -152,7 +163,7 @@ class Backupper(object):
         """
         backup = await self._db.get_backup_or_snapshot(backup_id)
         if not backup:
-            raise ValueError("Not found backup")
+            raise ValueError("Backup not found")
 
         _log = server and server.log or log
         _log.info("Deleting backup: %s", backup_id)
@@ -340,3 +351,66 @@ class Backupper(object):
 
         self._files.add_task(task)
         return task
+
+    async def restore_backup(self, server: "ServerProcess", backup_id: int):
+        """
+        指定されたバックアップでサーバーをリストアします
+
+        リストアを実行する前にバックアップの検証を実行することを推奨します
+
+        :except ValueError: 存在しないバックアップID
+        :except NotImplementedError: 不明なバックアップタイプ
+        """
+        backup = await self._db.get_backup_or_snapshot(backup_id)
+        if not backup:
+            raise ValueError("Backup not found")
+
+        if BackupType.FULL == backup.type:
+            restore_process = self._restore_backup
+        elif BackupType.SNAPSHOT == backup.type:
+            restore_process = self._restore_snapshot
+        else:
+            raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
+        _log = server.log
+        _log.info("Starting backup restore: %s", backup_id)
+
+        server_dir = server.directory
+        temp_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".restore"))
+        _log.debug("temp dir: %s", temp_dir)
+        await restore_process(backup, temp_dir)
+
+    async def _restore_backup(self, backup: "db.Backup", temp_dir: Path):
+        backup_path = self.backups_dir / backup.path  # type: Path
+        if not backup_path.is_file():
+            raise FileNotFoundError(str(backup_path))
+
+        if not temp_dir.exists():
+            temp_dir.mkdir(parents=True, exist_ok=True)
+
+        task = await self._files.extract_archive(backup_path, temp_dir)
+        # TODO: ZIPにサーバーフォルダごと入ってるので、それを探し出す
+        await task
+
+    async def _restore_snapshot(self, backup: "db.Backup", temp_dir: Path):
+        backup_dir = self.backups_dir / backup.path  # type: Path
+        if not backup_dir.is_dir():
+            raise NotADirectoryError(str(backup_dir))
+
+        await self._files.copy(backup_dir, temp_dir)
+        # TODO: サーバーフォルダの中身だけ展開する
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
