@@ -377,8 +377,54 @@ class Backupper(object):
 
         server_dir = server.directory
         temp_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".restore"))
-        _log.debug("temp dir: %s", temp_dir)
-        await restore_process(backup, temp_dir)
+        _log.debug("starting restore to temp: %s", temp_dir.name)
+        restored_server_dir = await restore_process(backup, temp_dir)
+
+        renamed_server_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".old"))
+        try:
+            _log.debug("moving server dir to old temp: %s", renamed_server_dir.name)
+            # rename server dir to old server dir
+            await self._files.move(server_dir, renamed_server_dir)
+
+            try:
+                _log.debug("moving restored dir to server dir")
+                # rename restore dir to server dir
+                await self._files.move(restored_server_dir, server_dir)
+
+            except Exception:
+                _log.warning("Failed to move directory (undoing...)")
+
+                _log.debug("Deleting failed server dir: %s", server_dir.name)
+                try:
+                    await self._files.delete(server_dir)
+                except Exception as e:
+                    _log.debug(f"Error in delete server dir: {e}")
+                _log.debug("Moving old temp to server dir (undo)")
+                try:
+                    await self._files.move(renamed_server_dir, server_dir)
+                except Exception as e:
+                    _log.warning(f"Error in old temp to server dir (undo): {e}")
+
+                raise
+
+        except Exception as e:
+            _log.error(f"Error in finalize restore: {e}")
+
+        else:
+            if renamed_server_dir.exists():
+                _log.debug("Deleting old temp dir: %s", renamed_server_dir.name)
+                try:
+                    await self._files.delete(renamed_server_dir)
+                except Exception as e:
+                    _log.warning(f"Error in delete old temp dir: {e}")
+
+        finally:
+            if temp_dir.exists():
+                _log.debug("Deleting temp dir: %s", temp_dir.name)
+                try:
+                    await self._files.delete(temp_dir)
+                except Exception as e:
+                    _log.warning(f"Error in delete temp dir: {e}")
 
     async def _restore_backup(self, backup: "db.Backup", temp_dir: Path):
         backup_path = self.backups_dir / backup.path  # type: Path
@@ -389,8 +435,25 @@ class Backupper(object):
             temp_dir.mkdir(parents=True, exist_ok=True)
 
         task = await self._files.extract_archive(backup_path, temp_dir)
-        # TODO: ZIPにサーバーフォルダごと入ってるので、それを探し出す
         await task
+
+        # find server dir
+        child_paths = [c for c in temp_dir.iterdir() if c.is_dir()]  # type: list[Path]
+
+        # 1つしかディレクトリがない場合はそれを採用
+        if len(child_paths) == 1:
+            return child_paths[0]
+
+        from ..craftswitcher import CraftSwitcher
+
+        # swi.server.yml が含まれるディレクトリを採用
+        for child in child_paths:
+            for c in child.iterdir():
+                if CraftSwitcher.SERVER_CONFIG_FILE_NAME == c.name:
+                    return child
+
+        # 適当に選ぶしかないので、将来的にはサーバーディレクトリを指定する情報を含める必要がある
+        return child_paths[0]
 
     async def _restore_snapshot(self, backup: "db.Backup", temp_dir: Path):
         backup_dir = self.backups_dir / backup.path  # type: Path
@@ -398,7 +461,7 @@ class Backupper(object):
             raise NotADirectoryError(str(backup_dir))
 
         await self._files.copy(backup_dir, temp_dir)
-        # TODO: サーバーフォルダの中身だけ展開する
+        return temp_dir
 
 
 
