@@ -1451,6 +1451,26 @@ class APIHandler(object):
                 raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
             return True
 
+        @api.post(
+            "/server/{server_id}/backup/{backup_id}/restore",
+            summary="バックアップリストア",
+            description=(
+                "バックアップされたデータを展開して復元します。(サーバーディレクトリにある既存のデータが全て削除されます)\n\n"
+                "実行前にバックアップ検証を実行し、変更をプレビューすることを推奨します。"
+            ),
+        )
+        async def _restore_server_backup(
+            backup_id: int, server: "ServerProcess" = Depends(getserver),
+        ) -> model.BackupTask:
+            try:
+                task = await self.backups.restore_backup(server, backup_id)
+            except ValueError as e:
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
+            except NotImplementedError:
+                raise
+
+            return model.BackupTask.create(task)
+
         return api
 
     def _jardl(self):
