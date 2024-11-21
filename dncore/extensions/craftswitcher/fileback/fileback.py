@@ -9,7 +9,7 @@ from uuid import UUID
 
 from .abc import *
 from .snapshot import *
-from ..errors import AlreadyBackupError
+from ..errors import AlreadyBackupError, NoArchiveHelperError
 from ..files import FileManager, BackupTask, BackupType, FileEventType
 from ..utils import datetime_now
 
@@ -241,10 +241,17 @@ class Backupper(object):
                     server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
+                    def _counter(_):
+                        _count[0] += 1
+                        task.progress = _count[0] / len(old_files) / 4
+                        return True
+                    _count = [0]
+
                     action = "scan current files"
-                    files, _scan_errors = await async_scan_files(server_dir)
+                    files, _scan_errors = await async_scan_files(server_dir, check=_counter if old_files else None)
                     server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
+                    task.progress = 1 / 4
 
                     action = "process diff"
                     files_diff = compare_files_diff(old_files or {}, files)
@@ -262,10 +269,25 @@ class Backupper(object):
                     server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()
 
+                    _progress_total = sum(
+                        SnapshotStatus.DELETE != diff.status and not diff.new_info.is_dir
+                        for diff in files_diff
+                        if diff.new_info
+                    )
+                    _progress_count = [0]
+
+                    def _counter(diff: FileDifference):
+                        if SnapshotStatus.DELETE != diff.status and diff.new_info and not diff.new_info.is_dir:
+                            _progress_count[0] += 1
+                            task.progress = 1 / 4 + (_progress_count[0] / _progress_total / (1 / .75))
+                        return True
+
                     action = "creating snapshot files"
                     errors = await async_create_files_diff(
                         SnapshotResult(server_dir, old_dir, files_diff), dst_path,
+                        check=_counter if _progress_total else None,
                     )
+                    task.progress = 1
 
                     server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
 
@@ -383,7 +405,7 @@ class Backupper(object):
             starts = time.perf_counter()
             try:
                 try:
-                    restored_server_dir = await restore_process(backup, temp_dir)
+                    restored_server_dir = await restore_process(backup, temp_dir, task)
                 except Exception as e:
                     _log.error("Error in restore process", exc_info=e)
                     raise
@@ -455,7 +477,7 @@ class Backupper(object):
         self._files.add_task(task)
         return task
 
-    async def _restore_backup(self, backup: "db.Backup", temp_dir: Path):
+    async def _restore_backup(self, backup: "db.Backup", temp_dir: Path, task: BackupTask):
         backup_path = self.backups_dir / backup.path  # type: Path
         if not backup_path.is_file():
             raise FileNotFoundError(str(backup_path))
@@ -463,8 +485,12 @@ class Backupper(object):
         if not temp_dir.exists():
             temp_dir.mkdir(parents=True, exist_ok=True)
 
-        task = await self._files.extract_archive(backup_path, temp_dir)
-        await task
+        helper = self._files.find_archive_helper(backup_path)
+        if not helper:
+            raise NoArchiveHelperError("No supported archive helper")
+
+        async for progress in helper.extract_archive(backup_path, temp_dir):
+            task.progress = progress.progress
 
         # find server dir
         child_paths = [c for c in temp_dir.iterdir() if c.is_dir()]  # type: list[Path]
@@ -484,7 +510,7 @@ class Backupper(object):
         # 適当に選ぶしかないので、将来的にはサーバーディレクトリを指定する情報を含める必要がある
         return child_paths[0]
 
-    async def _restore_snapshot(self, backup: "db.Backup", temp_dir: Path):
+    async def _restore_snapshot(self, backup: "db.Backup", temp_dir: Path, _: BackupTask):
         backup_dir = self.backups_dir / backup.path  # type: Path
         if not backup_dir.is_dir():
             raise NotADirectoryError(str(backup_dir))

@@ -1,8 +1,10 @@
 import asyncio
 import datetime
 import shutil
+from functools import partial
 from logging import getLogger
 from pathlib import Path
+from typing import Callable
 
 from .abc import SnapshotStatus, SnapshotFileErrorType, FileInfo, FileDifference
 
@@ -61,11 +63,16 @@ def get_file_info(path: Path):
     )
 
 
-def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+def scan_files(
+    src_dir: Path, *, check: Callable[[Path], bool] = None,
+) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
     files = {}  # type: dict[str, FileInfo]
     errors = {}  # type: dict[str, Exception]
 
     for path in src_dir.glob("**/*"):  # type: Path
+        if check and not check(path):
+            continue
+
         path_name = path.relative_to(src_dir).as_posix()
         try:
             files[path_name] = get_file_info(path)
@@ -76,15 +83,21 @@ def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]
     return files, errors
 
 
-async def async_scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
-    return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)
+async def async_scan_files(
+    src_dir: Path, *, check: Callable[[Path], bool] = None,
+) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(scan_files, src_dir, check=check),
+    )
 
 
-def create_files_diff(result: SnapshotResult, dst_dir: Path):
+def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[[FileDifference], bool] = None):
     """
     スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
+    :param check:
     """
     if not dst_dir.is_dir():
         raise NotADirectoryError("destination directory is not exists or directory")
@@ -95,6 +108,9 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
     result_files = sorted(result.files, key=compare_file_diff)
     errors = []  # type: list[tuple[FileDifference, Exception, SnapshotFileErrorType]]
     for file in result_files:
+        if check and not check(file):
+            continue
+
         if SnapshotStatus.DELETE == file.status:
             continue
 
@@ -174,10 +190,16 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
     return errors
 
 
-async def async_create_files_diff(result: SnapshotResult, dst_dir: Path):
+async def async_create_files_diff(
+    result: SnapshotResult, dst_dir: Path, *, check: Callable[[FileDifference], bool] = None,
+):
     """
     スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
+    :param check:
     """
-    return await asyncio.get_running_loop().run_in_executor(None, create_files_diff, result, dst_dir)
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(create_files_diff, result, dst_dir, check=check),
+    )
