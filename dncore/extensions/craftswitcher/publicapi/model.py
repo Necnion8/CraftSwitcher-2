@@ -215,7 +215,7 @@ class FileOperationResult(BaseModel):
 class FileTask(BaseModel):
     id: int = Field(description="タスクID")
     type: fabc.FileEventType = Field(description="タスクタイプ")
-    progress: float = Field(description="進行度。対応しない場合は常に 0.0 を返す。")
+    progress: float | None = Field(description="進行度。対応しない場合は null を返す。")
     result: fabc.FileTaskResult = Field(description="タスクの結果")
     src: str | None = Field(description="元ファイルのパス")
     dst: str | None = Field(description="送り先または処理後のファイルパス")

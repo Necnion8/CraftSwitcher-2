@@ -51,17 +51,17 @@ class FileTask(Generic[_T]):
         self.src_swi_path = src_swi_path
         self.dst_swi_path = dst_swi_path
         self.server = server
-        self._progress = 0.0
+        self._progress = None  # type: float | None
         self.result = FileTaskResult.PENDING
 
     @property
-    def progress(self):
+    def progress(self) -> float | None:
         if self.fut.done():
             return 1.0
         return self._progress
 
     @progress.setter
-    def progress(self, value: float):
+    def progress(self, value: float | None):
         self._progress = value
 
     def __await__(self) -> Generator[Any, None, _T]:
