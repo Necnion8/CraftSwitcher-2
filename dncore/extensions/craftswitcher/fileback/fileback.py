@@ -10,7 +10,7 @@ from uuid import UUID
 from .abc import *
 from .snapshot import *
 from ..errors import AlreadyBackupError
-from ..files import FileManager, BackupTask, BackupType
+from ..files import FileManager, BackupTask, BackupType, FileEventType
 from ..utils import datetime_now
 
 if TYPE_CHECKING:
@@ -352,7 +352,7 @@ class Backupper(object):
         self._files.add_task(task)
         return task
 
-    async def restore_backup(self, server: "ServerProcess", backup_id: int):
+    async def restore_backup(self, server: "ServerProcess", backup_id: int) -> BackupTask:
         """
         指定されたバックアップでサーバーをリストアします
 
@@ -373,58 +373,87 @@ class Backupper(object):
             raise NotImplementedError(f"Unknown backup type: {backup.type}")
 
         _log = server.log
-        _log.info("Starting backup restore: %s", backup_id)
+        _log.info("Starting restore backup: %s", backup_id)
 
         server_dir = server.directory
         temp_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".restore"))
         _log.debug("starting restore to temp: %s", temp_dir.name)
-        restored_server_dir = await restore_process(backup, temp_dir)
 
-        renamed_server_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".old"))
-        try:
-            _log.debug("moving server dir to old temp: %s", renamed_server_dir.name)
-            # rename server dir to old server dir
-            await self._files.move(server_dir, renamed_server_dir)
-
+        async def _do():
+            starts = time.perf_counter()
             try:
-                _log.debug("moving restored dir to server dir")
-                # rename restore dir to server dir
-                await self._files.move(restored_server_dir, server_dir)
-
-            except Exception:
-                _log.warning("Failed to move directory (undoing...)")
-
-                _log.debug("Deleting failed server dir: %s", server_dir.name)
                 try:
-                    await self._files.delete(server_dir)
+                    restored_server_dir = await restore_process(backup, temp_dir)
                 except Exception as e:
-                    _log.debug(f"Error in delete server dir: {e}")
-                _log.debug("Moving old temp to server dir (undo)")
+                    _log.error("Error in restore process", exc_info=e)
+                    raise
+
+                renamed_server_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".old"))
+
+                _log.debug("moving server dir to old temp: %s", renamed_server_dir.name)
+                # rename server dir to old server dir
+                await self._files.move(server_dir, renamed_server_dir)
+
                 try:
-                    await self._files.move(renamed_server_dir, server_dir)
-                except Exception as e:
-                    _log.warning(f"Error in old temp to server dir (undo): {e}")
+                    _log.debug("moving restored dir to server dir")
+                    # rename restore dir to server dir
+                    await self._files.move(restored_server_dir, server_dir)
 
-                raise
+                except Exception:
+                    _log.warning("Failed to move directory (undoing...)")
 
-        except Exception as e:
-            _log.error(f"Error in finalize restore: {e}")
+                    _log.debug("Deleting failed server dir: %s", server_dir.name)
+                    try:
+                        await self._files.delete(server_dir)
+                    except Exception as e:
+                        _log.debug(f"Error in delete server dir: {e}")
+                    _log.debug("Moving old temp to server dir (undo)")
+                    try:
+                        await self._files.move(renamed_server_dir, server_dir)
+                    except Exception as e:
+                        _log.warning(f"Error in old temp to server dir (undo): {e}")
 
-        else:
-            if renamed_server_dir.exists():
-                _log.debug("Deleting old temp dir: %s", renamed_server_dir.name)
-                try:
-                    await self._files.delete(renamed_server_dir)
-                except Exception as e:
-                    _log.warning(f"Error in delete old temp dir: {e}")
+                    raise
 
-        finally:
-            if temp_dir.exists():
-                _log.debug("Deleting temp dir: %s", temp_dir.name)
-                try:
-                    await self._files.delete(temp_dir)
-                except Exception as e:
-                    _log.warning(f"Error in delete temp dir: {e}")
+            except Exception as e:
+                _log.error(f"Failed to restore backup: {backup_id}: {e}")
+
+            else:
+                if renamed_server_dir.exists():
+                    _log.debug("Deleting old temp dir: %s", renamed_server_dir.name)
+                    try:
+                        await self._files.delete(renamed_server_dir)
+                    except Exception as e:
+                        _log.warning(f"Error in delete old temp dir: {e}")
+
+                _log.info(
+                    "Completed restore backup: %s (%s)",
+                    backup_id, f"total time: {time.perf_counter() - starts:.1f}s",
+                )
+
+            finally:
+                if temp_dir.exists():
+                    _log.debug("Deleting temp dir: %s", temp_dir.name)
+                    try:
+                        await self._files.delete(temp_dir)
+                    except Exception as e:
+                        _log.warning(f"Error in delete temp dir: {e}")
+
+                if self._tasks.get(server) is task:
+                    _ = self._tasks.pop(server, None)
+
+        fut = asyncio.get_running_loop().create_task(_do())
+        task = self._tasks[server] = BackupTask(
+            task_id=self._files._add_task_id(),
+            src=server_dir,
+            fut=fut,
+            server=server,
+            comments=backup.comments,
+            backup_type=backup.type,
+        )
+        task.type = FileEventType.RESTORE_BACKUP
+        self._files.add_task(task)
+        return task
 
     async def _restore_backup(self, backup: "db.Backup", temp_dir: Path):
         backup_path = self.backups_dir / backup.path  # type: Path
@@ -462,18 +491,3 @@ class Backupper(object):
 
         await self._files.copy(backup_dir, temp_dir)
         return temp_dir
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
