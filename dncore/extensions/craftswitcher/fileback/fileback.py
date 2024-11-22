@@ -123,7 +123,7 @@ class Backupper(object):
                     type=BackupType.FULL,
                     source=UUID(server.get_source_id()),
                     created=created_dt,
-                    previous_backup_id=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
+                    previous_backup=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
                     path=archive_path_name.as_posix(),
                     comments=comments or None,
                     total_files=-1,  # TODO: put from archiver
@@ -340,7 +340,7 @@ class Backupper(object):
                         type=BackupType.SNAPSHOT,
                         source=UUID(source_id),
                         created=created_dt,
-                        previous_backup_id=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
+                        previous_backup=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
                         path=dst_path_name.as_posix(),
                         comments=comments,
                         total_files=total_files_count,

@@ -399,7 +399,7 @@ class Backup(BaseModel):
     type: BackupType
     source: UUID
     created: datetime.datetime
-    previous_backup_id: UUID | None
+    previous_backup: UUID | None
     path: str
     comments: str | None
     total_files: int
@@ -414,7 +414,7 @@ class Backup(BaseModel):
             type=backup.type,
             source=backup.source,
             created=backup.created,
-            previous_backup_id=backup.previous_backup_id,
+            previous_backup=backup.previous_backup,
             path=backup.path,
             comments=backup.comments,
             total_files=backup.total_files,
