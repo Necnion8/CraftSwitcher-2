@@ -147,6 +147,8 @@ class ServerConfig(BaseModel):
     created_at: datetime.datetime | None = Field(None, description="作成された日付")
     last_launch_at: datetime.datetime | None = Field(None, description="最後に起動した日付")
     last_backup_at: datetime.datetime | None = Field(None, description="最後にバックアップした日付")
+    source_id: str | None = Field(None, description="サーバーデータID")
+    last_backup_id: str | None = Field(None, description="最終バックアップのID")
 
     class Config:
         @staticmethod
@@ -397,6 +399,7 @@ class Backup(BaseModel):
     type: BackupType
     source: UUID
     created: datetime.datetime
+    previous_backup_id: UUID | None
     path: str
     comments: str | None
     total_files: int
@@ -411,6 +414,7 @@ class Backup(BaseModel):
             type=backup.type,
             source=backup.source,
             created=backup.created,
+            previous_backup_id=backup.previous_backup_id,
             path=backup.path,
             comments=backup.comments,
             total_files=backup.total_files,

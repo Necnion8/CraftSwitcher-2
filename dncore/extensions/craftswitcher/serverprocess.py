@@ -14,6 +14,7 @@ from functools import partial
 from pathlib import Path
 from shutil import which
 from typing import Awaitable, Any, Callable
+from uuid import UUID
 
 import psutil
 
@@ -149,6 +150,14 @@ class ServerProcess(object):
         @property
         def last_backup_at(self):
             return self._config.last_backup_at
+
+        @property
+        def last_backup_id(self):
+            return self._config.last_backup_id
+
+        @last_backup_id.setter
+        def last_backup_id(self, backup_id: str | UUID | None):
+            self._config.last_backup_id = backup_id.hex if isinstance(backup_id, UUID) else backup_id
 
     def __init__(
             self, loop: asyncio.AbstractEventLoop,

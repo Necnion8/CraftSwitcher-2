@@ -123,7 +123,7 @@ class Backupper(object):
                     type=BackupType.FULL,
                     source=UUID(server.get_source_id()),
                     created=created_dt,
-                    previous_backup_id=None,
+                    previous_backup_id=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
                     path=archive_path_name.as_posix(),
                     comments=comments or None,
                     total_files=-1,  # TODO: put from archiver
@@ -142,6 +142,8 @@ class Backupper(object):
                 raise
 
             server.log.info("Completed backup: %s (id: %s)", archive_path, backup_id)
+            server.config.last_backup_id = backup_id
+            server._config.save()
             return backup_id
 
         server.log.info("Starting backup: %s (id: %s)", archive_path, backup_id)
@@ -338,7 +340,7 @@ class Backupper(object):
                         type=BackupType.SNAPSHOT,
                         source=UUID(source_id),
                         created=created_dt,
-                        previous_backup_id=None,
+                        previous_backup_id=UUID(last_id) if (last_id := server.config.last_backup_id) else None,
                         path=dst_path_name.as_posix(),
                         comments=comments,
                         total_files=total_files_count,
@@ -355,6 +357,11 @@ class Backupper(object):
                         except Exception as e:
                             server.log.warning(f"Failed to delete failed backup file: {e}")
                     raise
+
+                else:
+                    server.config.last_backup_id = backup_id
+                    server._config.save()
+
             finally:
                 if self._tasks.get(server) is task:
                     _ = self._tasks.pop(server, None)
@@ -460,6 +467,7 @@ class Backupper(object):
                     "Completed restore backup: %s (%s)",
                     backup_id, f"total time: {time.perf_counter() - starts:.1f}s",
                 )
+                server.config.last_backup_id = backup.id
                 return backup.id
 
             finally:
@@ -472,6 +480,9 @@ class Backupper(object):
 
                 if self._tasks.get(server) is task:
                     _ = self._tasks.pop(server, None)
+
+                # 現在の設定を上書きする
+                server._config.save()
 
         fut = asyncio.get_running_loop().create_task(_do())
         task = self._tasks[server] = BackupTask(

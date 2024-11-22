@@ -106,6 +106,7 @@ class ServerConfig(FileConfigValues):
 
     # ファイル識別用
     source_id: str | None
+    last_backup_id: str | None
 
 
 class LaunchGlobalOption(ConfigValues):

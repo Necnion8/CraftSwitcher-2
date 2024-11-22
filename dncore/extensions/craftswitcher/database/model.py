@@ -73,6 +73,7 @@ class Backup(Base):
     type = Column(EnumType(enum_class=BackupType, map_to_int=True))
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
+    previous_backup_id = Column(Uuid, nullable=True)
     path = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
     total_files = Column(Integer, nullable=False)
