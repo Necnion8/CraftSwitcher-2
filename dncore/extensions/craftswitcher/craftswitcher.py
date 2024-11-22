@@ -156,11 +156,9 @@ class CraftSwitcher(EventListener):
         await self.database.connect()
         if self.backups is None:
             backups_dir = Path(self.config.backup.backups_directory)
-            trash_dir = Path(self.config.backup.trash_files_directory)
             self.backups = Backupper(
                 self.loop, config=self.config.backup, database=self.database, files=self.files,
                 backups_dir=backups_dir,
-                trash_dir=trash_dir,
             )
 
         self.print_welcome()

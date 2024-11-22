@@ -55,23 +55,18 @@ def exists_to_rename(base_dir: Path):
 class Backupper(object):
     def __init__(self, loop: asyncio.AbstractEventLoop,
                  *, config: "BackupConfig", database: "SwitcherDatabase", files: "FileManager",
-                 backups_dir: Path, trash_dir: Path, ):
+                 backups_dir: Path, ):
         self.loop = loop
         self.config = config
         self._db = database
         self._files = files
         self._backups_dir = backups_dir
-        self._trash_dir = trash_dir
         #
         self._tasks = {}  # type: dict[ServerProcess, BackupTask]
 
     @property
     def backups_dir(self):
         return self._backups_dir
-
-    @property
-    def trash_dir(self):
-        return self._trash_dir
 
     def get_running_task_by_server(self, server: "ServerProcess"):
         return self._tasks.get(server)

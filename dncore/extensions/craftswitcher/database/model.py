@@ -10,7 +10,6 @@ __all__ = [
     "Backup",
     "SnapshotFile",
     "SnapshotErrorFile",
-    # "TrashFile",
 ]
 
 Base = declarative_base()
@@ -116,21 +115,3 @@ class SnapshotErrorFile(Base):
     __mapper_args__ = {
         "primary_key": [backup_id, path]
     }
-
-
-# class TrashFile(Base):
-#     __tablename__ = "trash_files"
-#     __table_args__ = {
-#         "sqlite_autoincrement": True,
-#     }
-#
-#     source = Column(Uuid, nullable=False)
-#     deleted = Column(DateTime(), nullable=False)
-#     path = Column(String, nullable=False)
-#     moved_path = Column(String, nullable=False)
-#     modified = Column(DateTime(), nullable=False)
-#     size = Column(Integer, nullable=False)
-#
-#     __mapper_args__ = {
-#         "primary_key": [source, moved_path]
-#     }
