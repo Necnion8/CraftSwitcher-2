@@ -533,3 +533,38 @@ class Backupper(object):
 
         await self._files.copy(backup_dir, temp_dir)
         return temp_dir
+
+    async def compare_snapshot(
+        self, server: "ServerProcess", backup_id: UUID,
+    ) -> tuple[list[FileDifference], dict[str, Exception]]:
+        """
+        現在のサーバーデータと指定されたバックアップを比較します
+
+        :except ValueError: 存在しないバックアップID
+        """
+        old_files = await self.get_snapshot_file_info(backup_id)
+        if old_files is None:
+            raise ValueError("Backup not found")
+
+        files, _scan_errors = await async_scan_files(server.directory)
+        files_diff = compare_files_diff(old_files, files)
+        return files_diff, _scan_errors
+
+    async def compare_snapshots(
+        self, src_backup_id: UUID, dst_backup_id: UUID,
+    ) -> list[FileDifference]:
+        """
+        指定されたバックアップ src と dst を比較します
+
+        :except ValueError: 存在しないバックアップID
+        """
+        src_files = await self.get_snapshot_file_info(src_backup_id)
+        if src_files is None:
+            raise ValueError("Backup not found")
+
+        dst_files = await self.get_snapshot_file_info(dst_backup_id)
+        if dst_files is None:
+            raise ValueError("Backup not found")
+
+        files_diff = compare_files_diff(src_files, dst_files)
+        return files_diff

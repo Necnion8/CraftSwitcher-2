@@ -18,6 +18,7 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
+from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus
 from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
@@ -1470,6 +1471,21 @@ class APIHandler(object):
                 raise
 
             return model.BackupTask.create(task)
+
+        @api.get(
+            "/server/{server_id}/backup/{backup_id}/compare",
+        )
+        async def _compare_server_backups(
+            backup_id: UUID, dst_backup_id: UUID | None = None, server: "ServerProcess" = Depends(getserver),
+        ) -> list[model.BackupFileDifference]:
+            if dst_backup_id:
+                diffs = await self.backups.compare_snapshots(dst_backup_id, backup_id)
+                return [model.BackupFileDifference.create(diff) for diff in diffs
+                        if diff.status != SnapshotStatus.NO_CHANGE]
+            else:
+                diffs, _ = await self.backups.compare_snapshot(server, backup_id)
+                return [model.BackupFileDifference.create(diff) for diff in diffs
+                        if diff.status != SnapshotStatus.NO_CHANGE]  # TODO: errors を含める
 
         return api
 

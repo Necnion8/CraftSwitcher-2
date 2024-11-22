@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
+from dncore.extensions.craftswitcher.fileback import abc as fbabc
 from dncore.extensions.craftswitcher.files import abc as fabc
 from dncore.extensions.craftswitcher.files.abc import BackupType
 from dncore.extensions.craftswitcher.files.archive import abc as aabc
@@ -421,4 +422,34 @@ class Backup(BaseModel):
             total_files_size=backup.total_files_size,
             error_files=backup.error_files,
             final_size=backup.final_size,
+        )
+
+
+class BackupFileInfo(BaseModel):
+    size: int
+    modify_time: datetime.datetime
+    is_dir: bool
+
+    @classmethod
+    def create(cls, info: fbabc.FileInfo):
+        return cls(
+            size=info.size,
+            modify_time=info.modified_datetime,
+            is_dir=info.is_dir,
+        )
+
+
+class BackupFileDifference(BaseModel):
+    path: str
+    old_info: BackupFileInfo | None
+    new_info: BackupFileInfo | None
+    status: fbabc.SnapshotStatus
+
+    @classmethod
+    def create(cls, diff: fbabc.FileDifference):
+        return cls(
+            path=diff.path,
+            old_info=BackupFileInfo.create(i) if (i := diff.old_info) else None,
+            new_info=BackupFileInfo.create(i) if (i := diff.new_info) else None,
+            status=diff.status,
         )
