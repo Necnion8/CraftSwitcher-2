@@ -1376,7 +1376,7 @@ class APIHandler(object):
             "/backup/{backup_id}",
             summary="バックアップの情報",
         )
-        async def _get_backup(backup_id: int) -> model.Backup:
+        async def _get_backup(backup_id: UUID) -> model.Backup:
             backup = await db.get_backup_or_snapshot(backup_id)
             if not backup:
                 raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
@@ -1388,7 +1388,7 @@ class APIHandler(object):
             summary="バックアップの削除",
             description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
         )
-        async def _delete_backup(backup_id: int) -> bool:
+        async def _delete_backup(backup_id: UUID) -> bool:
             try:
                 await self.backups.delete_backup(None, backup_id)
             except ValueError as e:
@@ -1436,7 +1436,7 @@ class APIHandler(object):
             "/server/{server_id}/backup/{backup_id}",
             summary="バックアップの情報",
         )
-        async def _get_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
+        async def _get_server_backup(backup_id: UUID, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
             return await _get_backup(backup_id)
 
         @api.delete(
@@ -1444,7 +1444,7 @@ class APIHandler(object):
             summary="バックアップの削除",
             description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
         )
-        async def _delete_server_backup(backup_id: int, server: "ServerProcess" = Depends(getserver)) -> bool:
+        async def _delete_server_backup(backup_id: UUID, server: "ServerProcess" = Depends(getserver)) -> bool:
             try:
                 await self.backups.delete_backup(server, backup_id)
             except ValueError as e:
@@ -1460,7 +1460,7 @@ class APIHandler(object):
             ),
         )
         async def _restore_server_backup(
-            backup_id: int, server: "ServerProcess" = Depends(getserver),
+            backup_id: UUID, server: "ServerProcess" = Depends(getserver),
         ) -> model.BackupTask:
             try:
                 task = await self.backups.restore_backup(server, backup_id)

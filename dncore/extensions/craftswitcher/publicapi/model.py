@@ -234,7 +234,7 @@ class FileTask(BaseModel):
 class BackupTask(FileTask):
     comments: str | None = Field(description="バックアップメモ")
     backup_type: BackupType
-    backup_id: int | None = Field(description="バックアップID (完了後にセット)")
+    backup_id: UUID = Field(description="バックアップID")
 
     @classmethod
     def create(cls, task: "fabc.BackupTask"):
@@ -387,13 +387,13 @@ class JavaPreset(BaseModel):
 
 
 class BackupId(BaseModel):
-    id: int
+    id: UUID
     source: UUID
     server: str | None = Field(description="ソースIDに紐づくサーバー")
 
 
 class Backup(BaseModel):
-    id: int
+    id: UUID
     type: BackupType
     source: UUID
     created: datetime.datetime

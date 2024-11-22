@@ -69,7 +69,7 @@ class Backup(Base):
         "sqlite_autoincrement": True,
     }
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Uuid, primary_key=True)
     type = Column(EnumType(enum_class=BackupType, map_to_int=True))
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
@@ -87,7 +87,7 @@ class SnapshotFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    backup_id = Column(Integer, nullable=False)
+    backup_id = Column(Uuid, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=False)
     size = Column(Integer, nullable=True)
@@ -106,7 +106,7 @@ class SnapshotErrorFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    backup_id = Column(Integer, nullable=False)
+    backup_id = Column(Uuid, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=True)
     error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)

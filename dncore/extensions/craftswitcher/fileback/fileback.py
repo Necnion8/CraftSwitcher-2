@@ -11,7 +11,7 @@ from .abc import *
 from .snapshot import *
 from ..errors import AlreadyBackupError, NoArchiveHelperError
 from ..files import FileManager, BackupTask, BackupType, FileEventType
-from ..utils import datetime_now
+from ..utils import datetime_now, generate_uuid
 
 if TYPE_CHECKING:
     from ..config import Backup as BackupConfig
@@ -104,7 +104,9 @@ class Backupper(object):
             server.log.debug("creating backup directory: %s", archive_path.parent)
             archive_path.parent.mkdir(parents=True)
 
-        async def _do() -> int:
+        backup_id = generate_uuid()
+
+        async def _do() -> UUID:
             try:
                 async for progress in helper.make_archive(archive_path, server_dir.parent, [server_dir]):
                     task.progress = progress.progress
@@ -116,11 +118,12 @@ class Backupper(object):
                     _ = self._tasks.pop(server, None)
 
             try:
-                backup_id = await self._db.add_full_backup(Backup(
-                    id=None,
+                await self._db.add_full_backup(Backup(
+                    id=backup_id,
                     type=BackupType.FULL,
                     source=UUID(server.get_source_id()),
                     created=created_dt,
+                    previous_backup_id=None,
                     path=archive_path_name.as_posix(),
                     comments=comments or None,
                     total_files=-1,  # TODO: put from archiver
@@ -141,7 +144,7 @@ class Backupper(object):
             server.log.info("Completed backup: %s (id: %s)", archive_path, backup_id)
             return backup_id
 
-        server.log.info("Starting backup: %s", archive_path)
+        server.log.info("Starting backup: %s (id: %s)", archive_path, backup_id)
         fut = asyncio.get_running_loop().create_task(_do())
         task = self._tasks[server] = BackupTask(
             task_id=self._files._add_task_id(),
@@ -150,12 +153,13 @@ class Backupper(object):
             server=server,
             comments=comments,
             backup_type=BackupType.FULL,
+            backup_id=backup_id,
         )
 
         self._files.add_task(task)
         return task
 
-    async def delete_backup(self, server: "ServerProcess | None", backup_id: int):
+    async def delete_backup(self, server: "ServerProcess | None", backup_id: UUID):
         """
         指定されたバックアップをファイルとデータベースから削除します
 
@@ -180,7 +184,7 @@ class Backupper(object):
 
         _log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
 
-    async def get_snapshot_file_info(self, backup_id: int) -> dict[str, FileInfo] | None:
+    async def get_snapshot_file_info(self, backup_id: UUID) -> dict[str, FileInfo] | None:
         """
         データベースからスナップショットのファイル一覧を取得します
         :return: ファイルパスとFileInfoのマップ
@@ -224,7 +228,9 @@ class Backupper(object):
             server.log.debug("creating backup directory: %s", dst_path)
             dst_path.mkdir(parents=True)
 
-        async def _do():
+        backup_id = generate_uuid()
+
+        async def _do() -> UUID:
             starts = time.perf_counter()
             try:
                 action = "get snapshot latest"
@@ -327,11 +333,12 @@ class Backupper(object):
                     copied_files_count = len(_copied_files)
                     copied_files_size = sum(_copied_files)
 
-                    snapshot_id = await self._db.add_snapshot_backup(Backup(
-                        id=None,
+                    await self._db.add_snapshot_backup(Backup(
+                        id=backup_id,
                         type=BackupType.SNAPSHOT,
                         source=UUID(source_id),
                         created=created_dt,
+                        previous_backup_id=None,
                         path=dst_path_name.as_posix(),
                         comments=comments,
                         total_files=total_files_count,
@@ -352,13 +359,13 @@ class Backupper(object):
                 if self._tasks.get(server) is task:
                     _ = self._tasks.pop(server, None)
 
-            server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, snapshot_id)
+            server.log.info("Completed snapshot backup: %s (id: %s)", dst_path_name, backup_id)
             server.log.info(f"  Total {total_files_count:,} files ({total_files_size / 1024 / 1024:,.0f} MB)")
             server.log.info(f"  Copied {copied_files_count:,} files ({copied_files_size / 1024 / 1024:,.0f} MB)")
             if error_files_count:
                 server.log.warning(f"  Error {error_files_count:,} files")
             server.log.info(f"  Total time: {time.perf_counter() - starts:.1f}s")
-            return snapshot_id
+            return backup_id
 
         server.log.info("Starting snapshot backup: %s", dst_path_name)
         fut = asyncio.get_running_loop().create_task(_do())
@@ -369,12 +376,13 @@ class Backupper(object):
             server=server,
             comments=comments,
             backup_type=BackupType.SNAPSHOT,
+            backup_id=backup_id,
         )
 
         self._files.add_task(task)
         return task
 
-    async def restore_backup(self, server: "ServerProcess", backup_id: int) -> BackupTask:
+    async def restore_backup(self, server: "ServerProcess", backup_id: UUID) -> BackupTask:
         """
         指定されたバックアップでサーバーをリストアします
 
@@ -401,7 +409,7 @@ class Backupper(object):
         temp_dir = exists_to_rename(server_dir.with_name(server_dir.name + ".restore"))
         _log.debug("starting restore to temp: %s", temp_dir.name)
 
-        async def _do():
+        async def _do() -> UUID:
             starts = time.perf_counter()
             try:
                 try:
@@ -452,6 +460,7 @@ class Backupper(object):
                     "Completed restore backup: %s (%s)",
                     backup_id, f"total time: {time.perf_counter() - starts:.1f}s",
                 )
+                return backup.id
 
             finally:
                 if temp_dir.exists():
@@ -472,6 +481,7 @@ class Backupper(object):
             server=server,
             comments=backup.comments,
             backup_type=backup.type,
+            backup_id=backup.id,
         )
         task.type = FileEventType.RESTORE_BACKUP
         self._files.add_task(task)

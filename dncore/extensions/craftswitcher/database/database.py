@@ -146,7 +146,7 @@ class SwitcherDatabase(object):
 
     # backupper
 
-    async def get_backup_ids(self) -> list[tuple[int, UUID]]:
+    async def get_backup_ids(self) -> list[tuple[UUID, UUID]]:
         """
         データベース内の全バックアップIDとソースIDを返します
         """
@@ -166,7 +166,7 @@ class SwitcherDatabase(object):
             )
             return [r[0] for r in result.all()]
 
-    async def get_backup_or_snapshot(self, backup_id: int) -> Backup | None:
+    async def get_backup_or_snapshot(self, backup_id: UUID) -> Backup | None:
         """
         指定IDのバックアップを返します
         """
@@ -193,7 +193,7 @@ class SwitcherDatabase(object):
         if backup.type != BackupType.SNAPSHOT:
             raise ValueError(f"Not snapshot type backup: {backup.type}")
 
-        def _apply_id(s_id: int, f: SnapshotFile | SnapshotErrorFile):
+        def _apply_id(s_id: UUID, f: SnapshotFile | SnapshotErrorFile):
             f.backup_id = s_id
             return f
 
@@ -208,7 +208,7 @@ class SwitcherDatabase(object):
                 await db.commit()
                 return backup_id
 
-    async def remove_backup_or_snapshot(self, backup: Backup | int):
+    async def remove_backup_or_snapshot(self, backup: Backup | UUID):
         """
         バックアップと、それに関連づいたスナップショットファイルを全て削除します
         """
@@ -225,7 +225,7 @@ class SwitcherDatabase(object):
                 await db.execute(delete(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
                 await db.commit()
 
-    async def get_snapshot_files(self, backup_id: int) -> list[SnapshotFile] | None:
+    async def get_snapshot_files(self, backup_id: UUID) -> list[SnapshotFile] | None:
         async with self.session() as db:
             result = await db.execute(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
             try:
@@ -233,7 +233,7 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
-    async def get_snapshot_errors_files(self, backup_id: int) -> list[SnapshotErrorFile] | None:
+    async def get_snapshot_errors_files(self, backup_id: UUID) -> list[SnapshotErrorFile] | None:
         async with self.session() as db:
             result = await db.execute(select(SnapshotFile).where(SnapshotErrorFile.backup_id == backup_id))
             try:
