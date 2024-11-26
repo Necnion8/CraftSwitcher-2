@@ -13,7 +13,11 @@ class SevenZipHelper(ArchiveHelper):
     SCAN_INFO_REGEX = re.compile(br"^((?P<folders>\d+) folders?, )?(?P<files>\d+) files?, (?P<bytes>\d+) bytes?")
     PROGRESS_VALUE_REGEX = re.compile(br"^(\d+)%")
     LIST_FILE_REGEX = re.compile(
-        br"^(?P<dt>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \..{4} +(?P<size>\d+) +(?P<csize>\d+)? +(?P<name>.*)$"
+        br"^(?P<dt>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) "
+        br"(?P<attr>[.\w]{5}) "
+        br"+(?P<size>\d+) "
+        br"+(?P<csize>\d+)? "
+        br"+(?P<name>.*)$"
     )
 
     def __init__(self, command_name="7z", ):
@@ -200,12 +204,13 @@ class SevenZipHelper(ArchiveHelper):
                     size = int(m.group("size").decode())
                     compressed_size = int(m.group("csize").decode()) if m.group("csize") else 0
                     filename = m.group("name").decode("utf-8").replace("\\", "/")
+                    is_dir = m.group("attr").startswith(b"D")
                     modified = datetime.datetime.strptime(
                         m.group("dt").decode("utf-8"),
                         "%Y-%m-%d %H:%M:%S",
                     ).astimezone(datetime.timezone.utc)
 
-                    files.append(ArchiveFile(filename, size, compressed_size, modified))
+                    files.append(ArchiveFile(filename, is_dir, size, compressed_size, modified))
                 # else:
                 #     print("RAW:", line)
 

@@ -257,15 +257,19 @@ class BackupTask(FileTask):
 
 class ArchiveFile(BaseModel):
     filename: str = Field(description="パスを含むファイル名")
+    is_dir: bool = Field(description="フォルダなら true")
     size: int | None = Field(description="展開後のサイズ")
     compressed_size: int | None = Field(description="圧縮後のサイズ")
+    modified_datetime: datetime.datetime | None = Field(description="更新日時")
 
     @classmethod
     def create(cls, archive_file: "aabc.ArchiveFile"):
         return cls(
             filename=archive_file.filename,
+            is_dir=archive_file.is_dir,
             size=archive_file.size,
             compressed_size=archive_file.compressed_size,
+            modified_datetime=archive_file.modified_datetime,
         )
 
 

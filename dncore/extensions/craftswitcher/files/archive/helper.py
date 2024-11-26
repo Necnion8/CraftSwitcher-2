@@ -148,6 +148,7 @@ class ZipArchiveHelper(ArchiveHelper):
             with zipfile.ZipFile(archive_path, "r") as zf:
                 return [ArchiveFile(
                     fi.filename,
+                    fi.is_dir(),
                     fi.file_size,
                     fi.compress_size,
                     datetime.datetime(*fi.date_time).astimezone(datetime.timezone.utc),

@@ -15,6 +15,7 @@ class ArchiveProgress(NamedTuple):
 
 class ArchiveFile(NamedTuple):
     filename: str
+    is_dir: bool
     size: int | None = None
     compressed_size: int | None = None
     modified_datetime: datetime.datetime | None = None
