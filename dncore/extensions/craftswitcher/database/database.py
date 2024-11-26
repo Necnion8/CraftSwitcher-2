@@ -3,6 +3,7 @@ import datetime
 import secrets
 from logging import getLogger
 from pathlib import Path
+from typing import Callable
 from uuid import UUID
 
 from passlib.context import CryptContext
@@ -165,6 +166,27 @@ class SwitcherDatabase(object):
                 .order_by(Backup.created)
             )
             return [r[0] for r in result.all()]
+
+    async def edit_backups_or_snapshots(self, source: UUID, processor: Callable[[Backup], bool]) -> list[Backup]:
+        """
+        バックアップを編集します
+
+        processor が true を返したバックアップが更新され、そのリストを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
+            _backups = []
+            for backup, *_ in result.all():
+                if processor(backup):
+                    _backups.append(backup)
+
+            if _backups:
+                await db.commit()
+            return _backups
 
     async def get_last_snapshot(self, source: UUID, backup_id: UUID) -> Backup | None:
         """

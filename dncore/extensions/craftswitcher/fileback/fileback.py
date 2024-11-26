@@ -168,6 +168,7 @@ class Backupper(object):
 
         _log = server and server.log or log
         _log.info("Deleting backup: %s", backup_id)
+        previous_backup_id = backup.previous_backup
         await self._db.remove_backup_or_snapshot(backup)
 
         backup_path = Path(self.backups_dir / backup.path)
@@ -180,6 +181,24 @@ class Backupper(object):
             _log.warning("Backup file not exists: %s", backup_path)
 
         _log.info("Completed delete backup: %s (id: %s)", backup_path, backup.id)
+
+        if previous_backup_id:
+            # 最終バックアップのIDを1個前にロールバックする
+            if server and server.config.last_backup_id == backup.id.hex:
+                _log.debug("Updating last_backup_id to '%s' from '%s'", previous_backup_id.hex, backup.id.hex)
+                server.config.last_backup_id = previous_backup_id
+                server._config.save()
+
+        # データベース上のバックアップも更新する
+        def modifier(b: "db.Backup") -> bool:
+            # 前回のバックアップが削除したものである
+            if b.previous_backup == backup.id:
+                # 前回のバックアップを None か、削除したバックアップの前の物に書き換える
+                b.previous_backup = previous_backup_id or None
+                return True
+            return False
+        _updated_backups = await self._db.edit_backups_or_snapshots(backup.source, modifier)
+        _log.debug("Updating %s backups", len(_updated_backups))
 
     async def get_snapshot_file_info(self, backup_id: UUID) -> dict[str, FileInfo] | None:
         """
