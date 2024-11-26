@@ -6,7 +6,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Callable
 
-from .abc import SnapshotStatus, SnapshotFileErrorType, FileInfo, FileDifference
+from .abc import SnapshotStatus, BackupFileErrorType, FileInfo, FileDifference
 
 __all__ = [
     "SnapshotResult",
@@ -106,7 +106,7 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
         return not (_diff.new_info or _diff.old_info).is_dir, _diff.path.count("/")
 
     result_files = sorted(result.files, key=compare_file_diff)
-    errors = []  # type: list[tuple[FileDifference, Exception, SnapshotFileErrorType]]
+    errors = []  # type: list[tuple[FileDifference, Exception, BackupFileErrorType]]
     for file in result_files:
         if check and not check(file):
             continue
@@ -122,10 +122,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         dst_file_path.mkdir(exist_ok=True)
                     except Exception as e:
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                        errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
                     log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                    errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
                 try:
@@ -135,10 +135,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         dst_file_path.hardlink_to(old_file_path)
                     except Exception as e:
                         log.warning("Failed to link file: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_LINK))
+                        errors.append((file, e, BackupFileErrorType.CREATE_LINK))
                 except Exception as e:
                     log.warning("Failed to link file: %s: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_LINK))
+                    errors.append((file, e, BackupFileErrorType.CREATE_LINK))
 
         elif file.status in (SnapshotStatus.CREATE, SnapshotStatus.UPDATE, ):
             if file.new_info.is_dir:
@@ -148,10 +148,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         dst_file_path.mkdir(exist_ok=True)
                     except Exception as e:
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                        errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
                     log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                    errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
                 try:
@@ -161,16 +161,16 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         shutil.copy2(src_file_path, dst_file_path)
                     except Exception as e:
                         log.warning("Failed to copy file: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.COPY_FILE))
+                        errors.append((file, e, BackupFileErrorType.COPY_FILE))
                 except Exception as e:
                     log.warning("Failed to copy file: %s: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.COPY_FILE))
+                    errors.append((file, e, BackupFileErrorType.COPY_FILE))
 
         else:
             errors.append((
                 file,
                 NotImplementedError(f"Unknown snapshot status: {file.status.name}"),
-                SnapshotFileErrorType.UNKNOWN,
+                BackupFileErrorType.UNKNOWN,
             ))
             log.warning("Unknown snapshot status: %s: %s", file.status, file.path)
 

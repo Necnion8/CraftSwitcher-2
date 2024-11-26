@@ -235,7 +235,7 @@ class SwitcherDatabase(object):
 
     async def get_snapshot_errors_files(self, backup_id: UUID) -> list[SnapshotErrorFile] | None:
         async with self.session() as db:
-            result = await db.execute(select(SnapshotFile).where(SnapshotErrorFile.backup_id == backup_id))
+            result = await db.execute(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
             try:
                 return [r[0] for r in result.all()]
             except NoResultFound:

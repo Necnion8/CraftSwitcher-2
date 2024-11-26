@@ -5,7 +5,7 @@ from typing import NamedTuple
 __all__ = [
     "FileType",
     "SnapshotStatus",
-    "SnapshotFileErrorType",
+    "BackupFileErrorType",
     "FileInfo",
     "FileDifference",
 ]
@@ -23,12 +23,13 @@ class SnapshotStatus(Enum):
     CREATE = 2
 
 
-class SnapshotFileErrorType(Enum):
+class BackupFileErrorType(Enum):
     UNKNOWN = -1
     SCAN = 0
     CREATE_DIRECTORY = 1
     CREATE_LINK = 2
     COPY_FILE = 3
+    EXISTS_CHECK = 4
 
 
 class FileInfo(NamedTuple):

@@ -306,7 +306,7 @@ class Backupper(object):
                 try:
                     snap_error_files = [SnapshotErrorFile(
                         path=_p,
-                        error_type=SnapshotFileErrorType.SCAN,
+                        error_type=BackupFileErrorType.SCAN,
                         error_message=f"{type(_e).__name__}: {_e}",
                         type=None,
                     ) for _p, _e in _scan_errors.items()]  # type: list[SnapshotErrorFile]

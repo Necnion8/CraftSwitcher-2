@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
-from ..fileback.abc import SnapshotStatus, SnapshotFileErrorType, FileType
+from ..fileback.abc import SnapshotStatus, BackupFileErrorType, FileType
 from ..files import BackupType
 
 __all__ = [
@@ -109,7 +109,7 @@ class SnapshotErrorFile(Base):
     backup_id = Column(Uuid, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=True)
-    error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)
+    error_type = Column(EnumType(enum_class=BackupFileErrorType), nullable=False)
     error_message = Column(String, nullable=True)
 
     __mapper_args__ = {

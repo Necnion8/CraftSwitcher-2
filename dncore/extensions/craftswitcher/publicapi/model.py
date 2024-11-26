@@ -457,3 +457,35 @@ class BackupFileDifference(BaseModel):
             new_info=BackupFileInfo.create(i) if (i := diff.new_info) else None,
             status=diff.status,
         )
+
+
+class BackupFilePathInfo(BaseModel):
+    path: str
+    is_dir: bool
+    size: int
+    modify_time: datetime.datetime
+
+    @classmethod
+    def create(cls, path: str, info: fbabc.FileInfo):
+        return cls(
+            size=info.size,
+            modify_time=info.modified_datetime,
+            is_dir=info.is_dir,
+            path=path,
+        )
+
+
+class BackupFilePathErrorInfo(BaseModel):
+    path: str
+    error_type: fbabc.BackupFileErrorType
+    error_message: str | None
+
+
+class BackupFilesResult(BaseModel):
+    total_files: int
+    total_files_size: int
+    error_files: int
+    backup_files_size: int | None = Field(description="バックアップのサイズ (リンク済みのファイルを除く)")
+
+    files: list[BackupFilePathInfo] | None
+    errors: list[BackupFilePathErrorInfo] | None

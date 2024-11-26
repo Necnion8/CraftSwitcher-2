@@ -18,11 +18,13 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
-from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus
-from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType
+from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus, BackupFileErrorType, FileInfo
+from dncore.extensions.craftswitcher.fileback.snapshot import async_scan_files
+from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType, BackupType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
+from dncore.extensions.craftswitcher.publicapi.model import BackupFilePathErrorInfo
 from dncore.extensions.craftswitcher.utils import call_event, datetime_now, disk_usage
 
 if TYPE_CHECKING:
@@ -1397,6 +1399,93 @@ class APIHandler(object):
             return True
 
         @api.get(
+            "/backup/{backup_id}/files",
+            summary="ファイル一覧",
+            description=(
+                "バックアップされたファイルを一覧します\n\n"
+                "`check_files` が true の場合は、常に実際のファイルが存在するかテストします。"
+            ),
+        )
+        async def _files_backup(
+            backup_id: UUID, check_files: bool = False,
+            include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
+            include_errors: bool = Query(False, description="エラーファイルを返す"),
+        ) -> model.BackupFilesResult:
+            _size = [0]  # no link size
+
+            def check(p: Path):
+                try:
+                    f_stat = p.stat()
+                    if f_stat.st_nlink == 1:
+                        _size[0] += f_stat.st_size
+                except OSError:
+                    pass
+                return True
+
+            if not (backup := await db.get_backup_or_snapshot(backup_id)):
+                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
+
+            if BackupType.SNAPSHOT == backup.type:
+                files = await self.backups.get_snapshot_file_info(backup_id) or {}
+                err_files = {e.path: (e.error_type, e) for e in await db.get_snapshot_errors_files(backup_id) or []}
+                total_files_size = backup.total_files_size
+                final_size = None
+
+                if check_files:
+                    _files, _errors = await async_scan_files(self.backups.backups_dir / backup.path, check=check)
+                    err_files.update({p: (BackupFileErrorType.SCAN, None) for p in _errors})
+                    err_files.update({p: (BackupFileErrorType.EXISTS_CHECK, None) for p in files if p not in _files})
+
+                    for p in err_files:
+                        files.pop(p, None)
+
+                    total_files_size = sum(fi.size for fi in _files.values())
+                    final_size = _size[0]
+
+            elif BackupType.FULL == backup.type:
+                final_size = (self.backups.backups_dir / backup.path).stat().st_size
+                try:
+                    _files = await self.files.list_archive(self.backups.backups_dir / backup.path)
+                except NoArchiveHelperError:
+                    raise
+
+                files = {f.filename: FileInfo(f.size, f.modified_datetime, f.is_dir) for f in _files}
+                total_files_size = sum(fi.size for fi in _files)
+                err_files = {}
+
+            else:
+                raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
+            return model.BackupFilesResult(
+                total_files=len(files),
+                total_files_size=total_files_size,
+                error_files=len(err_files),
+                backup_files_size=final_size,
+                files=[model.BackupFilePathInfo.create(p, i)
+                       for p, i in files.items()] if include_files else None,
+                errors=[BackupFilePathErrorInfo(
+                    path=p,
+                    error_type=e_type,
+                    error_message=e.error_message if e else None,
+                ) for p, (e_type, e) in err_files.items()] if include_errors else None,
+            )
+
+        @api.get(
+            "/backup/{backup_id}/files/compare",
+            summary="ファイルの比較",
+            description=(
+                "指定されたバックアップと比較して異なるファイルのみ一覧します\n\n"
+                "`backup_id` に含まれないファイルを新規ファイルとしてマークします"
+            ),
+        )
+        async def _files_compare_backups(
+            backup_id: UUID, dst_backup_id: UUID,
+        ) -> list[model.BackupFileDifference]:
+            diffs = await self.backups.compare_snapshots(backup_id, dst_backup_id)
+            return [model.BackupFileDifference.create(diff) for diff in diffs
+                    if diff.status != SnapshotStatus.NO_CHANGE]
+
+        @api.get(
             "/server/{server_id}/backups",
             summary="バックアップ一覧",
         )
@@ -1471,6 +1560,21 @@ class APIHandler(object):
                 raise
 
             return model.BackupTask.create(task)
+
+        @api.get(
+            "/server/{server_id]/backup/{backup_id}/verify",
+            summary="バックアップの検証",
+            description="※ 現在は GET `/backup/{backup_id}/files?check_files=true` のエイリアスです",
+        )
+        async def _verify_server_backup(
+            backup_id: UUID, server: "ServerProcess" = Depends(getserver),
+            include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
+            include_errors: bool = Query(False, description="エラーファイルを返す"),
+        ) -> model.BackupFilesResult:
+            return await _files_backup(
+                backup_id, check_files=True,
+                include_files=include_files, include_errors=include_errors,
+            )
 
         @api.get(
             "/server/{server_id}/backup/{backup_id}/files/compare",
