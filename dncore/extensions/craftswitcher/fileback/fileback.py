@@ -535,10 +535,10 @@ class Backupper(object):
         return temp_dir
 
     async def compare_snapshot(
-        self, server: "ServerProcess", backup_id: UUID,
+        self, backup_id: UUID, server: "ServerProcess",
     ) -> tuple[list[FileDifference], dict[str, Exception]]:
         """
-        現在のサーバーデータと指定されたバックアップを比較します
+        指定されたバックアップと現在のサーバーデータを比較します
 
         :except ValueError: 存在しないバックアップID
         """

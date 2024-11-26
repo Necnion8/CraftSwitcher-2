@@ -1473,19 +1473,25 @@ class APIHandler(object):
             return model.BackupTask.create(task)
 
         @api.get(
-            "/server/{server_id}/backup/{backup_id}/compare",
+            "/server/{server_id}/backup/{backup_id}/files/compare",
+            summary="ファイルの比較",
+            description=(
+                "サーバーデータまたは指定されたバックアップと比較して異なるファイルを一覧します\n\n"
+                "`backup_id` に含まれないファイルを新規ファイルとしてマークします\n\n"
+                "※ サーバーデータの読み込みエラーは無視されます"
+            ),
         )
-        async def _compare_server_backups(
+        async def _files_compare_server_backups(
             backup_id: UUID, dst_backup_id: UUID | None = None, server: "ServerProcess" = Depends(getserver),
         ) -> list[model.BackupFileDifference]:
             if dst_backup_id:
-                diffs = await self.backups.compare_snapshots(dst_backup_id, backup_id)
+                diffs = await self.backups.compare_snapshots(backup_id, dst_backup_id)
                 return [model.BackupFileDifference.create(diff) for diff in diffs
                         if diff.status != SnapshotStatus.NO_CHANGE]
             else:
-                diffs, _ = await self.backups.compare_snapshot(server, backup_id)
+                diffs, _ = await self.backups.compare_snapshot(backup_id, server)
                 return [model.BackupFileDifference.create(diff) for diff in diffs
-                        if diff.status != SnapshotStatus.NO_CHANGE]  # TODO: errors を含める
+                        if diff.status != SnapshotStatus.NO_CHANGE]  # エラーを無視
 
         return api
 
