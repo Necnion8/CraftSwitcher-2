@@ -1,3 +1,4 @@
+import datetime
 from typing import NamedTuple
 
 __all__ = [
@@ -16,3 +17,4 @@ class ArchiveFile(NamedTuple):
     filename: str
     size: int | None = None
     compressed_size: int | None = None
+    modified_datetime: datetime.datetime | None = None

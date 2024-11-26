@@ -1,5 +1,6 @@
 import asyncio.subprocess as subprocess
 import collections
+import datetime
 import re
 import shutil
 from pathlib import Path
@@ -11,7 +12,9 @@ from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 class SevenZipHelper(ArchiveHelper):
     SCAN_INFO_REGEX = re.compile(br"^((?P<folders>\d+) folders?, )?(?P<files>\d+) files?, (?P<bytes>\d+) bytes?")
     PROGRESS_VALUE_REGEX = re.compile(br"^(\d+)%")
-    LIST_FILE_REGEX = re.compile(br"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \..{4} +(\d+) +(\d+)? +(.*)$")
+    LIST_FILE_REGEX = re.compile(
+        br"^(?P<dt>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \..{4} +(?P<size>\d+) +(?P<csize>\d+)? +(?P<name>.*)$"
+    )
 
     def __init__(self, command_name="7z", ):
         self.command_name = command_name
@@ -194,11 +197,15 @@ class SevenZipHelper(ArchiveHelper):
                 line = line.strip()
                 m = self.LIST_FILE_REGEX.match(line)
                 if m:
-                    size = int(m.group(1).decode())
-                    compressed_size = int(m.group(2).decode()) if m.group(2) else 0
-                    filename = m.group(3).decode("utf-8").replace("\\", "/")
+                    size = int(m.group("size").decode())
+                    compressed_size = int(m.group("csize").decode()) if m.group("csize") else 0
+                    filename = m.group("name").decode("utf-8").replace("\\", "/")
+                    modified = datetime.datetime.strptime(
+                        m.group("dt").decode("utf-8"),
+                        "%Y-%m-%d %H:%M:%S",
+                    ).astimezone(datetime.timezone.utc)
 
-                    files.append(ArchiveFile(filename, size, compressed_size))
+                    files.append(ArchiveFile(filename, size, compressed_size, modified))
                 # else:
                 #     print("RAW:", line)
 
