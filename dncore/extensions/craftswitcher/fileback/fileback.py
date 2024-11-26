@@ -234,12 +234,10 @@ class Backupper(object):
                 try:
                     tim = time.perf_counter()
                     old_files = old_dir = None
-                    for _backup in reversed((await self._db.get_backups_or_snapshots(UUID(source_id))) or []):
-                        if BackupType.SNAPSHOT == _backup.type:
-                            last_snapshot = _backup
+                    if b_id := server.config.last_backup_id:
+                        if last_snapshot := await self._db.get_last_snapshot(UUID(source_id), UUID(b_id)):
                             old_files = await self.get_snapshot_file_info(last_snapshot.id)
                             old_dir = self.backups_dir / last_snapshot.path  # type: Path | None
-                            break
 
                     server.log.debug("%s times %sms", action, round((time.perf_counter() - tim) * 1000))
                     tim = time.perf_counter()

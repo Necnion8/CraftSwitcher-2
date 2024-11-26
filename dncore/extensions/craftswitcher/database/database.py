@@ -148,7 +148,7 @@ class SwitcherDatabase(object):
 
     async def get_backup_ids(self) -> list[tuple[UUID, UUID]]:
         """
-        データベース内の全バックアップIDとソースIDを返します
+        データベース内の全バックアップIDとソースIDを返します (作成日時順)
         """
         async with self.session() as db:
             result = await db.execute(select(Backup.id, Backup.source).order_by(Backup.created))
@@ -156,7 +156,7 @@ class SwitcherDatabase(object):
 
     async def get_backups_or_snapshots(self, source: UUID) -> list[Backup]:
         """
-        ソースIDに関連するバックアップを返します
+        ソースIDに関連するバックアップを返します (作成日時順)
         """
         async with self.session() as db:
             result = await db.execute(
@@ -165,6 +165,30 @@ class SwitcherDatabase(object):
                 .order_by(Backup.created)
             )
             return [r[0] for r in result.all()]
+
+    async def get_last_snapshot(self, source: UUID, backup_id: UUID) -> Backup | None:
+        """
+        指定されたバックアップがスナップショットならそれを返し、そうでない場合は元のバックアップをたどり返します。
+        """
+        backup = await self.get_backup_or_snapshot(backup_id)
+        if not backup or BackupType.SNAPSHOT == backup.type:
+            return backup or None
+
+        backups = {b.id: b for b in await self.get_backups_or_snapshots(source)}
+        while backups:
+            try:
+                backup = backups.pop(backup_id)
+            except KeyError:
+                return None  # 前のバックアップが見つからない
+
+            if not backup.previous_backup:
+                return None  # 前のバックアップが存在しない
+
+            if BackupType.SNAPSHOT != backup.type:
+                backup_id = backup.id  # 更に前のバックアップを探す
+
+            else:
+                return backup
 
     async def get_backup_or_snapshot(self, backup_id: UUID) -> Backup | None:
         """

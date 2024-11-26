@@ -1506,7 +1506,7 @@ class APIHandler(object):
         @api.post(
             "/server/{server_id}/backup",
             summary="バックアップを開始",
-            description="サーバーのバックアップを開始します。複数同時に実行することはできません。"
+            description="サーバーのバックアップを開始します。他のバックアップタスクと同時実行できません。"
         )
         async def _post_server_backup(
             server: "ServerProcess" = Depends(getserver),
@@ -1546,7 +1546,8 @@ class APIHandler(object):
             summary="バックアップリストア",
             description=(
                 "バックアップされたデータを展開して復元します。(サーバーディレクトリにある既存のデータが全て削除されます)\n\n"
-                "実行前にバックアップ検証を実行し、変更をプレビューすることを推奨します。"
+                "実行前にバックアップ検証を実行し、変更をプレビューすることを推奨します。\n\n"
+                "他のバックアップタスクと同時実行できません。"
             ),
         )
         async def _restore_server_backup(
