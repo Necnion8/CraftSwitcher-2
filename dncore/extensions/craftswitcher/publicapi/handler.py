@@ -1472,7 +1472,7 @@ class APIHandler(object):
 
         @api.get(
             "/backup/{backup_id}/files/compare",
-            summary="ファイルの比較",
+            summary="バックアップファイルの比較",
             description=(
                 "指定されたバックアップと比較して異なるファイルのみ一覧します\n\n"
                 "`backup_id` に含まれないファイルを新規ファイルとしてマークします"
@@ -1567,25 +1567,6 @@ class APIHandler(object):
                 ) for p, e in scan_errors.items()] if include_errors else None,
             )
 
-        @api.get(
-            "/server/{server_id}/backup/{backup_id}",
-            summary="バックアップの情報",
-        )
-        async def _get_server_backup(backup_id: UUID, server: "ServerProcess" = Depends(getserver)) -> model.Backup:
-            return await _get_backup(backup_id)
-
-        @api.delete(
-            "/server/{server_id}/backup/{backup_id}",
-            summary="バックアップの削除",
-            description="バックアップをファイルとデータベースから削除します。ファイルエラーは無視されます。",
-        )
-        async def _delete_server_backup(backup_id: UUID, server: "ServerProcess" = Depends(getserver)) -> bool:
-            try:
-                await self.backups.delete_backup(server, backup_id)
-            except ValueError as e:
-                raise APIErrorCode.BACKUP_NOT_FOUND.of(str(e))
-            return True
-
         @api.post(
             "/server/{server_id}/backup/{backup_id}/restore",
             summary="バックアップリストア",
@@ -1624,7 +1605,7 @@ class APIHandler(object):
 
         @api.get(
             "/server/{server_id}/backup/{backup_id}/files/compare",
-            summary="ファイルの比較",
+            summary="バックアップファイルの比較",
             description=(
                 "サーバーデータまたは指定されたバックアップと比較して異なるファイルを一覧します\n\n"
                 "`backup_id` に含まれないファイルを新規ファイルとしてマークします\n\n"
