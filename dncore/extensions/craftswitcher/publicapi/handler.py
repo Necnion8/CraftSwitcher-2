@@ -15,7 +15,7 @@ from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
 from dncore.extensions.craftswitcher.abc import ServerType, ServerState
 from dncore.extensions.craftswitcher.database import SwitcherDatabase
-from dncore.extensions.craftswitcher.database.model import User
+from dncore.extensions.craftswitcher.database.model import User, SnapshotErrorFile
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus, BackupFileErrorType, FileInfo
@@ -24,7 +24,6 @@ from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEve
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
-from dncore.extensions.craftswitcher.publicapi.model import BackupFilePathErrorInfo
 from dncore.extensions.craftswitcher.utils import call_event, datetime_now, disk_usage
 
 if TYPE_CHECKING:
@@ -35,11 +34,76 @@ if TYPE_CHECKING:
 log = getLogger(__name__)
 
 
+def convert_to_error_files_model(error_files: dict[str, tuple[BackupFileErrorType, SnapshotErrorFile | None]]):
+    return [model.BackupFilePathErrorInfo(
+        path=p,
+        error_type=e_type,
+        error_message=e.error_message if e else None,
+    ) for p, (e_type, e) in error_files.items()]
+
+
+def create_backups_compare_result(
+    old_backup: "FilesResult", new_backup: "FilesResult", *,
+    include_files: bool, include_errors: bool, only_updates: bool,
+):
+    files_diff = compare_files_diff(old_backup.files, new_backup.files)
+    update_files_diff = [diff for diff in files_diff if 0 < diff.status.value]  # not DELETE or not NO_CHANGE
+
+    return model.BackupsCompareResult(
+        total_files=len(old_backup.files),
+        total_files_size=old_backup.total_files_size,
+        error_files=len(old_backup.error_files),
+        backup_files_size=old_backup.backup_files_size,
+        update_files=len(update_files_diff),
+        update_files_size=sum(diff.new_info.size for diff in update_files_diff),
+        target_total_files=len(new_backup.files),
+        target_total_files_size=new_backup.total_files_size,
+        target_error_files=len(new_backup.error_files),
+        target_backup_files_size=new_backup.backup_files_size,
+        files=[
+            model.BackupFileDifference.create(diff) for diff in files_diff
+            if not only_updates or diff in update_files_diff
+        ] if include_files else None,
+        errors=old_backup.error_files if include_errors else None,
+        target_errors=new_backup.error_files if include_errors else None,
+    )
+
+
+async def get_server_files(server_dir: Path):
+    _size = [0]
+
+    def check(p: Path):
+        try:
+            _size[0] += p.stat().st_size
+        except OSError:
+            pass
+        return True
+
+    files, scan_errors = await async_scan_files(server_dir, check=check)
+    return FilesResult(
+        files=files,
+        total_files_size=_size[0],
+        error_files=[model.BackupFilePathErrorInfo(
+                path=p,
+                error_type=BackupFileErrorType.SCAN,
+                error_message=str(e),
+            ) for p, e in scan_errors.items()],
+        backup_files_size=None,
+    )
+
+
 class PairPath(NamedTuple):
     real: Path
     swi: str
     server: "ServerProcess | None"
     root_dir: Path | None
+
+
+class FilesResult(NamedTuple):
+    files: dict[str, FileInfo]
+    total_files_size: int
+    error_files: list[model.BackupFilePathErrorInfo]
+    backup_files_size: int | None
 
 
 class OAuth2PasswordRequestForm:
@@ -1403,96 +1467,39 @@ class APIHandler(object):
             summary="ファイル一覧",
             description=(
                 "バックアップされたファイルを一覧します\n\n"
-                "`check_files` が true の場合は、常に実際のファイルが存在するかテストします。\n\n"
                 "バックアップデータが正常でない場合はエラー 802 (INVALID_BACKUP) を返します"
             ),
         )
         async def _files_backup(
-            backup_id: UUID, check_files: bool = False,
+            backup_id: UUID,
+            check_files: bool = Query(False, description="常に実際のファイルをチェックします"),
             include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
             include_errors: bool = Query(False, description="エラーファイルを返す"),
         ) -> model.BackupFilesResult:
-            _size = [0]  # no link size
-
-            def check(p: Path):
-                try:
-                    f_stat = p.stat()
-                    if f_stat.st_nlink == 1:
-                        _size[0] += f_stat.st_size
-                except OSError:
-                    pass
-                return True
-
-            if not (backup := await db.get_backup_or_snapshot(backup_id)):
-                raise APIErrorCode.BACKUP_NOT_FOUND.of("Backup not found")
-
-            if BackupType.SNAPSHOT == backup.type:
-                files = await self.backups.get_snapshot_file_info(backup_id) or {}
-                err_files = {e.path: (e.error_type, e) for e in await db.get_snapshot_errors_files(backup_id) or []}
-                total_files_size = backup.total_files_size
-                final_size = None
-
-                if check_files:
-                    _files, _errors = await async_scan_files(self.backups.backups_dir / backup.path, check=check)
-                    err_files.update({p: (BackupFileErrorType.SCAN, None) for p in _errors})
-                    err_files.update({p: (BackupFileErrorType.EXISTS_CHECK, None) for p in files if p not in _files})
-
-                    for p in err_files:
-                        files.pop(p, None)
-
-                    total_files_size = sum(fi.size for fi in _files.values())
-                    final_size = _size[0]
-
-            elif BackupType.FULL == backup.type:
-                _backup_file = self.backups.backups_dir / backup.path
-                if not _backup_file.is_file():
-                    raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
-
-                final_size = _backup_file.stat().st_size
-                try:
-                    _files = await self.files.list_archive(self.backups.backups_dir / backup.path)
-                except NoArchiveHelperError:
-                    raise
-                try:
-                    _files = self.backups.find_server_directory_archive(_files)
-                except ValueError as e:
-                    raise APIErrorCode.INVALID_BACKUP.of(str(e))
-
-                files = {f.filename: FileInfo(f.size, f.modified_datetime, f.is_dir) for f in _files}
-                total_files_size = sum(fi.size for fi in _files)
-                err_files = {}
-
-            else:
-                raise NotImplementedError(f"Unknown backup type: {backup.type}")
-
-            return model.BackupFilesResult(
-                total_files=len(files),
-                total_files_size=total_files_size,
-                error_files=len(err_files),
-                backup_files_size=final_size,
-                files=[model.BackupFilePathInfo.create(p, i)
-                       for p, i in files.items()] if include_files else None,
-                errors=[BackupFilePathErrorInfo(
-                    path=p,
-                    error_type=e_type,
-                    error_message=e.error_message if e else None,
-                ) for p, (e_type, e) in err_files.items()] if include_errors else None,
+            return await self.get_backup_files_result(
+                backup_id, check_files=check_files, include_files=include_files, include_errors=include_errors,
             )
 
         @api.get(
             "/backup/{backup_id}/files/compare",
             summary="バックアップファイルの比較",
             description=(
-                "指定されたバックアップと比較して異なるファイルのみ一覧します\n\n"
                 "`backup_id` に含まれないファイルを新規ファイルとしてマークします"
             ),
         )
-        async def _files_compare_backups(  # TODO:
-            backup_id: UUID, dst_backup_id: UUID,
-        ) -> list[model.BackupFileDifference]:
-            diffs = await self.backups.compare_snapshots(backup_id, dst_backup_id)
-            return [model.BackupFileDifference.create(diff) for diff in diffs
-                    if diff.status != SnapshotStatus.NO_CHANGE]
+        async def _files_compare_backups(
+            backup_id: UUID, target_backup_id: UUID,
+            check_files: bool = Query(False, description="常に実際のファイルをチェックします"),
+            include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
+            include_errors: bool = Query(False, description="エラーファイルを返す"),
+            only_updates: bool = Query(True, description="異なるファイルのみ `files` に含める"),
+        ) -> model.BackupsCompareResult:
+            source_backup = await self.get_backup_files(backup_id, check_files)
+            target_backup = await self.get_backup_files(target_backup_id, check_files)
+            return create_backups_compare_result(
+                source_backup, target_backup,
+                include_files=include_files, include_errors=include_errors, only_updates=only_updates,
+            )
 
         @api.get(
             "/server/{server_id}/backups",
@@ -1567,9 +1574,9 @@ class APIHandler(object):
                 error_files=len(scan_errors),
                 update_files=update_files,
                 update_files_size=update_files_size,
-                update_source=last_snapshot and last_snapshot.id or None,
+                snapshot_source=last_snapshot and last_snapshot.id or None,
                 files=[model.BackupFileDifference.create(f_diff) for f_diff in files_diff] if include_files else None,
-                errors=[BackupFilePathErrorInfo(
+                errors=[model.BackupFilePathErrorInfo(
                     path=p,
                     error_type=BackupFileErrorType.SCAN,
                     error_message=str(e),
@@ -1619,22 +1626,25 @@ class APIHandler(object):
             "/server/{server_id}/backup/{backup_id}/files/compare",
             summary="バックアップファイルの比較",
             description=(
-                "サーバーデータまたは指定されたバックアップと比較して異なるファイルを一覧します\n\n"
-                "`backup_id` に含まれないファイルを新規ファイルとしてマークします\n\n"
-                "※ サーバーデータの読み込みエラーは無視されます"
+                "バックアップとサーバーデータのファイルを比較します\n\n"
+                "`backup_id` に含まれないファイルを新規ファイルとしてマークします"
             ),
         )
-        async def _files_compare_server_backups(  # TODO:
-            backup_id: UUID, dst_backup_id: UUID | None = None, server: "ServerProcess" = Depends(getserver),
-        ) -> list[model.BackupFileDifference]:
-            if dst_backup_id:
-                diffs = await self.backups.compare_snapshots(backup_id, dst_backup_id)
-                return [model.BackupFileDifference.create(diff) for diff in diffs
-                        if diff.status != SnapshotStatus.NO_CHANGE]
-            else:
-                diffs, _ = await self.backups.compare_snapshot(backup_id, server)
-                return [model.BackupFileDifference.create(diff) for diff in diffs
-                        if diff.status != SnapshotStatus.NO_CHANGE]  # エラーを無視
+        async def _files_compare_server_backups(
+            backup_id: UUID, server: "ServerProcess" = Depends(getserver),
+            check_files: bool = Query(False, description="常に実際のファイルをチェックします"),
+            include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
+            include_errors: bool = Query(False, description="エラーファイルを返す"),
+            only_updates: bool = Query(True, description="異なるファイルのみ `files` に含める"),
+        ) -> model.BackupsCompareResult:
+            if not server.directory.is_dir():
+                raise APIErrorCode.NOT_EXISTS_DIRECTORY.of("Not a directory or not exists")
+            source_backup = await self.get_backup_files(backup_id, check_files)
+            target_data = await get_server_files(server.directory)
+            return create_backups_compare_result(
+                source_backup, target_data,
+                include_files=include_files, include_errors=include_errors, only_updates=only_updates,
+            )
 
         return api
 
@@ -1838,3 +1848,78 @@ class APIHandler(object):
             return await self.inst._test(arg)
 
         return api
+
+    #
+
+    async def get_backup_files(self, backup_id: UUID, check_files: bool) -> FilesResult:
+        db = self.database
+        err_files: dict[str, tuple[BackupFileErrorType, SnapshotErrorFile | None]]
+
+        if not (backup := await db.get_backup_or_snapshot(backup_id)):
+            raise APIErrorCode.BACKUP_NOT_FOUND.of(f"Backup not found: {backup_id}")
+
+        if BackupType.SNAPSHOT == backup.type:
+            files = await self.backups.get_snapshot_file_info(backup_id) or {}
+            err_files = {e.path: (e.error_type, e) for e in await db.get_snapshot_errors_files(backup_id) or []}
+            total_files_size = backup.total_files_size
+            final_size = None
+
+            if check_files:
+                _size = [0]  # no link size
+
+                def check(p: Path):
+                    try:
+                        f_stat = p.stat()
+                        if f_stat.st_nlink == 1:
+                            _size[0] += f_stat.st_size
+                    except OSError:
+                        pass
+                    return True
+
+                _files, _errors = await async_scan_files(self.backups.backups_dir / backup.path, check=check)
+                err_files.update({p: (BackupFileErrorType.SCAN, None) for p in _errors})
+                err_files.update({p: (BackupFileErrorType.EXISTS_CHECK, None) for p in files if p not in _files})
+
+                for p in err_files:
+                    files.pop(p, None)
+
+                total_files_size = sum(fi.size for fi in _files.values())
+                final_size = _size[0]
+
+        elif BackupType.FULL == backup.type:
+            _backup_file = self.backups.backups_dir / backup.path
+            if not _backup_file.is_file():
+                raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
+
+            final_size = _backup_file.stat().st_size
+            try:
+                _files = await self.files.list_archive(self.backups.backups_dir / backup.path)
+            except NoArchiveHelperError:
+                raise
+            try:
+                _files = self.backups.find_server_directory_archive(_files)
+            except ValueError as e:
+                raise APIErrorCode.INVALID_BACKUP.of(str(e))
+
+            files = {f.filename: FileInfo(f.size, f.modified_datetime, f.is_dir) for f in _files}
+            total_files_size = sum(fi.size for fi in _files)
+            err_files = {}
+
+        else:
+            raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
+        return FilesResult(files, total_files_size, convert_to_error_files_model(err_files), final_size)
+
+    async def get_backup_files_result(
+        self, backup_id: UUID, *, check_files: bool, include_files: bool, include_errors: bool,
+    ):
+        r = await self.get_backup_files(backup_id, check_files)
+        return model.BackupFilesResult(
+            total_files=len(r.files),
+            total_files_size=r.total_files_size,
+            error_files=len(r.error_files),
+            backup_files_size=r.backup_files_size,
+            files=[model.BackupFilePathInfo.create(p, i)
+                   for p, i in r.files.items()] if include_files else None,
+            errors=r.error_files if include_errors else None,
+        )

@@ -482,22 +482,38 @@ class BackupFilePathErrorInfo(BaseModel):
 
 
 class BackupFilesResult(BaseModel):
-    total_files: int
-    total_files_size: int
-    error_files: int
-    backup_files_size: int | None = Field(description="バックアップのサイズ (リンク済みのファイルを除く)")
+    total_files: int = Field(description="ファイル数")
+    total_files_size: int = Field(description="ファイルの合計サイズ")
+    error_files: int = Field(description="エラーファイル件数")
+    backup_files_size: int | None = Field(description="バックアップのサイズ (節約済みのファイルを除く)")
 
     files: list[BackupFilePathInfo] | None
     errors: list[BackupFilePathErrorInfo] | None
+
+
+class BackupsCompareResult(BackupFilesResult):
+    update_files: int = Field(description="変更があるファイル数")
+    update_files_size: int = Field(description="変更があるファイルの合計サイズ")
+
+    target_total_files: int = Field(description="比較対象先のファイル数")
+    target_total_files_size: int = Field(description="比較対象先のファイルの合計サイズ")
+    target_error_files: int = Field(description="比較対象先のエラーファイル件数")
+    target_backup_files_size: int | None = Field(description="比較対象先のバックアップのサイズ (節約済みのファイルを除く)")
+
+    files: list[BackupFileDifference] | None
+    errors: list[BackupFilePathErrorInfo] | None
+    target_errors: list[BackupFilePathErrorInfo] | None
 
 
 class BackupPreviewResult(BaseModel):
     total_files: int = Field(description="対象のファイル数")
     total_files_size: int = Field(description="対象のファイルの合計サイズ")
     error_files: int = Field(description="エラーファイル件数")
-    update_files: int | None = Field(description="変更があるファイル数 (スナップショットのみ)")
-    update_files_size: int | None = Field(description="変更があるファイルの合計サイズ (スナップショットのみ)")
-    update_source: UUID | None = Field(description="ソース元のスナップショットバックアップID")
+    update_files: int = Field(description="変更があるファイル数")
+    update_files_size: int = Field(description="変更があるファイルの合計サイズ")
+    backup_files_size: int | None = Field(description="バックアップのサイズ (節約済みのファイルを除く)")
+
+    snapshot_source: UUID | None = Field(description="ソース元のスナップショットバックアップID")
 
     files: list[BackupFileDifference] | None
     errors: list[BackupFilePathErrorInfo] | None
