@@ -18,7 +18,7 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User, SnapshotErrorFile
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
-from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus, BackupFileErrorType, FileInfo
+from dncore.extensions.craftswitcher.fileback.abc import BackupFileErrorType, FileInfo
 from dncore.extensions.craftswitcher.fileback.snapshot import async_scan_files, compare_files_diff
 from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType, BackupType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
@@ -66,6 +66,29 @@ def create_backups_compare_result(
         ] if include_files else None,
         errors=old_backup.error_files if include_errors else None,
         target_errors=new_backup.error_files if include_errors else None,
+    )
+
+
+def create_backup_preview_result(
+    old_files: dict[str, FileInfo] | None, new_result: "FilesResult", snapshot_source: UUID, *,
+    include_files: bool, include_errors: bool, only_updates: bool,
+):
+    files_diff = compare_files_diff(old_files, new_result.files)
+    update_files_diff = [diff for diff in files_diff if 0 < diff.status.value]  # not DELETE or not NO_CHANGE
+
+    return model.BackupPreviewResult(
+        total_files=len(new_result.files),
+        total_files_size=new_result.total_files_size,
+        error_files=len(new_result.error_files),
+        backup_files_size=new_result.backup_files_size,
+        update_files=len(update_files_diff),
+        update_files_size=sum(diff.new_info.size for diff in update_files_diff),
+        files=[
+            model.BackupFileDifference.create(diff) for diff in files_diff
+            if not only_updates or diff in update_files_diff
+        ] if include_files else None,
+        errors=new_result.error_files if include_errors else None,
+        snapshot_source=snapshot_source,
     )
 
 
@@ -1547,46 +1570,29 @@ class APIHandler(object):
         @api.get(
             "/server/{server_id}/backup/preview",
             summary="バックアップのプレビュー",
+            description="`snapshot` が true の場合は、リンク可能な最終スナップショットをチェック/比較します。",
         )
         async def _preview_server_backup(
             server: "ServerProcess" = Depends(getserver),
             snapshot: bool = False,
+            check_files: bool = Query(False, description="常に実際のファイルをチェックします"),
             include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
             include_errors: bool = Query(False, description="エラーファイルを返す"),
+            only_updates: bool = Query(True, description="異なるファイルのみ `files` に含める"),
         ) -> model.BackupPreviewResult:
 
             source_id = server.get_source_id()
-            old_files = last_snapshot = None
+            old_result = last_snapshot = None
 
             if b_id := server.config.last_backup_id:
                 if snapshot:
                     if last_snapshot := await self.database.get_last_snapshot(UUID(source_id), UUID(b_id)):
-                        old_files = await self.backups.get_snapshot_file_info(last_snapshot.id)
+                        old_result = await self.get_backup_files(last_snapshot.id, check_files)
 
-            files, scan_errors = await async_scan_files(server.directory)
-            files_diff = compare_files_diff(old_files, files)
-
-            _total_files = [f_diff for f_diff in files_diff if SnapshotStatus.DELETE != f_diff.status]
-
-            update_files = update_files_size = None
-            if old_files is not None:
-                _update_files = [f_diff for f_diff in _total_files if SnapshotStatus.NO_CHANGE != f_diff.status]
-                update_files = len(_update_files)
-                update_files_size = sum(f_diff.new_info.size for f_diff in _update_files)
-
-            return model.BackupPreviewResult(
-                total_files=len(_total_files),
-                total_files_size=sum(f_diff.new_info.size for f_diff in _total_files),
-                error_files=len(scan_errors),
-                update_files=update_files,
-                update_files_size=update_files_size,
-                snapshot_source=last_snapshot and last_snapshot.id or None,
-                files=[model.BackupFileDifference.create(f_diff) for f_diff in files_diff] if include_files else None,
-                errors=[model.BackupFilePathErrorInfo(
-                    path=p,
-                    error_type=BackupFileErrorType.SCAN,
-                    error_message=str(e),
-                ) for p, e in scan_errors.items()] if include_errors else None,
+            result = await get_server_files(server.directory)
+            return create_backup_preview_result(
+                old_result and old_result.files, result, last_snapshot and last_snapshot.id or None,
+                include_files=include_files, include_errors=include_errors, only_updates=only_updates,
             )
 
         @api.post(
@@ -1614,17 +1620,19 @@ class APIHandler(object):
             "/server/{server_id}/backup/{backup_id}/verify",
             summary="バックアップの検証",
             description=(
-                "`/backup/{backup_id}/files?check_files=true` のエイリアスです。将来的に変更されるかもしれません。"
+                "バックアップデータとサーバーデータのファイルを比較します\n\n"
+                "`backup_id` に含まれないファイルを新規ファイルとしてマークします\n"
+                "`/server/{server_id}/backup/{backup_id}/files/compare?check_files=true` のエイリアスです。将来的に変更されるかもしれません。"
             )
         )
         async def _verify_server_backup(
             backup_id: UUID, server: "ServerProcess" = Depends(getserver),
             include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
             include_errors: bool = Query(False, description="エラーファイルを返す"),
-        ) -> model.BackupFilesResult:
-            return await _files_backup(
-                backup_id, check_files=True,
-                include_files=include_files, include_errors=include_errors,
+            only_updates: bool = Query(True, description="異なるファイルのみ `files` に含める"),
+        ) -> model.BackupsCompareResult:
+            return await _files_compare_server_backups(
+                backup_id, server, True, include_files, include_errors, only_updates,
             )
 
         @api.get(
