@@ -19,7 +19,7 @@ from dncore.extensions.craftswitcher.database.model import User
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
 from dncore.extensions.craftswitcher.fileback.abc import SnapshotStatus, BackupFileErrorType, FileInfo
-from dncore.extensions.craftswitcher.fileback.snapshot import async_scan_files
+from dncore.extensions.craftswitcher.fileback.snapshot import async_scan_files, compare_files_diff
 from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType, BackupType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
@@ -1521,6 +1521,51 @@ class APIHandler(object):
             else:
                 task = await self.backups.create_full_backup(server, comments)
             return model.BackupTask.create(task)
+
+        @api.get(
+            "/server/{server_id}/backup/preview",
+            summary="バックアップのプレビュー",
+        )
+        async def _preview_server_backup(
+            server: "ServerProcess" = Depends(getserver),
+            snapshot: bool = False,
+            include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
+            include_errors: bool = Query(False, description="エラーファイルを返す"),
+        ) -> model.BackupPreviewResult:
+
+            source_id = server.get_source_id()
+            old_files = last_snapshot = None
+
+            if b_id := server.config.last_backup_id:
+                if snapshot:
+                    if last_snapshot := await self.database.get_last_snapshot(UUID(source_id), UUID(b_id)):
+                        old_files = await self.backups.get_snapshot_file_info(last_snapshot.id)
+
+            files, scan_errors = await async_scan_files(server.directory)
+            files_diff = compare_files_diff(old_files, files)
+
+            _total_files = [f_diff for f_diff in files_diff if SnapshotStatus.DELETE != f_diff.status]
+
+            update_files = update_files_size = None
+            if old_files is not None:
+                _update_files = [f_diff for f_diff in _total_files if SnapshotStatus.NO_CHANGE != f_diff.status]
+                update_files = len(_update_files)
+                update_files_size = sum(f_diff.new_info.size for f_diff in _update_files)
+
+            return model.BackupPreviewResult(
+                total_files=len(_total_files),
+                total_files_size=sum(f_diff.new_info.size for f_diff in _total_files),
+                error_files=len(scan_errors),
+                update_files=update_files,
+                update_files_size=update_files_size,
+                update_source=last_snapshot and last_snapshot.id or None,
+                files=[model.BackupFileDifference.create(f_diff) for f_diff in files_diff] if include_files else None,
+                errors=[BackupFilePathErrorInfo(
+                    path=p,
+                    error_type=BackupFileErrorType.SCAN,
+                    error_message=str(e),
+                ) for p, e in scan_errors.items()] if include_errors else None,
+            )
 
         @api.get(
             "/server/{server_id}/backup/{backup_id}",

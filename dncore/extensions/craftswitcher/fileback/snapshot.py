@@ -32,9 +32,9 @@ class SnapshotResult(object):
         self.files = files
 
 
-def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, FileInfo]):
+def compare_files_diff(old_files: dict[str, FileInfo] | None, new_files: dict[str, FileInfo]):
     files = []  # type: list[FileDifference]
-    old_files = dict(old_files)
+    old_files = {} if old_files is None else dict(old_files)
 
     for path, f_info in new_files.items():
         try:

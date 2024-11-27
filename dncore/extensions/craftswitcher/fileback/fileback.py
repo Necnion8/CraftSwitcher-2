@@ -274,7 +274,7 @@ class Backupper(object):
                     task.progress = 1 / 4
 
                     action = "process diff"
-                    files_diff = compare_files_diff(old_files or {}, files)
+                    files_diff = compare_files_diff(old_files, files)
                     snap_files = {
                         entry.path: SnapshotFile(
                             path=entry.path,

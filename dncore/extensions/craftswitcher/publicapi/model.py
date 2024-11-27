@@ -489,3 +489,15 @@ class BackupFilesResult(BaseModel):
 
     files: list[BackupFilePathInfo] | None
     errors: list[BackupFilePathErrorInfo] | None
+
+
+class BackupPreviewResult(BaseModel):
+    total_files: int = Field(description="対象のファイル数")
+    total_files_size: int = Field(description="対象のファイルの合計サイズ")
+    error_files: int = Field(description="エラーファイル件数")
+    update_files: int | None = Field(description="変更があるファイル数 (スナップショットのみ)")
+    update_files_size: int | None = Field(description="変更があるファイルの合計サイズ (スナップショットのみ)")
+    update_source: UUID | None = Field(description="ソース元のスナップショットバックアップID")
+
+    files: list[BackupFileDifference] | None
+    errors: list[BackupFilePathErrorInfo] | None
