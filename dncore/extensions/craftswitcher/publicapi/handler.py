@@ -1403,7 +1403,8 @@ class APIHandler(object):
             summary="ファイル一覧",
             description=(
                 "バックアップされたファイルを一覧します\n\n"
-                "`check_files` が true の場合は、常に実際のファイルが存在するかテストします。"
+                "`check_files` が true の場合は、常に実際のファイルが存在するかテストします。\n\n"
+                "バックアップデータが正常でない場合はエラー 802 (INVALID_BACKUP) を返します"
             ),
         )
         async def _files_backup(
@@ -1443,11 +1444,19 @@ class APIHandler(object):
                     final_size = _size[0]
 
             elif BackupType.FULL == backup.type:
-                final_size = (self.backups.backups_dir / backup.path).stat().st_size
+                _backup_file = self.backups.backups_dir / backup.path
+                if not _backup_file.is_file():
+                    raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
+
+                final_size = _backup_file.stat().st_size
                 try:
                     _files = await self.files.list_archive(self.backups.backups_dir / backup.path)
                 except NoArchiveHelperError:
                     raise
+                try:
+                    _files = self.backups.find_server_directory_archive(_files)
+                except ValueError as e:
+                    raise APIErrorCode.INVALID_BACKUP.of(str(e))
 
                 files = {f.filename: FileInfo(f.size, f.modified_datetime, f.is_dir) for f in _files}
                 total_files_size = sum(fi.size for fi in _files)
@@ -1478,7 +1487,7 @@ class APIHandler(object):
                 "`backup_id` に含まれないファイルを新規ファイルとしてマークします"
             ),
         )
-        async def _files_compare_backups(
+        async def _files_compare_backups(  # TODO:
             backup_id: UUID, dst_backup_id: UUID,
         ) -> list[model.BackupFileDifference]:
             diffs = await self.backups.compare_snapshots(backup_id, dst_backup_id)
@@ -1591,7 +1600,10 @@ class APIHandler(object):
         @api.get(
             "/server/{server_id]/backup/{backup_id}/verify",
             summary="バックアップの検証",
-            description="※ 現在は GET `/backup/{backup_id}/files?check_files=true` のエイリアスです",
+            description=(
+                "※ `/backup/{backup_id}/files?check_files=true` のエイリアスです。将来的に変更されるかもしれません。\n\n"
+                "バックアップデータが正常でない場合はエラー 802 (INVALID_BACKUP) を返します"
+            )
         )
         async def _verify_server_backup(
             backup_id: UUID, server: "ServerProcess" = Depends(getserver),
@@ -1612,7 +1624,7 @@ class APIHandler(object):
                 "※ サーバーデータの読み込みエラーは無視されます"
             ),
         )
-        async def _files_compare_server_backups(
+        async def _files_compare_server_backups(  # TODO:
             backup_id: UUID, dst_backup_id: UUID | None = None, server: "ServerProcess" = Depends(getserver),
         ) -> list[model.BackupFileDifference]:
             if dst_backup_id:

@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import re
 import time
+from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from ..config import Backup as BackupConfig
     from ..database import SwitcherDatabase
     from ..database import model as db
+    from ..files.archive import ArchiveFile
     from ..serverprocess import ServerProcess
 
 __all__ = [
@@ -585,3 +587,36 @@ class Backupper(object):
 
         files_diff = compare_files_diff(src_files, dst_files)
         return files_diff
+
+    @staticmethod
+    def find_server_directory_archive(files: list["ArchiveFile"]):
+        """
+        サーバーディレクトリを探して、そのディレクトリ上にあるファイルのリストを返します
+        :except ValueError: サーバーディレクトリが見つからない
+        """
+        from ..craftswitcher import CraftSwitcher
+        from ..files.archive import ArchiveFile
+
+        _child_paths = defaultdict(list)  # type: dict[str, list[ArchiveFile]]
+        _server_dir = []  # type: list[tuple[list[ArchiveFile], str]]
+        for c in files:
+            if "/" not in c.filename:
+                continue
+            dir_name, file_name = c.filename.split("/", 1)
+            if not file_name:  # dir_name's root
+                continue
+            _child_paths[dir_name].append(c)
+            # swi.server.yml
+            if CraftSwitcher.SERVER_CONFIG_FILE_NAME == file_name:
+                _server_dir.append((_child_paths[dir_name], dir_name))
+        try:
+            if len(_child_paths) != 1 or _server_dir:
+                _files, _dir_name = _server_dir[0]
+            else:
+                _files, _dir_name = list(_child_paths.items())[0]
+        except IndexError:
+            raise ValueError("Server directory was not found")
+
+        # rename
+        _dir_name_len = len(_dir_name) + 1
+        return [ArchiveFile(**dict(f._asdict(), filename=f.filename[_dir_name_len:])) for f in _files]

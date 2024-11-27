@@ -70,6 +70,7 @@ class APIErrorCode(IntEnum):
     # backup
     BACKUP_ALREADY_RUNNING = 800
     BACKUP_NOT_FOUND = auto()
+    INVALID_BACKUP = auto()
 
     # java
     UNKNOWN_JAVA_PRESET = 900
