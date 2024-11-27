@@ -1466,8 +1466,7 @@ class APIHandler(object):
             "/backup/{backup_id}/files",
             summary="ファイル一覧",
             description=(
-                "バックアップされたファイルを一覧します\n\n"
-                "バックアップデータが正常でない場合はエラー 802 (INVALID_BACKUP) を返します"
+                "バックアップされたファイルを一覧します"
             ),
         )
         async def _files_backup(
@@ -1476,8 +1475,15 @@ class APIHandler(object):
             include_files: bool = Query(False, description="バックアップ対象のファイル情報を返す"),
             include_errors: bool = Query(False, description="エラーファイルを返す"),
         ) -> model.BackupFilesResult:
-            return await self.get_backup_files_result(
-                backup_id, check_files=check_files, include_files=include_files, include_errors=include_errors,
+            r = await self.get_backup_files(backup_id, check_files)
+            return model.BackupFilesResult(
+                total_files=len(r.files),
+                total_files_size=r.total_files_size,
+                error_files=len(r.error_files),
+                backup_files_size=r.backup_files_size,
+                files=[model.BackupFilePathInfo.create(p, i)
+                       for p, i in r.files.items()] if include_files else None,
+                errors=r.error_files if include_errors else None,
             )
 
         @api.get(
@@ -1605,11 +1611,10 @@ class APIHandler(object):
             return model.BackupTask.create(task)
 
         @api.get(
-            "/server/{server_id]/backup/{backup_id}/verify",
+            "/server/{server_id}/backup/{backup_id}/verify",
             summary="バックアップの検証",
             description=(
-                "※ `/backup/{backup_id}/files?check_files=true` のエイリアスです。将来的に変更されるかもしれません。\n\n"
-                "バックアップデータが正常でない場合はエラー 802 (INVALID_BACKUP) を返します"
+                "`/backup/{backup_id}/files?check_files=true` のエイリアスです。将来的に変更されるかもしれません。"
             )
         )
         async def _verify_server_backup(
@@ -1909,17 +1914,3 @@ class APIHandler(object):
             raise NotImplementedError(f"Unknown backup type: {backup.type}")
 
         return FilesResult(files, total_files_size, convert_to_error_files_model(err_files), final_size)
-
-    async def get_backup_files_result(
-        self, backup_id: UUID, *, check_files: bool, include_files: bool, include_errors: bool,
-    ):
-        r = await self.get_backup_files(backup_id, check_files)
-        return model.BackupFilesResult(
-            total_files=len(r.files),
-            total_files_size=r.total_files_size,
-            error_files=len(r.error_files),
-            backup_files_size=r.backup_files_size,
-            files=[model.BackupFilePathInfo.create(p, i)
-                   for p, i in r.files.items()] if include_files else None,
-            errors=r.error_files if include_errors else None,
-        )
