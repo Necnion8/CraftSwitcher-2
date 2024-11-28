@@ -523,3 +523,9 @@ class BackupPreviewResult(BaseModel):
 
     files: list[BackupFileDifference] | None
     errors: list[BackupFilePathErrorInfo] | None
+
+
+class BackupFileHistoryEntry(BaseModel):
+    backup: Backup
+    info: BackupFileInfo | None
+    status: fbabc.SnapshotStatus | None

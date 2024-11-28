@@ -286,3 +286,22 @@ class SwitcherDatabase(object):
                 return [r[0] for r in result.all()]
             except NoResultFound:
                 return None
+
+    async def get_backups_files(self, source: UUID, path: str) -> tuple[list[SnapshotFile], list[Backup]]:
+        """
+        ソースIDとパスを含むバックアップファイルを返します (バックアップ作成日時順)
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(SnapshotFile, Backup)
+                .where(Backup.source == source)
+                .where(Backup.id == SnapshotFile.backup_id)
+                .where(SnapshotFile.path == path)
+                .order_by(Backup.created)
+            )
+            files = []
+            backups = []
+            for s_file, backup in result.all():
+                files.append(s_file)
+                backups.append(backup)
+            return files, backups

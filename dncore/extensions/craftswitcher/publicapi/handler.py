@@ -18,7 +18,7 @@ from dncore.extensions.craftswitcher.database import SwitcherDatabase
 from dncore.extensions.craftswitcher.database.model import User, SnapshotErrorFile
 from dncore.extensions.craftswitcher.errors import NoDownloadFile, NoArchiveHelperError
 from dncore.extensions.craftswitcher.ext import SwitcherExtension, ExtensionInfo, EditableFile
-from dncore.extensions.craftswitcher.fileback.abc import BackupFileErrorType, FileInfo
+from dncore.extensions.craftswitcher.fileback.abc import BackupFileErrorType, FileInfo, SnapshotStatus
 from dncore.extensions.craftswitcher.fileback.snapshot import async_scan_files, compare_files_diff
 from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEventType, BackupType
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
@@ -1783,7 +1783,7 @@ class APIHandler(object):
         @api.get(
             "/server/{server_id}/backup/{backup_id}/file",
             summary="ファイルデータの取得",
-            description="",
+            description="バックアップに格納されたファイルを返します",
         )
         async def _get_server_backup_file(backup_id: UUID, path: str, server: "ServerProcess" = Depends(getserver)):
             try:
@@ -1843,6 +1843,37 @@ class APIHandler(object):
 
             else:
                 raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
+        @api.get(
+            "/server/{server_id}/backup/file/history",
+            summary="ファイルデータの履歴一覧",
+            description=(
+                "指定されたファイルがバックアップのリストを作成順で返します\n\n"
+                "変更がないとマークされているバックアップはリストから除外されます (スナップショットのみ)\n\n"
+                "※ 現在はスナップショットのみサポートしています"
+            ),
+        )
+        async def _get_server_backup_file_history(
+            path: str, server: "ServerProcess" = Depends(getserver),
+        ) -> list[model.BackupFileHistoryEntry]:
+            try:
+                path = self.files.resolvepath(path)
+            except ValueError as e:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"{e}: {path}")
+            path = path[path.startswith("/"):]
+
+            source = server.get_source_id()
+            files, backups = await db.get_backups_files(UUID(source), path)
+
+            return [model.BackupFileHistoryEntry(
+                backup=model.Backup.create(backup),
+                info=model.BackupFileInfo(
+                    size=file.size,
+                    modify_time=file.modified,
+                    is_dir=file.type.value == 1,
+                ) if SnapshotStatus.DELETE != file.status else None,
+                status=file.status,
+            ) for file, backup in zip(files, backups) if SnapshotStatus.NO_CHANGE != file.status]
 
         return api
 
