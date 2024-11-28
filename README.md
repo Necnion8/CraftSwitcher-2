@@ -5,8 +5,7 @@
     <img src="icons/header.png">
   </picture>
 
-  Minecraft Java サーバー 管理システム |
-  <a href="https://github.com/Necnion8/dnCoreV6">DNC6</a>プラグイン実装
+  Minecraft Java サーバー 操作管理システム
   <br>
   本体コードは <a href="dncore%2Fextensions%2Fcraftswitcher">dncore/extensions/craftswitcher</a> にあります
 </div>
@@ -19,28 +18,29 @@
 - [x] ファイル管理
 - [x] アーカイブファイルの対応
 - [x] サーバーのインストール
-- [ ] バックアップ機能
-  - [x] 設定とデータベースの作成
-  - [x] フルバックアップ
-  - [x] スナップショット
-  - [x] データのリストア
+- [x] バックアップ機能
 - [ ] スケジューラ機能
-  - 大体のイメージはOK。ただし、実装の構想イメージが不足
+  - [ ] データベース
+  - [ ] タスク
+  - [ ] 細かいとこ
 - [ ] サーバー内連携モジュール
   - [x] 旧版の連携機能を一時的に移植実装
   - [ ] v2 連携機能の実装と旧版実装を削除
 - [ ] Discordコマンド
-  - 実装待ち
 - [ ] リリース！
 
 ---
 ## 主な機能
-- Web UI
-- Discord ボット (オプション)
-- サーバー内 連携API
+- すぐできる導入
+- [Webフロントエンド](https://github.com/Myoko1110/CraftSwitcher2-Client) (Myoko1110さん ありがとう！😆)
 - ファイル操作
 - パフォーマンスモニター
-- バックアップとスケジュール機能
+- スナップショットとバックアップ
+- スケジュール再起動
+- サーバー連携API
+- サーバー本体のダウンロードとビルドツール
+- 操作用 Discord ボット (オプション)
+- [DNC6](https://github.com/Necnion8/dnCoreV6)プラグイン拡張機能
 
 
 ## 環境
@@ -72,7 +72,7 @@
 | Velocity           |  〇   |         ✕         |                     〇                     |       [PaperMC](https://papermc.io/software/velocity)        |
 
 <sup>※1</sup>ビルドが必要ですが、自動でセットアップします<br>
-<sup>※2</sup>旧版連携モジュールで仮対応<br>
+<sup>※2</sup>[旧版連携モジュール](https://github.com/Necnion8/CraftSwitcher-ReportModule)で仮対応<br>
 <sup>※3</sup>正式リリースされてないため未確認
 
 ## 導入と起動
