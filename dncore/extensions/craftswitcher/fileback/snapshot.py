@@ -1,10 +1,12 @@
 import asyncio
 import datetime
 import shutil
+from functools import partial
 from logging import getLogger
 from pathlib import Path
+from typing import Callable
 
-from .abc import SnapshotStatus, SnapshotFileErrorType, FileInfo, FileDifference
+from .abc import SnapshotStatus, BackupFileErrorType, FileInfo, FileDifference
 
 __all__ = [
     "SnapshotResult",
@@ -30,9 +32,9 @@ class SnapshotResult(object):
         self.files = files
 
 
-def compare_files_diff(old_files: dict[str, FileInfo], new_files: dict[str, FileInfo]):
+def compare_files_diff(old_files: dict[str, FileInfo] | None, new_files: dict[str, FileInfo]):
     files = []  # type: list[FileDifference]
-    old_files = dict(old_files)
+    old_files = {} if old_files is None else dict(old_files)
 
     for path, f_info in new_files.items():
         try:
@@ -61,11 +63,16 @@ def get_file_info(path: Path):
     )
 
 
-def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+def scan_files(
+    src_dir: Path, *, check: Callable[[Path], bool] = None,
+) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
     files = {}  # type: dict[str, FileInfo]
     errors = {}  # type: dict[str, Exception]
 
     for path in src_dir.glob("**/*"):  # type: Path
+        if check and not check(path):
+            continue
+
         path_name = path.relative_to(src_dir).as_posix()
         try:
             files[path_name] = get_file_info(path)
@@ -76,21 +83,34 @@ def scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]
     return files, errors
 
 
-async def async_scan_files(src_dir: Path) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
-    return await asyncio.get_running_loop().run_in_executor(None, scan_files, src_dir)
+async def async_scan_files(
+    src_dir: Path, *, check: Callable[[Path], bool] = None,
+) -> tuple[dict[str, FileInfo], dict[str, Exception]]:
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(scan_files, src_dir, check=check),
+    )
 
 
-def create_files_diff(result: SnapshotResult, dst_dir: Path):
+def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[[FileDifference], bool] = None):
     """
     スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
+    :param check:
     """
     if not dst_dir.is_dir():
         raise NotADirectoryError("destination directory is not exists or directory")
 
-    errors = []  # type: list[tuple[FileDifference, Exception, SnapshotFileErrorType]]
-    for file in sorted(result.files, key=lambda f: (not (f.new_info or f.old_info).is_dir, f.path.count("/"))):
+    def compare_file_diff(_diff: FileDifference):
+        return not (_diff.new_info or _diff.old_info).is_dir, _diff.path.count("/")
+
+    result_files = sorted(result.files, key=compare_file_diff)
+    errors = []  # type: list[tuple[FileDifference, Exception, BackupFileErrorType]]
+    for file in result_files:
+        if check and not check(file):
+            continue
+
         if SnapshotStatus.DELETE == file.status:
             continue
 
@@ -102,10 +122,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                         dst_file_path.mkdir(exist_ok=True)
                     except Exception as e:
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                        errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
                     log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                    errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
                 try:
@@ -115,10 +135,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                         dst_file_path.hardlink_to(old_file_path)
                     except Exception as e:
                         log.warning("Failed to link file: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_LINK))
+                        errors.append((file, e, BackupFileErrorType.CREATE_LINK))
                 except Exception as e:
                     log.warning("Failed to link file: %s: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_LINK))
+                    errors.append((file, e, BackupFileErrorType.CREATE_LINK))
 
         elif file.status in (SnapshotStatus.CREATE, SnapshotStatus.UPDATE, ):
             if file.new_info.is_dir:
@@ -128,10 +148,10 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                         dst_file_path.mkdir(exist_ok=True)
                     except Exception as e:
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                        errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
                     log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.CREATE_DIRECTORY))
+                    errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
                 try:
@@ -141,26 +161,45 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path):
                         shutil.copy2(src_file_path, dst_file_path)
                     except Exception as e:
                         log.warning("Failed to copy file: %s: %s", type(e).__name__, str(e))
-                        errors.append((file, e, SnapshotFileErrorType.COPY_FILE))
+                        errors.append((file, e, BackupFileErrorType.COPY_FILE))
                 except Exception as e:
                     log.warning("Failed to copy file: %s: %s: %s", type(e).__name__, str(e), file.path)
-                    errors.append((file, e, SnapshotFileErrorType.COPY_FILE))
+                    errors.append((file, e, BackupFileErrorType.COPY_FILE))
 
         else:
             errors.append((
                 file,
                 NotImplementedError(f"Unknown snapshot status: {file.status.name}"),
-                SnapshotFileErrorType.UNKNOWN,
+                BackupFileErrorType.UNKNOWN,
             ))
             log.warning("Unknown snapshot status: %s: %s", file.status, file.path)
+
+    # copy dir stat
+    for file in reversed(result_files):
+        if file.status not in (SnapshotStatus.NO_CHANGE, SnapshotStatus.CREATE, SnapshotStatus.UPDATE):
+            continue
+        if file.new_info.is_dir:
+            src = result.src_dir / file.path
+            dst = dst_dir / file.path
+            if dst.exists():
+                try:
+                    shutil.copystat(src, dst)
+                except Exception as e:
+                    log.warning("Failed to copystat to dir: %s: %s", type(e).__name__, str(e))
 
     return errors
 
 
-async def async_create_files_diff(result: SnapshotResult, dst_dir: Path):
+async def async_create_files_diff(
+    result: SnapshotResult, dst_dir: Path, *, check: Callable[[FileDifference], bool] = None,
+):
     """
     スキャン結果をもとにファイルを処理します
     :param result: スナップショットスキャンの結果
     :param dst_dir: 新しいスナップショットの作成先ディレクトリ
+    :param check:
     """
-    return await asyncio.get_running_loop().run_in_executor(None, create_files_diff, result, dst_dir)
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(create_files_diff, result, dst_dir, check=check),
+    )

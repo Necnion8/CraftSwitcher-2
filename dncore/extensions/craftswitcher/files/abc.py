@@ -1,6 +1,7 @@
 import asyncio
 from enum import Enum
 from typing import TYPE_CHECKING, TypeVar, Generator, Any, Generic
+from uuid import UUID
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,6 +27,7 @@ class FileEventType(Enum):
     CREATE_ARCHIVE = "create_archive"
     DOWNLOAD = "download"
     BACKUP = "backup"
+    RESTORE_BACKUP = "restore_backup"
 
 
 class FileTaskResult(Enum):
@@ -68,16 +70,10 @@ class FileTask(Generic[_T]):
         return self.fut.__await__()
 
 
-class BackupTask(FileTask[int]):
-    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future[int]",
-                 server: "ServerProcess", comments: str | None, backup_type: BackupType):
+class BackupTask(FileTask[UUID]):
+    def __init__(self, task_id: int, src: "Path", fut: "asyncio.Future[UUID]",
+                 server: "ServerProcess", comments: str | None, backup_type: BackupType, backup_id: UUID):
         super().__init__(task_id, FileEventType.BACKUP, src, None, fut, server)
         self.comments = comments
         self.backup_type = backup_type
-
-    @property
-    def backup_id(self) -> int | None:
-        try:
-            return self.fut.result() if self.fut.done() else None
-        except (asyncio.InvalidStateError, asyncio.CancelledError, Exception, ):
-            pass
+        self.backup_id = backup_id

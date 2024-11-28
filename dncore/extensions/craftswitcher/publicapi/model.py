@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from dncore.extensions.craftswitcher import abc
+from dncore.extensions.craftswitcher.fileback import abc as fbabc
 from dncore.extensions.craftswitcher.files import abc as fabc
 from dncore.extensions.craftswitcher.files.abc import BackupType
 from dncore.extensions.craftswitcher.files.archive import abc as aabc
@@ -148,6 +149,8 @@ class ServerConfig(BaseModel):
     created_at: datetime.datetime | None = Field(None, description="作成された日付")
     last_launch_at: datetime.datetime | None = Field(None, description="最後に起動した日付")
     last_backup_at: datetime.datetime | None = Field(None, description="最後にバックアップした日付")
+    last_backup_id: str | None = Field(None, description="最終バックアップのID")
+    source_id: str | None = Field(None, description="サーバーデータID")
     installer__type: abc.ServerType | None = Field(None, description="インストールされたサーバーの種類")
     installer__version: str | None = Field(None, description="インストールされたサーバーバージョン")
     installer__build: str | None = Field(None, description="インストールされたサーバービルド")
@@ -239,7 +242,7 @@ class FileTask(BaseModel):
 class BackupTask(FileTask):
     comments: str | None = Field(description="バックアップメモ")
     backup_type: BackupType
-    backup_id: int | None = Field(description="バックアップID (完了後にセット)")
+    backup_id: UUID = Field(description="バックアップID")
 
     @classmethod
     def create(cls, task: "fabc.BackupTask"):
@@ -259,15 +262,19 @@ class BackupTask(FileTask):
 
 class ArchiveFile(BaseModel):
     filename: str = Field(description="パスを含むファイル名")
+    is_dir: bool = Field(description="フォルダなら true")
     size: int | None = Field(description="展開後のサイズ")
     compressed_size: int | None = Field(description="圧縮後のサイズ")
+    modified_datetime: datetime.datetime | None = Field(description="更新日時")
 
     @classmethod
     def create(cls, archive_file: "aabc.ArchiveFile"):
         return cls(
             filename=archive_file.filename,
+            is_dir=archive_file.is_dir,
             size=archive_file.size,
             compressed_size=archive_file.compressed_size,
+            modified_datetime=archive_file.modified_datetime,
         )
 
 
@@ -393,16 +400,17 @@ class JavaPreset(BaseModel):
 
 
 class BackupId(BaseModel):
-    id: int
+    id: UUID
     source: UUID
     server: str | None = Field(description="ソースIDに紐づくサーバー")
 
 
 class Backup(BaseModel):
-    id: int
+    id: UUID
     type: BackupType
     source: UUID
     created: datetime.datetime
+    previous_backup: UUID | None
     path: str
     comments: str | None
     total_files: int
@@ -417,6 +425,7 @@ class Backup(BaseModel):
             type=backup.type,
             source=backup.source,
             created=backup.created,
+            previous_backup=backup.previous_backup,
             path=backup.path,
             comments=backup.comments,
             total_files=backup.total_files,
@@ -424,3 +433,93 @@ class Backup(BaseModel):
             error_files=backup.error_files,
             final_size=backup.final_size,
         )
+
+
+class BackupFileInfo(BaseModel):
+    size: int
+    modify_time: datetime.datetime
+    is_dir: bool
+
+    @classmethod
+    def create(cls, info: fbabc.FileInfo):
+        return cls(
+            size=info.size,
+            modify_time=info.modified_datetime,
+            is_dir=info.is_dir,
+        )
+
+
+class BackupFileDifference(BaseModel):
+    path: str
+    old_info: BackupFileInfo | None
+    new_info: BackupFileInfo | None
+    status: fbabc.SnapshotStatus
+
+    @classmethod
+    def create(cls, diff: fbabc.FileDifference):
+        return cls(
+            path=diff.path,
+            old_info=BackupFileInfo.create(i) if (i := diff.old_info) else None,
+            new_info=BackupFileInfo.create(i) if (i := diff.new_info) else None,
+            status=diff.status,
+        )
+
+
+class BackupFilePathInfo(BaseModel):
+    path: str
+    is_dir: bool
+    size: int
+    modify_time: datetime.datetime
+
+    @classmethod
+    def create(cls, path: str, info: fbabc.FileInfo):
+        return cls(
+            size=info.size,
+            modify_time=info.modified_datetime,
+            is_dir=info.is_dir,
+            path=path,
+        )
+
+
+class BackupFilePathErrorInfo(BaseModel):
+    path: str
+    error_type: fbabc.BackupFileErrorType
+    error_message: str | None
+
+
+class BackupFilesResult(BaseModel):
+    total_files: int = Field(description="ファイル数")
+    total_files_size: int = Field(description="ファイルの合計サイズ")
+    error_files: int = Field(description="エラーファイル件数")
+    backup_files_size: int | None = Field(description="バックアップのサイズ (節約済みのファイルを除く)")
+
+    files: list[BackupFilePathInfo] | None
+    errors: list[BackupFilePathErrorInfo] | None
+
+
+class BackupsCompareResult(BackupFilesResult):
+    update_files: int = Field(description="変更があるファイル数")
+    update_files_size: int = Field(description="変更があるファイルの合計サイズ")
+
+    target_total_files: int = Field(description="比較対象先のファイル数")
+    target_total_files_size: int = Field(description="比較対象先のファイルの合計サイズ")
+    target_error_files: int = Field(description="比較対象先のエラーファイル件数")
+    target_backup_files_size: int | None = Field(description="比較対象先のバックアップのサイズ (節約済みのファイルを除く)")
+
+    files: list[BackupFileDifference] | None
+    errors: list[BackupFilePathErrorInfo] | None
+    target_errors: list[BackupFilePathErrorInfo] | None
+
+
+class BackupPreviewResult(BaseModel):
+    total_files: int = Field(description="対象のファイル数")
+    total_files_size: int = Field(description="対象のファイルの合計サイズ")
+    error_files: int = Field(description="エラーファイル件数")
+    update_files: int = Field(description="変更があるファイル数")
+    update_files_size: int = Field(description="変更があるファイルの合計サイズ")
+    backup_files_size: int | None = Field(description="バックアップのサイズ (節約済みのファイルを除く)")
+
+    snapshot_source: UUID | None = Field(description="ソース元のスナップショットバックアップID")
+
+    files: list[BackupFileDifference] | None
+    errors: list[BackupFilePathErrorInfo] | None

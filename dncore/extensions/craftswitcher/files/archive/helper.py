@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import datetime
 import os.path
 import zipfile
 from pathlib import Path
@@ -186,5 +187,11 @@ class ZipArchiveHelper(ArchiveHelper):
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
         def _in_thread():
             with zipfile.ZipFile(archive_path, "r") as zf:
-                return [ArchiveFile(fi.filename, fi.file_size, fi.compress_size) for fi in zf.infolist()]
+                return [ArchiveFile(
+                    fi.filename,
+                    fi.is_dir(),
+                    fi.file_size,
+                    fi.compress_size,
+                    datetime.datetime(*fi.date_time).astimezone(datetime.timezone.utc),
+                ) for fi in zf.infolist()]
         return await asyncio.get_running_loop().run_in_executor(self.executor, _in_thread)

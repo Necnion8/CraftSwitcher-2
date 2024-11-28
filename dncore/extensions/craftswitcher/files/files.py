@@ -238,7 +238,10 @@ class FileManager(object):
         ファイルをコピーするタスクを作成し、実行します。
         """
         def _do():
-            shutil.copyfile(src, dst)
+            if src.is_dir():
+                shutil.copytree(src, dst)
+            else:
+                shutil.copyfile(src, dst)
 
         return self.create_task_in_executor(
             FileEventType.COPY, src, dst, _do, executor=None,

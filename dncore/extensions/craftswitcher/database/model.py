@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
-from ..fileback.abc import SnapshotStatus, SnapshotFileErrorType, FileType
+from ..fileback.abc import SnapshotStatus, BackupFileErrorType, FileType
 from ..files import BackupType
 
 __all__ = [
@@ -10,7 +10,6 @@ __all__ = [
     "Backup",
     "SnapshotFile",
     "SnapshotErrorFile",
-    # "TrashFile",
 ]
 
 Base = declarative_base()
@@ -69,10 +68,11 @@ class Backup(Base):
         "sqlite_autoincrement": True,
     }
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Uuid, primary_key=True)
     type = Column(EnumType(enum_class=BackupType, map_to_int=True))
     source = Column(Uuid, nullable=False)
     created = Column(DateTime(), nullable=False)
+    previous_backup = Column(Uuid, nullable=True)
     path = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
     total_files = Column(Integer, nullable=False)
@@ -87,7 +87,7 @@ class SnapshotFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    backup_id = Column(Integer, nullable=False)
+    backup_id = Column(Uuid, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=False)
     size = Column(Integer, nullable=True)
@@ -106,30 +106,12 @@ class SnapshotErrorFile(Base):
         "sqlite_autoincrement": True,
     }
 
-    backup_id = Column(Integer, nullable=False)
+    backup_id = Column(Uuid, nullable=False)
     path = Column(String, nullable=False)
     type = Column(EnumType(enum_class=FileType), nullable=True)
-    error_type = Column(EnumType(enum_class=SnapshotFileErrorType), nullable=False)
+    error_type = Column(EnumType(enum_class=BackupFileErrorType), nullable=False)
     error_message = Column(String, nullable=True)
 
     __mapper_args__ = {
         "primary_key": [backup_id, path]
     }
-
-
-# class TrashFile(Base):
-#     __tablename__ = "trash_files"
-#     __table_args__ = {
-#         "sqlite_autoincrement": True,
-#     }
-#
-#     source = Column(Uuid, nullable=False)
-#     deleted = Column(DateTime(), nullable=False)
-#     path = Column(String, nullable=False)
-#     moved_path = Column(String, nullable=False)
-#     modified = Column(DateTime(), nullable=False)
-#     size = Column(Integer, nullable=False)
-#
-#     __mapper_args__ = {
-#         "primary_key": [source, moved_path]
-#     }

@@ -3,6 +3,7 @@ import datetime
 import secrets
 from logging import getLogger
 from pathlib import Path
+from typing import Callable
 from uuid import UUID
 
 from passlib.context import CryptContext
@@ -146,9 +147,9 @@ class SwitcherDatabase(object):
 
     # backupper
 
-    async def get_backup_ids(self) -> list[tuple[int, UUID]]:
+    async def get_backup_ids(self) -> list[tuple[UUID, UUID]]:
         """
-        データベース内の全バックアップIDとソースIDを返します
+        データベース内の全バックアップIDとソースIDを返します (作成日時順)
         """
         async with self.session() as db:
             result = await db.execute(select(Backup.id, Backup.source).order_by(Backup.created))
@@ -156,7 +157,7 @@ class SwitcherDatabase(object):
 
     async def get_backups_or_snapshots(self, source: UUID) -> list[Backup]:
         """
-        ソースIDに関連するバックアップを返します
+        ソースIDに関連するバックアップを返します (作成日時順)
         """
         async with self.session() as db:
             result = await db.execute(
@@ -166,7 +167,52 @@ class SwitcherDatabase(object):
             )
             return [r[0] for r in result.all()]
 
-    async def get_backup_or_snapshot(self, backup_id: int) -> Backup | None:
+    async def edit_backups_or_snapshots(self, source: UUID, processor: Callable[[Backup], bool]) -> list[Backup]:
+        """
+        バックアップを編集します
+
+        processor が true を返したバックアップが更新され、そのリストを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
+            _backups = []
+            for backup, *_ in result.all():
+                if processor(backup):
+                    _backups.append(backup)
+
+            if _backups:
+                await db.commit()
+            return _backups
+
+    async def get_last_snapshot(self, source: UUID, backup_id: UUID) -> Backup | None:
+        """
+        指定されたバックアップがスナップショットならそれを返し、そうでない場合は元のバックアップをたどり返します。
+        """
+        backup = await self.get_backup_or_snapshot(backup_id)
+        if not backup or BackupType.SNAPSHOT == backup.type:
+            return backup or None
+
+        backups = {b.id: b for b in await self.get_backups_or_snapshots(source)}
+        while backups:
+            try:
+                backup = backups.pop(backup_id)
+            except KeyError:
+                return None  # 前のバックアップが見つからない
+
+            if not backup.previous_backup:
+                return None  # 前のバックアップが存在しない
+
+            if BackupType.SNAPSHOT != backup.type:
+                backup_id = backup.id  # 更に前のバックアップを探す
+
+            else:
+                return backup
+
+    async def get_backup_or_snapshot(self, backup_id: UUID) -> Backup | None:
         """
         指定IDのバックアップを返します
         """
@@ -193,7 +239,7 @@ class SwitcherDatabase(object):
         if backup.type != BackupType.SNAPSHOT:
             raise ValueError(f"Not snapshot type backup: {backup.type}")
 
-        def _apply_id(s_id: int, f: SnapshotFile | SnapshotErrorFile):
+        def _apply_id(s_id: UUID, f: SnapshotFile | SnapshotErrorFile):
             f.backup_id = s_id
             return f
 
@@ -208,7 +254,7 @@ class SwitcherDatabase(object):
                 await db.commit()
                 return backup_id
 
-    async def remove_backup_or_snapshot(self, backup: Backup | int):
+    async def remove_backup_or_snapshot(self, backup: Backup | UUID):
         """
         バックアップと、それに関連づいたスナップショットファイルを全て削除します
         """
@@ -221,11 +267,11 @@ class SwitcherDatabase(object):
                     await db.execute(delete(Backup).where(Backup.id == backup))
                     backup_id = backup
 
-                await db.delete(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
-                await db.delete(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
+                await db.execute(delete(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+                await db.execute(delete(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
                 await db.commit()
 
-    async def get_snapshot_files(self, backup_id: int) -> list[SnapshotFile] | None:
+    async def get_snapshot_files(self, backup_id: UUID) -> list[SnapshotFile] | None:
         async with self.session() as db:
             result = await db.execute(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
             try:
@@ -233,9 +279,9 @@ class SwitcherDatabase(object):
             except NoResultFound:
                 return None
 
-    async def get_snapshot_errors_files(self, backup_id: int) -> list[SnapshotErrorFile] | None:
+    async def get_snapshot_errors_files(self, backup_id: UUID) -> list[SnapshotErrorFile] | None:
         async with self.session() as db:
-            result = await db.execute(select(SnapshotFile).where(SnapshotErrorFile.backup_id == backup_id))
+            result = await db.execute(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
             try:
                 return [r[0] for r in result.all()]
             except NoResultFound:
