@@ -589,7 +589,7 @@ class Backupper(object):
         return files_diff
 
     @staticmethod
-    def find_server_directory_archive(files: list["ArchiveFile"]):
+    def find_server_directory_archive(files: list["ArchiveFile"]) -> tuple[str, list["ArchiveFile"]]:
         """
         サーバーディレクトリを探して、そのディレクトリ上にあるファイルのリストを返します
         :except ValueError: サーバーディレクトリが見つからない
@@ -619,4 +619,4 @@ class Backupper(object):
 
         # rename
         _dir_name_len = len(_dir_name) + 1
-        return [ArchiveFile(**dict(f._asdict(), filename=f.filename[_dir_name_len:])) for f in _files]
+        return _dir_name, [ArchiveFile(**dict(f._asdict(), filename=f.filename[_dir_name_len:])) for f in _files]

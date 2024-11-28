@@ -1,5 +1,4 @@
 import asyncio
-import mimetypes
 import shutil
 from logging import getLogger
 from pathlib import Path
@@ -10,7 +9,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, Response, Dep
 from fastapi.exceptions import WebSocketException
 from fastapi.params import Form, Query
 from fastapi.requests import HTTPConnection
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from dncore.configuration.configuration import ConfigValues
 from dncore.extensions.craftswitcher import errors
@@ -25,11 +24,13 @@ from dncore.extensions.craftswitcher.files import FileManager, FileTask, FileEve
 from dncore.extensions.craftswitcher.jardl import ServerDownloader, ServerMCVersion, ServerBuild
 from dncore.extensions.craftswitcher.publicapi import APIError, APIErrorCode, WebSocketClient, model
 from dncore.extensions.craftswitcher.publicapi.event import *
+from dncore.extensions.craftswitcher.publicapi.server import StreamingResponse
 from dncore.extensions.craftswitcher.utils import call_event, datetime_now, disk_usage
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import CraftSwitcher, ServerProcess
     from dncore.extensions.craftswitcher.config import ServerConfig, SwitcherConfig, JavaPresetConfig
+    from dncore.extensions.craftswitcher.files.archive import ArchiveFile
     from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
 
 log = getLogger(__name__)
@@ -1338,7 +1339,7 @@ class APIHandler(object):
                 except FileNotFoundError:
                     raise APIErrorCode.NOT_EXISTS_FILE.of("File not found in archive")
 
-            return StreamingResponse(_processing(), media_type=mimetypes.guess_type(filename)[0] or None)
+            return StreamingResponse(_processing(), filename)
 
         @api.post(
             "/file/archive/extract",
@@ -1779,6 +1780,70 @@ class APIHandler(object):
                 include_files=include_files, include_errors=include_errors, only_updates=only_updates,
             )
 
+        @api.get(
+            "/server/{server_id}/backup/{backup_id}/file",
+            summary="ファイルデータの取得",
+            description="",
+        )
+        async def _get_server_backup_file(backup_id: UUID, path: str, server: "ServerProcess" = Depends(getserver)):
+            try:
+                path = self.files.resolvepath(path)
+            except ValueError as e:
+                raise APIErrorCode.NOT_ALLOWED_PATH.of(f"{e}: {path}")
+            path = path[path.startswith("/"):]
+
+            if not (backup := await db.get_backup_or_snapshot(backup_id)):
+                raise APIErrorCode.BACKUP_NOT_FOUND.of(f"Backup not found: {backup_id}")
+
+            backup_path = self.backups.backups_dir / backup.path  # type: Path
+
+            if BackupType.SNAPSHOT == backup.type:
+                log.info(f"{backup_path!r} | {path!r}")
+                target_path = backup_path / path
+                if not target_path.is_file():
+                    raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
+                return FileResponse(target_path, filename=target_path.name)
+
+            elif BackupType.FULL == backup.type:
+                if not backup_path.is_file():
+                    raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
+
+                try:
+                    _files = await self.files.list_archive(backup_path)
+                except NoArchiveHelperError:
+                    raise
+                try:
+                    dir_name, _files = self.backups.find_server_directory_archive(_files)
+                except ValueError as e:
+                    raise APIErrorCode.INVALID_BACKUP.of(str(e))
+
+                helper = self.files.find_archive_helper(backup_path)
+                if not helper:
+                    raise NoArchiveHelperError
+
+                target_file = None  # type: ArchiveFile | None
+                for child in _files:
+                    if child.filename == path:
+                        target_file = child
+                        break
+                else:
+                    raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
+
+                async def _processing():
+                    _target_filename = dir_name + "/" + target_file.filename
+                    try:
+                        # noinspection PyTypeChecker
+                        async for chunk in helper.extract_archived_file(backup_path, _target_filename):
+                            yield chunk
+
+                    except FileNotFoundError:
+                        raise APIErrorCode.NOT_EXISTS_FILE.of("File not found in archive")
+
+                return StreamingResponse(_processing(), Path(target_file.filename).name)
+
+            else:
+                raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
         return api
 
     def _jardl(self):
@@ -2030,7 +2095,7 @@ class APIHandler(object):
             except NoArchiveHelperError:
                 raise
             try:
-                _files = self.backups.find_server_directory_archive(_files)
+                _, _files = self.backups.find_server_directory_archive(_files)
             except ValueError as e:
                 raise APIErrorCode.INVALID_BACKUP.of(str(e))
 
