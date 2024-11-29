@@ -232,6 +232,10 @@ class Backup(ConfigValues):
     # ※ スナップショットを利用する場合、このディレクトリのファイルシステムでハードリンク機能が利用できる必要があります。
     backups_directory = "./data_backups"
 
+    # バックアップに使用する圧縮ファイル拡張子
+    # 使用できる拡張子を順に選択します
+    suffixes: list[str] = ["7z", "zip"]
+
 
 class SwitcherConfig(FileConfigValues):
     # サーバーリスト (key: サーバーID、val: サーバー場所)

@@ -92,7 +92,7 @@ class Backupper(object):
 
         created_dt = datetime_now()
         archive_file_name = create_backup_filename(created_dt, comments)
-        suffix, helper = self._files.find_archive_helper_with_suffixes(["zip"])
+        suffix, helper = self._files.find_archive_helper_with_suffixes(self.config.suffixes or ["zip"])
 
         archive_file_name += f".{suffix}"
         archive_path_name = Path(server.get_source_id()) / archive_file_name
