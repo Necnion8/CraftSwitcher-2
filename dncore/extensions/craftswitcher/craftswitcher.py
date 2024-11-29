@@ -93,7 +93,7 @@ class CraftSwitcher(EventListener):
                     _log.addHandler(handler)
 
         self.api_server = UvicornServer()
-        self.api_handler = APIHandler(self, api, db)
+        self.api_handler = APIHandler(self, api)
 
         if web_root_dir:
             api.mount("/", FallbackStaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
