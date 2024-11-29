@@ -40,9 +40,15 @@ class FileInfo(NamedTuple):
     def __eq__(self, other: "FileInfo"):
         if self.is_dir != other.is_dir:
             return False
-        if self.is_dir and other.is_dir:
+        if (self.is_dir and other.is_dir) or self.size == other.size:
             return True
-        return self.size == other.size and self.modified_datetime == other.modified_datetime
+        dt = self.modified_datetime
+        other_dt = other.modified_datetime
+        if dt == other_dt:
+            return True
+        if dt.microsecond == 0 or other_dt.microsecond == 0:
+            return int(dt.timestamp()) == int(other_dt.timestamp())
+        return False
 
 
 class FileDifference(NamedTuple):
