@@ -55,8 +55,9 @@ class CraftSwitcher(EventListener):
     def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *,
                  plugin_info: "PluginInfo" = None, web_root_dir: Path = None, extensions: SwitcherExtensionManager):
         self.loop = loop
+        self.plugin_info = plugin_info
         self.config = SwitcherConfig(config_file)
-        self.database = db = SwitcherDatabase(config_file.parent)
+        self.database = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         self.repomo_server = ReportModuleServer(loop)
@@ -70,34 +71,10 @@ class CraftSwitcher(EventListener):
         self.java_detections = []  # type: list[JavaExecutableInfo]
         """自動検出されたJavaのリスト"""
         # api
-        global __version__
-        __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
-        api = FastAPI(
-            title="CraftSwitcher",
-            version=__version__,
-        )
-        api.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
-        @api.on_event("startup")
-        async def _startup():
-            for log_name in ("uvicorn", "uvicorn.access"):
-                _log = getLogger(log_name)
-                _log.handlers.clear()
-                for handler in getLogger("dncore").handlers:
-                    _log.addHandler(handler)
-
+        self.web_root_dir = web_root_dir
         self.api_server = UvicornServer()
-        self.api_handler = APIHandler(self, api)
-
-        if web_root_dir:
-            api.mount("/", FallbackStaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
-
+        self.api_handler = APIHandler(self)
+        self.public_api = None  # type: FastAPI | None
         #
         self._initialized = False
         self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
@@ -571,6 +548,38 @@ class CraftSwitcher(EventListener):
 
     # util
 
+    def _create_public_api(self):
+        global __version__
+        __version__ = str(i.version.numbers) if (i := self.plugin_info) else __version__
+        api = FastAPI(
+            title="CraftSwitcher",
+            version=__version__,
+        )
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        @api.on_event("startup")
+        async def _startup():
+            for log_name in ("uvicorn", "uvicorn.access"):
+                _log = getLogger(log_name)
+                _log.handlers.clear()
+                for handler in getLogger("dncore").handlers:
+                    _log.addHandler(handler)
+
+        self.api_handler.set_handlers(api)
+
+        if self.web_root_dir:
+            api.mount("/", FallbackStaticFiles(
+                directory=self.web_root_dir, html=True, check_dir=False,
+            ), name="static")
+
+        return api
+
     def create_file_info(self, realpath: Path, *, root_dir: Path = None):
         """
         指定されたパスの :class:`FileInfo` を返します
@@ -1014,6 +1023,7 @@ class CraftSwitcher(EventListener):
     # public api
 
     async def start_api_server(self, *, force=False):
+        self.public_api = api = self._create_public_api()
         config = self.config.api_server
         if not (config.enable or force):
             log.debug("Disabled API Server")
@@ -1030,7 +1040,7 @@ class CraftSwitcher(EventListener):
                     log.warning("SSL cert file not exists: %s", Path(ssl_cert_file).absolute())
 
             await self.api_server.start(
-                self.api_handler.router,
+                api,
                 host=config.bind_host,
                 port=config.bind_port,
                 ssl_keyfile=config.ssl_keyfile or None,

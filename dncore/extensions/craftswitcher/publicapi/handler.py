@@ -23,20 +23,20 @@ class APIHandler(object):
     servers: "ServerProcessList"
     files: "FileManager"
 
-    def __init__(self, inst: "CraftSwitcher", api: FastAPI):
+    def __init__(self, inst: "CraftSwitcher"):
         self.inst = inst
         self.servers = inst.servers
         self.files = inst.files
-        self.router = api
         self._websocket_clients = set()  # type: set[WebSocketClient]
-        #
+
+    def set_handlers(self, api: FastAPI):
         api.include_router(create_api_handlers(
             self,
-            inst,
-            inst.database,
-            inst.backups,
-            inst.servers,
-            inst.files,
+            self.inst,
+            self.inst.database,
+            self.inst.backups,
+            self.inst.servers,
+            self.inst.files,
         ))
 
         @api.exception_handler(HTTPException)
