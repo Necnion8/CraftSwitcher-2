@@ -1050,6 +1050,12 @@ class CraftSwitcher(EventListener):
             log.warning(f"Failed to start api server: {e}")
 
     async def close_api_server(self):
+        for ws in set(self.api_handler.ws_clients):
+            try:
+                await ws.websocket.close()
+            except Exception as e:
+                log.warning(f"Error in websocket close: {e}")
+
         await self.api_server.shutdown()
 
     # user
