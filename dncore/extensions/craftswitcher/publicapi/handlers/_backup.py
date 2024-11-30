@@ -165,6 +165,13 @@ async def get_server_files(server_dir: Path):
     )
 
 
+def check_snapshot_available():
+    if not backups.is_enabled_snapshot():
+        raise APIErrorCode.DISABLED_SNAPSHOT.of("Snapshot disabled in configuration")
+    if not backups.test_snapshot():
+        raise APIErrorCode.UNAVAILABLE_SNAPSHOT.of("Snapshot not available in backups directory")
+
+
 class FilesResult(NamedTuple):
     files: dict[str, FileInfo]
     total_files_size: int
@@ -293,6 +300,7 @@ async def _post_server_backup(
         raise APIErrorCode.BACKUP_ALREADY_RUNNING.of("Already running")
 
     if snapshot:
+        check_snapshot_available()
         task = await backups.create_snapshot(server, comments)
     else:
         task = await backups.create_full_backup(server, comments)
@@ -314,6 +322,9 @@ async def _preview_server_backup(
 ) -> model.BackupPreviewResult:
     source_id = server.get_source_id()
     old_result = last_snapshot = None
+
+    if snapshot:
+        check_snapshot_available()
 
     if b_id := server.config.last_backup_id:
         if snapshot:

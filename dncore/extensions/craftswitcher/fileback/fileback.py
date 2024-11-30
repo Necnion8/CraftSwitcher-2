@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 import re
 import time
 from collections import defaultdict
@@ -65,10 +66,50 @@ class Backupper(object):
         self._backups_dir = backups_dir
         #
         self._tasks = {}  # type: dict[ServerProcess, BackupTask]
+        self._result_link_dirs = {}  # type: dict[str, bool]
 
     @property
     def backups_dir(self):
         return self._backups_dir
+
+    def is_enabled_snapshot(self):
+        return self.config.enable_snapshots
+
+    def test_snapshot(self):
+        try:
+            return self._result_link_dirs[str(self.backups_dir.absolute())]
+        except KeyError:
+            pass
+
+        if not self.backups_dir.exists():
+            self.backups_dir.mkdir(parents=True)
+        test_file = self.backups_dir / ".swi.test"
+        link_file = self.backups_dir / ".swi.test.link"
+        try:
+            if link_file.is_file():
+                os.remove(link_file)
+            test_file.touch(exist_ok=True)
+            link_file.hardlink_to(test_file)
+
+        except Exception as e:
+            log.warning(f"Failed to test hardlink: {e}")
+            self._result_link_dirs[str(self.backups_dir.absolute())] = False
+            return False
+
+        finally:
+            if test_file.is_file():
+                try:
+                    os.remove(test_file)
+                except OSError:
+                    pass
+            if link_file.is_file():
+                try:
+                    os.remove(link_file)
+                except OSError:
+                    pass
+
+        self._result_link_dirs[str(self.backups_dir.absolute())] = True
+        return True
 
     def get_running_task_by_server(self, server: "ServerProcess"):
         return self._tasks.get(server)
