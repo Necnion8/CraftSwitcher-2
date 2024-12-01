@@ -1,5 +1,11 @@
 
-__all__ = ["PluginException", "PluginRequirementsError", "PluginOperationError", "InvalidPluginInfo"]
+__all__ = [
+    "PluginException",
+    "PluginRequirementsError",
+    "PluginOperationError",
+    "PluginDependencyError",
+    "InvalidPluginInfo",
+]
 
 
 class PluginException(Exception):
@@ -12,6 +18,12 @@ class PluginRequirementsError(PluginException):
 
 class PluginOperationError(PluginException):
     pass
+
+
+class PluginDependencyError(PluginException):
+    def __init__(self, *args, depends: list[str] = None):
+        super().__init__(*args)
+        self.depends = depends
 
 
 class InvalidPluginInfo(Exception):

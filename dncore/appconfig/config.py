@@ -86,7 +86,7 @@ class HelpCommandSection(ConfigValues):
     list = Embed(
         description="{lines}", title=":paperclip: コマンド一覧 :paperclip:").set_footer(
         text="»  dnCore v{version.numbers}",
-        icon_url="https://i.imgur.com/18ampI3.png")
+        icon_url="https://github.com/Necnion8/dnCoreV6/blob/develop/icons/icon_logo_1x1.png?raw=true")
     line = ":white_small_square: **{category}**\n`{commands}`"
     split = "`, `"
     usage_format = Embed("{usage}")

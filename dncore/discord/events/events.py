@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from dncore.plugin import Plugin
 
 __all__ = ["DiscordInitializeEvent", "DiscordClosingEvent",
-           "DebugCommandPreExecuteEvent", "HelpCommandPreExecuteEvent",
+           "DebugCommandPreExecuteEvent", "HelpCommandPreExecuteEvent", "HelpCommandExecuteEvent",
            "PreShutdownEvent", "SettingInfoCommandPreExecuteEvent",
            ]
 
@@ -48,6 +48,17 @@ class HelpCommandPreExecuteEvent(Event, Cancellable):
         self.command = command
         self.name = name
         self.args = args
+
+
+class HelpCommandExecuteEvent(Event, Cancellable):
+    def __init__(self, ctx: CommandContext, author: discord.User | discord.Member,
+                 command: CommandHandler | None, name: str, args: Argument, embed: discord.Embed):
+        self.context = ctx
+        self.author = author
+        self.command = command
+        self.name = name
+        self.args = args
+        self.embed = embed
 
 
 class PreShutdownEvent(Event):

@@ -6,7 +6,7 @@ IGNORE_FRAME = object()
 
 
 class Version(object):
-    REGEX = re.compile(r"(?P<v1>\d+)\.(?P<v2>\d+)\.(?P<v3>\d+)(?P<b>b?)(/(?P<dt>\d{6}))?")
+    REGEX = re.compile(r"(?P<v1>\d+)\.(?P<v2>\d+)\.(?P<v3>\d+)(?P<b>b?)(/(?P<dt>\d{6,8}))?")
 
     def __init__(self, version: tuple[int, int, int], release: datetime.date = None, *, beta=False):
         self.version = version
@@ -36,7 +36,10 @@ class Version(object):
         version = (int(match.group("v1")), int(match.group("v2")), int(match.group("v3")))
         beta = bool(match.group("b"))
         if match.group("dt"):
-            date = datetime.datetime.strptime(match.group("dt"), "%y%m%d").date()
+            if 8 == len(match.group("dt")):
+                date = datetime.datetime.strptime(match.group("dt"), "%Y%m%d").date()
+            else:
+                date = datetime.datetime.strptime(match.group("dt"), "%y%m%d").date()
         else:
             date = None
         return cls(version, date, beta=beta)

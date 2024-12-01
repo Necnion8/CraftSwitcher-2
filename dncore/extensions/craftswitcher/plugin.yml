@@ -1,7 +1,7 @@
 main: craftswitcher.CraftSwitcherPlugin
 name: CraftSwitcher
 version: 2.0.0b/240812
-dncore: 6.0.0
+dncore: 6.1.1
 description: "Minecraftサーバーの監視と管理を行うdnCoreプラグイン"
 
 authors:
