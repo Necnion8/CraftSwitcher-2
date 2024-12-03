@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Awaitable
 from uuid import UUID
 
 from .abc import *
@@ -626,3 +626,49 @@ class Backupper(object):
         # rename
         _dir_name_len = len(_dir_name) + 1
         return _dir_name, [ArchiveFile(**dict(f._asdict(), filename=f.filename[_dir_name_len:])) for f in _files]
+
+    async def pack_backup(self, backup_id: UUID) -> tuple[Path, Callable[[], Awaitable[None]]]:
+        """
+        指定されたバックアップをファイルパックします
+
+        :except ValueError: 存在しないバックアップID
+        :except FileNotFoundError: バックアップファイルが存在しない
+        :return: ファイルパスと削除処理を返します (必ず実行)
+        """
+        backup = await self._db.get_backup_or_snapshot(backup_id)
+        if not backup:
+            raise ValueError("Backup not found")
+
+        if BackupType.FULL == backup.type:
+            dst_path = self.backups_dir / backup.path
+            if not dst_path.is_file():
+                raise FileNotFoundError(f"Backup file not exists: {dst_path}")
+
+            async def _nothing():
+                pass
+
+            return dst_path, _nothing
+
+        elif BackupType.SNAPSHOT == backup.type:
+            src_path = self.backups_dir / backup.path  # type: Path
+            if not src_path.is_dir():
+                raise FileNotFoundError(f"Backup source not exists: {src_path}")
+
+            dst_path = self.backups_dir / ".pack.tmp" / src_path.with_suffix(".zip").name  # type: Path
+
+            async def _delete_temp():
+                if dst_path.is_file:
+                    await asyncio.get_running_loop().run_in_executor(None, os.remove, dst_path)
+                if not any(dst_path.parent.iterdir()):
+                    await asyncio.get_running_loop().run_in_executor(None, os.rmdir, dst_path.parent)
+
+            dst_path.parent.mkdir(exist_ok=True)
+            try:
+                task = await self._files.make_archive(dst_path, src_path.parent, [src_path])
+                await task
+                return dst_path, _delete_temp
+            except Exception:
+                await _delete_temp()
+                raise
+        else:
+            raise NotImplementedError(f"Unknown backup type: {backup.type}")

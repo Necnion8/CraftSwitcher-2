@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import Depends, APIRouter
 from fastapi.params import Query
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from dncore.extensions.craftswitcher.database.model import SnapshotErrorFile
 from dncore.extensions.craftswitcher.errors import NoArchiveHelperError
@@ -264,6 +265,24 @@ async def _files_compare_backups(
         source_backup, target_backup,
         include_files=include_files, include_errors=include_errors, only_updates=only_updates,
     )
+
+
+@api.get(
+    "/backup/{backup_id}/export",
+    summary="バックアップデータの取得",
+    description="バックアップをファイルにパックします\n\nスナップショットの場合は圧縮が必要なため時間がかかります。",
+)
+async def _pack_server_backup(
+    backup_id: UUID,
+) -> FileResponse:
+    try:
+        path, _delete = await backups.pack_backup(backup_id)
+    except ValueError:
+        raise APIErrorCode.BACKUP_NOT_FOUND.of(f"Backup not found: {backup_id}")
+    except FileNotFoundError as e:
+        raise APIErrorCode.NOT_EXISTS_FILE.of(str(e))
+
+    return FileResponse(path, filename=path.with_stem(backup_id.hex).name, background=BackgroundTask(_delete))
 
 
 @api.get(
