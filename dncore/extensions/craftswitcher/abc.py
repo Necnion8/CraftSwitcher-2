@@ -81,6 +81,7 @@ class ServerType(Enum):
     UNKNOWN = "unknown"
     CUSTOM = "custom"
     VANILLA = "vanilla"
+    SPONGE_VANILLA = "sponge_vanilla"
     # bukkit
     SPIGOT = "spigot"
     PAPER = "paper"
@@ -117,6 +118,7 @@ SERVER_TYPE_SPECS = {
     ServerType.UNKNOWN: _ServerType("unknown", None, False, False),
     ServerType.CUSTOM: _ServerType("custom", None, False, False),
     ServerType.VANILLA: _ServerType("vanilla", "stop", False, False),
+    ServerType.SPONGE_VANILLA: _ServerType("sponge_vanilla", "stop", False, False),
     ServerType.SPIGOT: _ServerType("spigot", "stop", False, False),
     ServerType.PAPER: _ServerType("paper", "stop", False, False),
     ServerType.PURPUR: _ServerType("purpur", "stop", False, False),

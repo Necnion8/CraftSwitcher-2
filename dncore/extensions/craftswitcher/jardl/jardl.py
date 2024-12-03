@@ -185,6 +185,7 @@ def defaults():
     from .purpurmc import PurpurServerDownloader
     from .quiltmc import QuiltServerDownloader
     from .spigotmc import SpigotServerDownloader
+    from .spongepowered import SpongeVanillaDownloader
     from .vanilla import VanillaServerDownloader
 
     return {
@@ -202,5 +203,6 @@ def defaults():
         ServerType.PURPUR: PurpurServerDownloader(),
         ServerType.QUILT: QuiltServerDownloader(),
         ServerType.SPIGOT: SpigotServerDownloader(),
+        ServerType.SPONGE_VANILLA: SpongeVanillaDownloader(),
         ServerType.VANILLA: VanillaServerDownloader(),
     }
