@@ -233,6 +233,7 @@ class Backupper(object):
                 server._config.save()
 
         # データベース上のバックアップも更新する
+        # TODO: スナップショットステータスを更新する
         def modifier(b: "db.Backup") -> bool:
             # 前回のバックアップが削除したものである
             if b.previous_backup == backup.id:
