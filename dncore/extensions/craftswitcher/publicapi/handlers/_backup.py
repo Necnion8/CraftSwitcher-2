@@ -221,6 +221,70 @@ async def _delete_backup(backup_id: UUID) -> bool:
 
 
 @api.get(
+    "/backup/{backup_id}/file",
+    summary="ファイルデータの取得",
+    description="バックアップに格納されたファイルを返します",
+)
+async def _get_backup_file(backup_id: UUID, path: str):
+    try:
+        path = files.resolvepath(path)
+    except ValueError as e:
+        raise APIErrorCode.NOT_ALLOWED_PATH.of(f"{e}: {path}")
+    path = path[path.startswith("/"):]
+
+    if not (backup := await db.get_backup_or_snapshot(backup_id)):
+        raise APIErrorCode.BACKUP_NOT_FOUND.of(f"Backup not found: {backup_id}")
+
+    backup_path = backups.backups_dir / backup.path  # type: Path
+
+    if BackupType.SNAPSHOT == backup.type:
+        target_path = backup_path / path
+        if not target_path.is_file():
+            raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
+        return FileResponse(target_path, filename=target_path.name)
+
+    elif BackupType.FULL == backup.type:
+        if not backup_path.is_file():
+            raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
+
+        try:
+            _files = await files.list_archive(backup_path)
+        except NoArchiveHelperError:
+            raise
+        try:
+            dir_name, _files = backups.find_server_directory_archive(_files)
+        except ValueError as e:
+            raise APIErrorCode.INVALID_BACKUP.of(str(e))
+
+        helper = files.find_archive_helper(backup_path)
+        if not helper:
+            raise NoArchiveHelperError
+
+        target_file = None  # type: ArchiveFile | None
+        for child in _files:
+            if child.filename == path:
+                target_file = child
+                break
+        else:
+            raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
+
+        async def _processing():
+            _target_filename = dir_name + "/" + target_file.filename
+            try:
+                # noinspection PyTypeChecker
+                async for chunk in helper.extract_archived_file(backup_path, _target_filename):
+                    yield chunk
+
+            except FileNotFoundError:
+                raise APIErrorCode.NOT_EXISTS_FILE.of("File not found in archive")
+
+        return StreamingResponse(_processing(), Path(target_file.filename).name)
+
+    else:
+        raise NotImplementedError(f"Unknown backup type: {backup.type}")
+
+
+@api.get(
     "/backup/{backup_id}/files",
     summary="ファイル一覧",
     description=(
@@ -422,70 +486,6 @@ async def _files_compare_server_backups(
         source_backup, target_data,
         include_files=include_files, include_errors=include_errors, only_updates=only_updates,
     )
-
-
-@api.get(
-    "/server/{server_id}/backup/{backup_id}/file",
-    summary="ファイルデータの取得",
-    description="バックアップに格納されたファイルを返します",
-)
-async def _get_server_backup_file(backup_id: UUID, path: str, server: "ServerProcess" = Depends(getserver)):
-    try:
-        path = files.resolvepath(path)
-    except ValueError as e:
-        raise APIErrorCode.NOT_ALLOWED_PATH.of(f"{e}: {path}")
-    path = path[path.startswith("/"):]
-
-    if not (backup := await db.get_backup_or_snapshot(backup_id)):
-        raise APIErrorCode.BACKUP_NOT_FOUND.of(f"Backup not found: {backup_id}")
-
-    backup_path = backups.backups_dir / backup.path  # type: Path
-
-    if BackupType.SNAPSHOT == backup.type:
-        target_path = backup_path / path
-        if not target_path.is_file():
-            raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
-        return FileResponse(target_path, filename=target_path.name)
-
-    elif BackupType.FULL == backup.type:
-        if not backup_path.is_file():
-            raise APIErrorCode.INVALID_BACKUP.of("Backup file not exists")
-
-        try:
-            _files = await files.list_archive(backup_path)
-        except NoArchiveHelperError:
-            raise
-        try:
-            dir_name, _files = backups.find_server_directory_archive(_files)
-        except ValueError as e:
-            raise APIErrorCode.INVALID_BACKUP.of(str(e))
-
-        helper = files.find_archive_helper(backup_path)
-        if not helper:
-            raise NoArchiveHelperError
-
-        target_file = None  # type: ArchiveFile | None
-        for child in _files:
-            if child.filename == path:
-                target_file = child
-                break
-        else:
-            raise APIErrorCode.NOT_EXISTS_FILE.of(f"Not a file or not exists: 'path'", 404)
-
-        async def _processing():
-            _target_filename = dir_name + "/" + target_file.filename
-            try:
-                # noinspection PyTypeChecker
-                async for chunk in helper.extract_archived_file(backup_path, _target_filename):
-                    yield chunk
-
-            except FileNotFoundError:
-                raise APIErrorCode.NOT_EXISTS_FILE.of("File not found in archive")
-
-        return StreamingResponse(_processing(), Path(target_file.filename).name)
-
-    else:
-        raise NotImplementedError(f"Unknown backup type: {backup.type}")
 
 
 @api.get(
