@@ -1,2 +1,2 @@
 from .abc import *
-from .scheduler import Schedule, Scheduler
+from .scheduler import ScheduleManager, ActionSchedule

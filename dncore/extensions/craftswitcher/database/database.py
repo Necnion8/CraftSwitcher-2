@@ -305,3 +305,64 @@ class SwitcherDatabase(object):
                 files.append(s_file)
                 backups.append(backup)
             return files, backups
+
+    # schedule
+
+    async def add_schedule(self, schedule: Schedule, actions: list[ScheduleAction]):
+        """
+        スケジュールを登録します
+        """
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(schedule)
+                await db.flush()
+                await db.refresh(schedule)
+                schedule_id = schedule.id
+
+                for action in actions:
+                    action.schedule_id = schedule_id
+
+                db.add_all(actions)
+                await db.commit()
+
+                return schedule_id
+
+    async def remove_schedule(self, schedule: Schedule | int):
+        """
+        スケジュールと紐づいたアクションを削除します
+        """
+        async with self._commit_lock:
+            async with self.session() as db:
+                if isinstance(schedule, Schedule):
+                    await db.delete(schedule)
+                    if schedule.id is not None:
+                        await db.execute(delete(ScheduleAction).where(ScheduleAction.schedule_id == schedule.id))
+                else:
+                    await db.execute(delete(Schedule).where(Schedule.id == schedule))
+                    await db.execute(delete(ScheduleAction).where(ScheduleAction.schedule_id == schedule))
+                await db.commit()
+
+    async def get_schedule_ids(self) -> list[int]:
+        """
+        保存されている全スケジュールのIDを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(select(Schedule.id))
+            return [r[0] for r in result.all()]
+
+    async def get_schedule(self, schedule_id: int) -> tuple[Schedule, list[ScheduleAction]] | None:
+        """
+        スケジュールを取得します
+        """
+        async with self.session() as db:
+            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
+            if not (schedule := result.one_or_none()):
+                return None
+
+            result = await db.execute(
+                select(ScheduleAction)
+                .where(ScheduleAction.schedule_id == schedule_id)
+                .order_by(ScheduleAction.index)
+            )
+
+            return schedule[0], [r[0] for r in result.all()]

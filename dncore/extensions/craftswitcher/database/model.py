@@ -11,6 +11,7 @@ __all__ = [
     "SnapshotFile",
     "SnapshotErrorFile",
     "Schedule",
+    "ScheduleAction",
 ]
 
 Base = declarative_base()
@@ -125,6 +126,17 @@ class Schedule(Base):
     }
 
     id = Column(Integer, primary_key=True)
+    server = Column(String, nullable=False)
     label = Column(String, nullable=False)
     description = Column(String, nullable=True)
+    timer_id = Column(String, nullable=False)
+    timer_data = Column(JSON, nullable=False)
+
+
+class ScheduleAction(Base):
+    __tablename__ = "schedule_actions"
+
+    schedule_id = Column(Integer, nullable=False)
+    index = Column(Integer, nullable=False)
+    id = Column(String, nullable=False)
     data = Column(JSON, nullable=False)
