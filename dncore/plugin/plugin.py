@@ -55,27 +55,26 @@ class PluginInfo:
     # PACKAGES = {}
     ALLOW_NAME = re.compile(r"^[a-zA-Z0-9_]+$")
 
-    def __init__(self, name, *, main, version, loader, plugin_data_dir):
-        """
-        :type name: str
-        :type main: str
-        :type version: Version
-        :type loader: PluginLoader
-        :type plugin_data_dir: Path
-        """
+    def __init__(self, name: str, *,
+                 main: str, version: Version, loader: "PluginLoader", plugin_data_dir: Path,
+                 authors: list[str] = None, depends: list[str] = None, softdepends: list[str] = None,
+                 libraries: list[str] = None, target_dncore: Version = None, resource_files: list[str] = None,
+                 description: str = None, changelog: dict[str, str] = None,
+                 ):
         if PluginInfo.ALLOW_NAME.fullmatch(name) is None:
             raise ValueError(f"Invalid plugin name: {name}")
 
         self.name = name
         self.main = main
         self.version = version
-        self.authors: list[str] = []
-        self.depends: list[str] = []
-        self.libraries: list[str] = []
-        self.target_dncore: Optional[Version] = None
-        self.resource_files: list[str] = []
-        self.description = None  # type: str | None
-        self.changelog = None  # type: dict[str, str] | None
+        self.authors = [] if authors is None else authors  # type: list[str]
+        self.depends = [] if depends is None else depends  # type: list[str]
+        self.softdepends = [] if softdepends is None else softdepends  # type: list[str]
+        self.libraries = [] if libraries is None else libraries  # type: list[str]
+        self.target_dncore = target_dncore
+        self.resource_files = [] if resource_files is None else resource_files  # type: list[str]
+        self.description = description
+        self.changelog = changelog
 
         self.instance: Optional[Plugin] = None
         self.enabled = False
@@ -129,6 +128,9 @@ class PluginInfo:
         if self.depends:
             serialized["depends"] = self.depends
 
+        if self.softdepends:
+            serialized["softdepends"] = self.softdepends
+
         if self.libraries:
             serialized["libraries"] = self.libraries
 
@@ -155,6 +157,7 @@ class PluginInfo:
                 authors.insert(0, data["author"])
             info.authors = [author for author in authors if isinstance(author, str)]
             info.depends = [depend for depend in data.get("depends", []) if isinstance(depend, str)]
+            info.softdepends = [dep for dep in data.get("softdepends", []) if isinstance(dep, str)]
             # info.loader = PluginModuleLoader(PluginInfo.EXTENSIONS_ROOT, info, extension_dir)
             if "libraries" in data:
                 info.libraries = data["libraries"]
@@ -356,11 +359,17 @@ class PluginModuleLoader(PluginLoader):
     def get_import_name(self):
         return self._import_module_name
 
-    async def pack_to_plugin_file(self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None):
+    async def pack_to_plugin_file(
+        self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None, force_override=False,
+    ):
         return await asyncio.get_running_loop().run_in_executor(
-            None, lambda: self.pack_to_plugin_file_(plugins_dir, info=info, extra_name=extra_name))
+            None, lambda: self.pack_to_plugin_file_(
+                plugins_dir, info=info, extra_name=extra_name, force_override=force_override,
+            ))
 
-    def pack_to_plugin_file_(self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None):
+    def pack_to_plugin_file_(
+        self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None, force_override=False,
+    ):
         if info is None:
             info = self.create_info()
 
@@ -369,7 +378,7 @@ class PluginModuleLoader(PluginLoader):
         _extra = f"_{extra_name}" if extra_name else ""
         out_name = f"{_name}-{_ver}{_extra}.dcp"
 
-        if (plugins_dir / out_name).is_file():
+        if (plugins_dir / out_name).is_file() and not force_override:
             raise FileExistsError(f"already exists: {plugins_dir / out_name}")
 
         log.info("Plugin Packing: %s", self.module_directory)
@@ -724,18 +733,57 @@ class PluginManager(object):
         _checks = list(selected)
         while _checks:
             target = _checks.pop(0)
-            if target.depends:
-                _p_entries = [selected.index(_selected[depend_name])
-                              for depend_name in target.depends if depend_name in _selected]
-                if not _p_entries:
-                    continue
+            if not (target_depends := {*target.depends, *target.softdepends}):
+                continue
 
-                priority_index = min(_p_entries)
-                if selected.index(target) < priority_index + 1:
-                    selected.remove(target)
-                    selected.insert(priority_index + 1, target)
+            _p_entries = [selected.index(_selected[depend_name])
+                          for depend_name in target_depends if depend_name in _selected]
+            if not _p_entries:
+                continue
+
+            priority_index = min(_p_entries)
+            if selected.index(target) < priority_index + 1:
+                selected.remove(target)
+                selected.insert(priority_index + 1, target)
 
         return selected
+
+    def get_depends(self, plugin_info: PluginInfo, *,
+                    require_enabled=False) -> tuple[set[PluginInfo], set[str], set[str]]:
+        """
+        プラグインに必要なプラグインを返します
+
+        返す値は、PluginInfo 不足してるsoftdepend 不足してるdepend の３つの値をタプルで返します
+
+        :param plugin_info: 検証するプラグイン
+        :param require_enabled: 対象のプラグインは有効化されている必要があります
+        """
+        depends = set()
+        unknown_depends = set()
+        unknown_softdepends = set()
+
+        for depend in plugin_info.depends:
+            try:
+                info = self.plugins[depend.lower()]
+                if require_enabled and not info.enabled:
+                    raise KeyError
+            except KeyError:
+                unknown_depends.add(depend)
+            else:
+                depends.add(info)
+
+        for depend in plugin_info.softdepends:
+            try:
+                info = self.plugins[depend.lower()]
+                if require_enabled and not info.enabled:
+                    raise KeyError
+            except KeyError:
+                if depend not in plugin_info.depends:
+                    unknown_softdepends.add(depend)
+            else:
+                depends.add(info)
+
+        return depends, unknown_softdepends, unknown_depends
 
     def load_plugins(self, *, ignore_names: list[str] = None):
         self.plugins.clear()
@@ -749,10 +797,15 @@ class PluginManager(object):
 
             self.plugins[info.name.lower()] = info
             try:
+                _, __, no_deps = self.get_depends(info)
+                if no_deps:
+                    raise PluginDependencyError(", ".join(no_deps), depends=list(no_deps))
                 info.load()
+
             except PluginException as e:
-                log.error(f"プラグイン {info.name} を初期化できません: {e}")
+                log.error(f"プラグイン {info.name} を初期化できません: {type(e).__name__}: {e}")
                 info.load_exception = e
+
             except Exception as e:
                 log.exception(f"プラグイン {info.name} を初期化できません。")
                 info.load_exception = e
@@ -764,25 +817,32 @@ class PluginManager(object):
         for pi in list(self.plugins.values()):
             r = pi.enabled
             if not pi.enabled and pi.instance:
-                r = await self.enable_plugin(pi)
+                try:
+                    r = await self.enable_plugin(pi)
+                except PluginException as e:
+                    log.error(f"プラグイン {pi.name} を初期化できません: {type(e).__name__}: {e}")
+                    r = False
+                except Exception as e:
+                    log.exception(f"プラグイン {pi} を初期化できません。", exc_info=e)
+                    r = False
             results[not r].append(pi)
 
         log.info("プラグイン %s個を有効化しました。%s", len(results[0]), f" (エラー: {len(results[1])})" if results[1] else "")
         return results
 
-    async def disable_plugins(self):
+    async def disable_plugins(self, *, ignore_depends=True):
         log.debug("Disabling plugins")
 
         for pi in reversed(list(self.plugins.values())):
             if pi.enabled:
                 try:
-                    await self.disable_plugin(pi)
+                    await self.disable_plugin(pi, ignore_depends=ignore_depends)
                 except (Exception,):
                     log.exception(f"Exception in disable {pi.name} plugin", exc_info=True)
 
     # enable/disable
 
-    async def enable_plugin(self, plugin: PluginInfo | Plugin):
+    async def enable_plugin(self, plugin: PluginInfo | Plugin, *, ignore_depends=False):
         info = plugin if isinstance(plugin, PluginInfo) else plugin.info
 
         if info not in self.plugins.values():
@@ -791,6 +851,10 @@ class PluginManager(object):
             raise PluginOperationError("Not initialized")
         if info.enabled:
             raise PluginOperationError("Already enabled")
+        if not ignore_depends:
+            _, __, no_deps = self.get_depends(info, require_enabled=True)
+            if no_deps:
+                raise PluginDependencyError("Plugin required: " + ", ".join(no_deps))
 
         try:
             # noinspection PyProtectedMember
@@ -819,13 +883,17 @@ class PluginManager(object):
         return True
 
     # noinspection PyMethodMayBeStatic
-    async def disable_plugin(self, plugin: PluginInfo | Plugin):
+    async def disable_plugin(self, plugin: PluginInfo | Plugin, *, ignore_depends=False):
         info = plugin if isinstance(plugin, PluginInfo) else plugin.info
 
         if info.enabled:
-            depends = [pi.name for pi in self.plugins.values() if info.name in pi.depends and pi.enabled]
-            if depends:
-                raise PluginOperationError("depends: " + ", ".join(depends))
+            if not ignore_depends:
+                def _check_dep(pi: PluginInfo):
+                    return pi.enabled and any(1 for dep in {*pi.depends, *pi.softdepends}
+                                              if info.name.lower() == dep.lower())
+
+                if depends := [pi.name for pi in self.plugins.values() if _check_dep(pi)]:
+                    raise PluginDependencyError("depends on: " + ", ".join(depends))
 
             log.debug(f"Disabling {info.name} v{info.version}")
 
@@ -848,26 +916,26 @@ class PluginManager(object):
 
         return True
 
-    async def reload_plugin(self, plugin: PluginInfo | Plugin):
+    async def reload_plugin(self, plugin: PluginInfo | Plugin, *, ignore_depends=False):
         info = plugin if isinstance(plugin, PluginInfo) else plugin.info
 
         if not info.is_reloadable():
             raise PluginOperationError("Not reloadable plugin")
 
         if info.enabled:
-            await self.disable_plugin(info)
+            await self.disable_plugin(info, ignore_depends=ignore_depends)
 
-        await self.unload_plugin(info)
+        await self.unload_plugin(info, ignore_depends=ignore_depends)
         new_info = await self.load_plugin(info.loader, None)
 
         if new_info:
-            await self.enable_plugin(new_info)
+            await self.enable_plugin(new_info, ignore_depends=ignore_depends)
 
         return new_info
 
     # load/unload
 
-    async def load_plugin(self, loader: PluginLoader, info: PluginInfo | None):
+    async def load_plugin(self, loader: PluginLoader, info: PluginInfo | None, *, ignore_depends=False):
         if info is None:
             info = loader.create_info()
 
@@ -875,9 +943,14 @@ class PluginManager(object):
             raise PluginOperationError(f"Already exists plugin name: {info.name}")
 
         try:
+            if not ignore_depends:
+                _, __, no_deps = self.get_depends(info)
+                if no_deps:
+                    raise PluginDependencyError(", ".join(no_deps), depends=list(no_deps))
             info.load()
+
         except PluginException as e:
-            log.error(f"プラグイン {info.name} を初期化できません: {e}")
+            log.error(f"プラグイン {info.name} を初期化できません: {type(e).__name__}: {e}")
             info.load_exception = e
             return
 
@@ -889,9 +962,17 @@ class PluginManager(object):
         self.plugins[info.name.lower()] = info
         return info
 
-    async def unload_plugin(self, info: PluginInfo):
+    async def unload_plugin(self, info: PluginInfo, *, ignore_depends=False):
         if info.enabled:
             raise PluginOperationError("Enabled Plugin")
+
+        if not ignore_depends:
+            def _check_dep(pi: PluginInfo):
+                return pi.enabled and any(1 for dep in {*pi.depends, *pi.softdepends}
+                                          if info.name.lower() == dep.lower())
+
+            if depends := [pi.name for pi in self.plugins.values() if _check_dep(pi)]:
+                raise PluginDependencyError("depends on: " + ", ".join(depends))
 
         if info.instance:
             try:
@@ -907,9 +988,11 @@ class PluginManager(object):
 
     # packages
 
-    async def pack_to_plugin_file(self, mod_dir: Path, extra_name: str = None):
+    async def pack_to_plugin_file(self, mod_dir: Path, extra_name: str = None, force_override=False):
         loader = PluginModuleLoader(module_directory=mod_dir, data_dir=self.plugin_data_dir)
-        return await loader.pack_to_plugin_file(self.plugins_directory, extra_name=extra_name)
+        return await loader.pack_to_plugin_file(
+            self.plugins_directory, extra_name=extra_name, force_override=force_override,
+        )
 
     async def unpack_to_extension_module(self, dcp_file: Path, extract_resources=False):
         loader = PluginZipFileLoader(plugin_file=dcp_file, data_dir=self.plugin_data_dir)

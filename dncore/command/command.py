@@ -8,7 +8,7 @@ from typing import Any, Iterable
 
 from dncore.appconfig import CommandsConfig
 from dncore.appconfig.commands import PermissionGroup, CommandCategory, CommandEntry
-from dncore.command import DEFAULT_CATEGORY, DEFAULT_DEFAULT_GROUP, DEFAULT_OWNER_GROUP, DEFAULT_GUILD_OWNER_GROUP
+from dncore.command import DEFAULT_CATEGORY, DEFAULT_DEFAULT_GROUP, DEFAULT_OWNER_GROUP, DEFAULT_GUILD_ADMIN_GROUP
 from dncore.command.handler import CommandHandler, CommandContext
 from dncore.configuration.files import CnfErr
 from dncore.util.instance import call_event
@@ -349,8 +349,8 @@ class CommandManager(object):
             groups[DEFAULT_OWNER_GROUP].commands.append("*")
             self._changed_flag = True
 
-        if DEFAULT_GUILD_OWNER_GROUP not in groups:
-            groups[DEFAULT_GUILD_OWNER_GROUP] = PermissionGroup()
+        if DEFAULT_GUILD_ADMIN_GROUP not in groups:
+            groups[DEFAULT_GUILD_ADMIN_GROUP] = PermissionGroup()
             self._changed_flag = True
 
         # roles

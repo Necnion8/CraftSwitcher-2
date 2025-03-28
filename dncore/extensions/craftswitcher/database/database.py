@@ -3,14 +3,16 @@ import datetime
 import secrets
 from logging import getLogger
 from pathlib import Path
+from typing import Callable
+from uuid import UUID
 
 from passlib.context import CryptContext
 from sqlalchemy import URL, select, delete
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, AsyncEngine, create_async_engine
 
-from .model import Base, User
+from .model import *
+from ..files import BackupType
 from ..utils import datetime_now
 
 log = getLogger(__name__)
@@ -109,7 +111,7 @@ class SwitcherDatabase(object):
                 db.add(user)
                 await db.flush()
                 await db.refresh(user)
-                user_id = str(user.id)
+                user_id = user.id
                 await db.commit()
                 return user_id
 
@@ -142,3 +144,164 @@ class SwitcherDatabase(object):
         expires = datetime_now() + TOKEN_EXPIRES
         await self.update_user(user, token=token, token_expire=expires, **new_values)
         return TOKEN_EXPIRES, token, expires
+
+    # backupper
+
+    async def get_backup_ids(self) -> list[tuple[UUID, UUID]]:
+        """
+        データベース内の全バックアップIDとソースIDを返します (作成日時順)
+        """
+        async with self.session() as db:
+            result = await db.execute(select(Backup.id, Backup.source).order_by(Backup.created))
+            return [(r[0], r[1]) for r in result.all()]
+
+    async def get_backups_or_snapshots(self, source: UUID) -> list[Backup]:
+        """
+        ソースIDに関連するバックアップを返します (作成日時順)
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
+            return [r[0] for r in result.all()]
+
+    async def edit_backups_or_snapshots(self, source: UUID, processor: Callable[[Backup], bool]) -> list[Backup]:
+        """
+        バックアップを編集します
+
+        processor が true を返したバックアップが更新され、そのリストを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(Backup)
+                .where(Backup.source == source)
+                .order_by(Backup.created)
+            )
+            _backups = []
+            for backup, *_ in result.all():
+                if processor(backup):
+                    _backups.append(backup)
+
+            if _backups:
+                await db.commit()
+            return _backups
+
+    async def get_last_snapshot(self, source: UUID, backup_id: UUID) -> Backup | None:
+        """
+        指定されたバックアップがスナップショットならそれを返し、そうでない場合は元のバックアップをたどり返します。
+        """
+        backup = await self.get_backup_or_snapshot(backup_id)
+        if not backup or BackupType.SNAPSHOT == backup.type:
+            return backup or None
+
+        backups = {b.id: b for b in await self.get_backups_or_snapshots(source)}
+        while backups:
+            try:
+                backup = backups.pop(backup_id)
+            except KeyError:
+                return None  # 前のバックアップが見つからない
+
+            if not backup.previous_backup:
+                return None  # 前のバックアップが存在しない
+
+            if BackupType.SNAPSHOT != backup.type:
+                backup_id = backup.id  # 更に前のバックアップを探す
+
+            else:
+                return backup
+
+    async def get_backup_or_snapshot(self, backup_id: UUID) -> Backup | None:
+        """
+        指定IDのバックアップを返します
+        """
+        async with self.session() as db:
+            result = await db.execute(select(Backup).where(Backup.id == backup_id))
+            try:
+                return result.one()[0]
+            except NoResultFound:
+                return None
+
+    async def add_full_backup(self, backup: Backup):
+        if backup.type != BackupType.FULL:
+            raise ValueError(f"Not full type backup: {backup.type}")
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(backup)
+                await db.flush()
+                await db.refresh(backup)
+                backup_id = backup.id
+                await db.commit()
+                return backup_id
+
+    async def add_snapshot_backup(self, backup: Backup, files: list[SnapshotFile], errors: list[SnapshotErrorFile]):
+        if backup.type != BackupType.SNAPSHOT:
+            raise ValueError(f"Not snapshot type backup: {backup.type}")
+
+        def _apply_id(s_id: UUID, f: SnapshotFile | SnapshotErrorFile):
+            f.backup_id = s_id
+            return f
+
+        async with self._commit_lock:
+            async with self.session() as db:
+                db.add(backup)
+                await db.flush()
+                await db.refresh(backup)
+                backup_id = backup.id
+                db.add_all(_apply_id(backup_id, f) for f in files)
+                db.add_all(_apply_id(backup_id, f) for f in errors)
+                await db.commit()
+                return backup_id
+
+    async def remove_backup_or_snapshot(self, backup: Backup | UUID):
+        """
+        バックアップと、それに関連づいたスナップショットファイルを全て削除します
+        """
+        async with self._commit_lock:
+            async with self.session() as db:
+                if isinstance(backup, Backup):
+                    await db.delete(backup)
+                    backup_id = backup.id
+                else:
+                    await db.execute(delete(Backup).where(Backup.id == backup))
+                    backup_id = backup
+
+                await db.execute(delete(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+                await db.execute(delete(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
+                await db.commit()
+
+    async def get_snapshot_files(self, backup_id: UUID) -> list[SnapshotFile] | None:
+        async with self.session() as db:
+            result = await db.execute(select(SnapshotFile).where(SnapshotFile.backup_id == backup_id))
+            try:
+                return [r[0] for r in result.all()]
+            except NoResultFound:
+                return None
+
+    async def get_snapshot_errors_files(self, backup_id: UUID) -> list[SnapshotErrorFile] | None:
+        async with self.session() as db:
+            result = await db.execute(select(SnapshotErrorFile).where(SnapshotErrorFile.backup_id == backup_id))
+            try:
+                return [r[0] for r in result.all()]
+            except NoResultFound:
+                return None
+
+    async def get_backups_files(self, source: UUID, path: str) -> tuple[list[SnapshotFile], list[Backup]]:
+        """
+        ソースIDとパスを含むバックアップファイルを返します (バックアップ作成日時順)
+        """
+        async with self.session() as db:
+            result = await db.execute(
+                select(SnapshotFile, Backup)
+                .where(Backup.source == source)
+                .where(Backup.id == SnapshotFile.backup_id)
+                .where(SnapshotFile.path == path)
+                .order_by(Backup.created)
+            )
+            files = []
+            backups = []
+            for s_file, backup in result.all():
+                files.append(s_file)
+                backups.append(backup)
+            return files, backups

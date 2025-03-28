@@ -1,9 +1,10 @@
 import asyncio
 import concurrent.futures
+import datetime
 import os.path
 import zipfile
 from pathlib import Path
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any, AsyncIterable
 
 from .abc import ArchiveProgress, ArchiveFile
 
@@ -12,9 +13,9 @@ class ArchiveHelper:
     # noinspection PyMethodMayBeStatic
     def _safe_path(self, root_dir: Path, path: Path) -> str:
         try:
-            return (root_dir / path.resolve().relative_to(root_dir.resolve())).as_posix()
+            return path.resolve().relative_to(root_dir.resolve()).as_posix()
         except ValueError:
-            return (root_dir / path.name).as_posix()
+            raise
 
     def available(self) -> bool:
         raise NotImplementedError
@@ -35,6 +36,14 @@ class ArchiveHelper:
                               ) -> AsyncGenerator[ArchiveProgress, None]:
         """
         archive_path を開き、extract_dir に全ファイルを展開します
+        """
+        raise NotImplementedError
+
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        """
+        archive_path を開き、対象のファイルを読み取ります
+        :error FileNotFoundError: 指定されたファイルがアーカイブ内に存在しない
         """
         raise NotImplementedError
 
@@ -71,9 +80,14 @@ class ZipArchiveHelper(ArchiveHelper):
             _total_size = 0
             new_files = []
             for _file in files:
-                for _child in _file.glob("**/*"):
-                    new_files.append(_child)
-                    _total_size += os.path.getsize(_child)
+                if _file.is_dir():
+                    for _child in _file.glob("**/*"):
+                        new_files.append(_child)
+                        _total_size += os.path.getsize(_child)
+                else:
+                    new_files.append(_file)
+                    _total_size += os.path.getsize(_file)
+
             return new_files, _total_size
 
         loop = asyncio.get_running_loop()
@@ -115,7 +129,7 @@ class ZipArchiveHelper(ArchiveHelper):
                 _args[0] = len(files)
 
                 for count, child in enumerate(files):
-                    fz.extract(child, extract_dir)  # FIXME: unsafe path eg. '..' and absolute path
+                    fz.extract(child, extract_dir)
                     completed.put_nowait(child)
 
         fut = asyncio.get_running_loop().run_in_executor(self.executor, _in_thread)
@@ -137,8 +151,47 @@ class ZipArchiveHelper(ArchiveHelper):
 
         await fut
 
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        q = asyncio.Queue(maxsize=8)
+        loop = asyncio.get_running_loop()
+        interrupt = asyncio.Event()
+
+        def _reader():
+            with zipfile.ZipFile(archive_path, "r") as fz:
+                if password is not None:
+                    fz.setpassword(password.encode("utf-8"))
+
+                files = fz.namelist()
+                if filename not in files:
+                    raise FileNotFoundError(filename)
+
+                with fz.open(filename, "r") as f:
+                    while (chunk := f.read(chunk_size)) and not interrupt.is_set():
+                        asyncio.run_coroutine_threadsafe(q.put(chunk), loop)
+                asyncio.run_coroutine_threadsafe(q.put(None), loop)
+
+        task = loop.run_in_executor(None, _reader())
+
+        try:
+            while _chunk := await q.get():
+                yield _chunk
+        finally:
+            interrupt.set()
+            task.cancel()
+            try:
+                await task
+            except (Exception,):
+                pass
+
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
         def _in_thread():
             with zipfile.ZipFile(archive_path, "r") as zf:
-                return [ArchiveFile(fi.filename, fi.file_size, fi.compress_size) for fi in zf.infolist()]
+                return [ArchiveFile(
+                    fi.filename,
+                    fi.is_dir(),
+                    fi.file_size,
+                    fi.compress_size,
+                    datetime.datetime(*fi.date_time).astimezone(datetime.timezone.utc),
+                ) for fi in zf.infolist()]
         return await asyncio.get_running_loop().run_in_executor(self.executor, _in_thread)

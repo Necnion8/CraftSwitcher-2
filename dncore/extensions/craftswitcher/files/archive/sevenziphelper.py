@@ -1,9 +1,10 @@
 import asyncio.subprocess as subprocess
 import collections
+import datetime
 import re
 import shutil
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, AsyncIterable
 
 from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 
@@ -11,7 +12,13 @@ from ..archive import ArchiveHelper, ArchiveProgress, ArchiveFile
 class SevenZipHelper(ArchiveHelper):
     SCAN_INFO_REGEX = re.compile(br"^((?P<folders>\d+) folders?, )?(?P<files>\d+) files?, (?P<bytes>\d+) bytes?")
     PROGRESS_VALUE_REGEX = re.compile(br"^(\d+)%")
-    LIST_FILE_REGEX = re.compile(br"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \..{4} +(\d+) +(\d+)? +(.*)$")
+    LIST_FILE_REGEX = re.compile(
+        br"^(?P<dt>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) "
+        br"(?P<attr>[.\w]{5}) "
+        br"+(?P<size>\d+) "
+        br"+(?P<csize>\d+)? "
+        br"+(?P<name>.*)$"
+    )
 
     def __init__(self, command_name="7z", ):
         self.command_name = command_name
@@ -32,6 +39,7 @@ class SevenZipHelper(ArchiveHelper):
             "-bso1", "-bse1",
             "-y", "-x!*", "-p"
             "--", str(file_path),
+            stdout=subprocess.PIPE,
         )
 
         detect_encrypted_archive = False
@@ -46,10 +54,10 @@ class SevenZipHelper(ArchiveHelper):
 
         proc = await subprocess.create_subprocess_exec(
             self.command_name,
-            "a", str(archive_path),
+            "a", str(archive_path.absolute()),
             "-bb0", "-bso2", "-bse2", "-bsp2", "-sccUTF-8", "-y",
             "--", *[str(self._safe_path(root_dir, p)) for p in files],
-            stderr=subprocess.PIPE,
+            stderr=subprocess.PIPE, cwd=root_dir,
         )
 
         last_logs = collections.deque(maxlen=10)
@@ -178,6 +186,27 @@ class SevenZipHelper(ArchiveHelper):
                                    + b"\n".join(last_logs).decode("utf-8") +
                                    "\n=== LAST OUTPUT ===")
 
+    async def extract_archived_file(self, archive_path: Path, filename: str, password: str = None,
+                                    *, chunk_size=1024 * 8) -> AsyncIterable[bytes]:
+        for _file in await self.list_archive(archive_path, password):
+            if _file.filename == filename:
+                break
+        else:
+            raise FileNotFoundError(filename)
+
+        proc = await subprocess.create_subprocess_exec(
+            self.command_name,
+            "e",
+            "-so", "-y", "-sccUTF-8", f"-p{password or ''}",
+            "--", str(archive_path), filename,
+            stdout=subprocess.PIPE,
+        )
+
+        while chunk := await proc.stdout.read(chunk_size):
+            yield chunk
+
+        await proc.wait()
+
     async def list_archive(self, archive_path: Path, password: str = None, ) -> list[ArchiveFile]:
 
         proc = await subprocess.create_subprocess_exec(
@@ -194,11 +223,16 @@ class SevenZipHelper(ArchiveHelper):
                 line = line.strip()
                 m = self.LIST_FILE_REGEX.match(line)
                 if m:
-                    size = int(m.group(1).decode())
-                    compressed_size = int(m.group(2).decode()) if m.group(2) else 0
-                    filename = m.group(3).decode("utf-8").replace("\\", "/")
+                    size = int(m.group("size").decode())
+                    compressed_size = int(m.group("csize").decode()) if m.group("csize") else 0
+                    filename = m.group("name").decode("utf-8").replace("\\", "/")
+                    is_dir = m.group("attr").startswith(b"D")
+                    modified = datetime.datetime.strptime(
+                        m.group("dt").decode("utf-8"),
+                        "%Y-%m-%d %H:%M:%S",
+                    ).astimezone(datetime.timezone.utc)
 
-                    files.append(ArchiveFile(filename, size, compressed_size))
+                    files.append(ArchiveFile(filename, is_dir, size, compressed_size, modified))
                 # else:
                 #     print("RAW:", line)
 

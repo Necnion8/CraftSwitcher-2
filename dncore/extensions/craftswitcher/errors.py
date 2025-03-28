@@ -8,6 +8,9 @@ __all__ = [
     "ServerProcessingError",
     "OperationCancelledError",
     "NoDownloadFile",
+    "NoArchiveHelperError",
+    "AlreadyBackupError",
+    "UnknownJavaPreset",
 ]
 
 
@@ -40,4 +43,16 @@ class OperationCancelledError(ServerProcessError):
 
 
 class NoDownloadFile(Exception):
+    pass
+
+
+class NoArchiveHelperError(Exception):
+    pass
+
+
+class AlreadyBackupError(Exception):
+    pass
+
+
+class UnknownJavaPreset(Exception):
     pass

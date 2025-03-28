@@ -7,6 +7,7 @@ __all__ = [
     "ServerType",
     "SystemMemoryInfo",
     "SystemPerformanceInfo",
+    "DiskUsageInfo",
     "ProcessInfo",
     "FileWatchInfo",
     "JavaExecutableInfo",
@@ -33,6 +34,22 @@ class ServerState(Enum):
     def __lt__(self, other: "ServerState"):
         return _SERVER_STATE_VALUE.get(self, -1) < _SERVER_STATE_VALUE.get(other, -1)
 
+    @property
+    def old_value(self):
+        try:
+            return _SERVER_STATE_OLD_VALUE.index(self)
+        except ValueError:
+            return -1
+
+    @classmethod
+    def of_old_value(cls, int_value: int):
+        if 0 <= int_value < len(_SERVER_STATE_OLD_VALUE):
+            try:
+                return _SERVER_STATE_OLD_VALUE[int_value]
+            except IndexError:
+                pass
+        return cls.UNKNOWN
+
 
 _SERVER_STATE_VALUE = {
     ServerState.UNKNOWN: -1,
@@ -42,6 +59,14 @@ _SERVER_STATE_VALUE = {
     ServerState.STARTED: 3,
     ServerState.RUNNING: 3,
 }
+
+_SERVER_STATE_OLD_VALUE = [
+    ServerState.STOPPED,
+    ServerState.STARTED,
+    ServerState.STARTING,
+    ServerState.STOPPING,
+    ServerState.RUNNING,
+]
 
 
 class _ServerType:
@@ -56,6 +81,7 @@ class ServerType(Enum):
     UNKNOWN = "unknown"
     CUSTOM = "custom"
     VANILLA = "vanilla"
+    SPONGE_VANILLA = "sponge_vanilla"
     # bukkit
     SPIGOT = "spigot"
     PAPER = "paper"
@@ -92,6 +118,7 @@ SERVER_TYPE_SPECS = {
     ServerType.UNKNOWN: _ServerType("unknown", None, False, False),
     ServerType.CUSTOM: _ServerType("custom", None, False, False),
     ServerType.VANILLA: _ServerType("vanilla", "stop", False, False),
+    ServerType.SPONGE_VANILLA: _ServerType("sponge_vanilla", "stop", False, False),
     ServerType.SPIGOT: _ServerType("spigot", "stop", False, False),
     ServerType.PAPER: _ServerType("paper", "stop", False, False),
     ServerType.PURPUR: _ServerType("purpur", "stop", False, False),
@@ -118,6 +145,13 @@ class SystemMemoryInfo(NamedTuple):
 
 class SystemPerformanceInfo(NamedTuple):
     cpu_usage: float
+    cpu_count: int
+
+
+class DiskUsageInfo(NamedTuple):
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
 
 
 class ProcessInfo(NamedTuple):
@@ -132,7 +166,7 @@ class FileWatchInfo(NamedTuple):
 
 
 class JavaExecutableInfo(NamedTuple):
-    executable: Path
+    path: Path
     runtime_version: str
     java_home_path: str | None
     java_major_version: int
@@ -140,3 +174,4 @@ class JavaExecutableInfo(NamedTuple):
     class_version: int | None = None
     vendor: str | None = None
     vendor_version: str | None = None
+    is_jdk: bool = False

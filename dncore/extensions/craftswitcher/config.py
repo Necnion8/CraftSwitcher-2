@@ -49,6 +49,9 @@ class ServerSelector(ObjectSerializable, Cloneable):
 
 
 class LaunchOption(ConfigValues):
+    # Javaプリセット名
+    # ※ java_executable が指定されている場合はそちらが優先されます
+    java_preset: str | None
     # Javaコマンド、もしくはパス
     java_executable: str | None
     # Java オプション
@@ -64,6 +67,15 @@ class LaunchOption(ConfigValues):
     enable_free_memory_check: bool | None
     # サーバーと連携するエージェントを使う
     enable_reporter_agent: bool | None
+    # GNU Screen を使って起動する
+    enable_screen: bool | None
+
+
+class ServerInstallerInfo(ConfigValues):
+    type: ServerType | None = None
+    version: str | None = None
+    build: str | None = None
+    require_build: bool | None = None
 
 
 class ServerConfig(FileConfigValues):
@@ -99,10 +111,20 @@ class ServerConfig(FileConfigValues):
     # 最後にバックアップした日付
     last_backup_at: datetime.datetime | None
 
+    # 使用したサーバーインストーラー
+    installer: ServerInstallerInfo
+
+    # ファイル識別用
+    source_id: str | None
+    last_backup_id: str | None
+
 
 class LaunchGlobalOption(ConfigValues):
+    # Javaプリセット名
+    # ※ java_executable が指定されている場合はそちらが優先されます
+    java_preset = "default"
     # Javaコマンド、もしくはパス
-    java_executable = "java"
+    java_executable: str | None = None
     # Java オプション
     java_options = "-Dfile.encoding=UTF-8"
     # サーバーオプション
@@ -114,6 +136,8 @@ class LaunchGlobalOption(ConfigValues):
     enable_free_memory_check = True
     # サーバーと連携するエージェントを使う
     enable_reporter_agent = True
+    # GNU Screen を使って起動する
+    enable_screen = False
 
 
 class ServerGlobalConfig(ConfigValues):
@@ -123,10 +147,43 @@ class ServerGlobalConfig(ConfigValues):
     shutdown_timeout = 30
 
 
+class ReportModule(ConfigValues):
+    # Java Agent ファイルのパス
+    agent_file = "./CraftSwitcherReportModule-1.1.3_libs.jar"
+
+
+class JavaPresetConfig(ConfigValues):
+    name: str
+    executable: str
+
+
+class JavaConfigSection(ConfigValues):
+    # 実行可能なJavaのパスリスト。システムパスで指定してください。
+    presets: list[JavaPresetConfig]
+
+    # Javaを自動検出するディレクトリ。システムパスで指定してください。
+    auto_detection_paths: list[str] = [
+        "/usr/lib/jvm",
+        "C:\\Program Files\\Java",
+    ]
+
+
+class Screen(ConfigValues):
+    # セッション名の接頭辞
+    # ※ 他のセッション名と被らないようにする必要があります
+    session_name_prefix = "swi-"
+
+    # CraftSwitcherが停止する時にサーバーを停止させません
+    enable_keep_server_on_shutdown = True
+
+
 class PublicApiServer(ConfigValues):
     enable = True
     bind_host = "0.0.0.0"
     bind_port = 8080
+    # SSLキーファイルのパス
+    ssl_keyfile: str | None = None
+    ssl_certfile: str | None = None
 
 
 class DiscordActivity(ConfigValues):
@@ -166,6 +223,20 @@ class Discord(ConfigValues):
     activities: DiscordActivity
 
 
+class Backup(ConfigValues):
+    # スナップショット機能を使用するか
+    enable_snapshots = True
+
+    # フルバックアップとスナップショットのデータを格納します。システムパスで指定してください。
+    # このディレクトリはサーバーディレクトリと別のドライブに配置することを推奨します。
+    # ※ スナップショットを利用する場合、このディレクトリのファイルシステムでハードリンク機能が利用できる必要があります。
+    backups_directory = "./data_backups"
+
+    # バックアップに使用する圧縮ファイル拡張子
+    # 使用できる拡張子を順に選択します
+    suffixes: list[str] = ["7z", "zip"]
+
+
 class SwitcherConfig(FileConfigValues):
     # サーバーリスト (key: サーバーID、val: サーバー場所)
     servers: dict[str, str]
@@ -179,14 +250,15 @@ class SwitcherConfig(FileConfigValues):
     # サーバーの保管に使うパス (※ 通常は変更する必要はありません)
     servers_location: str = "/"
 
-    # 実行可能なJavaのパスリスト。システムパスで指定してください。
-    java_executables: list[str]
+    # サーバー連携モジュール設定
+    repomo: ReportModule
 
-    # Javaを自動検出するディレクトリ。システムパスで指定してください。
-    java_auto_detect_locations: list[str] = [
-        "/usr/lib/jvm",
-        "C:\\Program Files\\Java",
-    ]
+    # Java 設定
+    java: JavaConfigSection
+
+    # GNU Screen 設定
+    # ※ 利用できない場合は無視し、通常通りサーバーを直接起動させます。
+    screen: Screen
 
     # コンソールログをメモリに保持する行数 (サーバーごと)
     max_console_lines_in_memory = 10_000
@@ -196,3 +268,6 @@ class SwitcherConfig(FileConfigValues):
 
     # Discordボットの設定
     discord: Discord
+
+    # サーバーバックアップ設定
+    backup: Backup

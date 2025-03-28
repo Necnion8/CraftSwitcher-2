@@ -6,11 +6,11 @@ from aiohttp import ClientResponse
 
 from dncore.abc.serializables import Embed, Emoji
 from dncore.appconfig.config import DiscordSection, CleanSection
-from dncore.command import CommandContext, CommandHandler, DEFAULT_GUILD_OWNER_GROUP, DEFAULT_DEFAULT_GROUP
+from dncore.command import CommandContext, CommandHandler, DEFAULT_GUILD_ADMIN_GROUP, DEFAULT_DEFAULT_GROUP
 from dncore.command.argument import Argument
 from dncore.command.errors import *
 from dncore.command.events import *
-from dncore.discord.events import EVENTS, DiscordGenericEvent, HelpCommandPreExecuteEvent
+from dncore.discord.events import EVENTS, DiscordGenericEvent, HelpCommandPreExecuteEvent, HelpCommandExecuteEvent
 from dncore.discord.overrides import replace_overrides
 from dncore.util import traceback_simple_format, safe_format
 from dncore.util.discord import get_intent_names
@@ -341,10 +341,19 @@ class DiscordClient(discord.Client):
             except (Exception,):
                 log.debug("Exception in error reports to owner", exc_info=True)
 
-    def _check_guild_owner_permission(self, command: CommandHandler, user: discord.User, guild: discord.Guild | None):
-        if guild and guild.owner_id == user.id:
-            if command.allow_group == DEFAULT_GUILD_OWNER_GROUP:
-                return self.commands.allowed_in_group(command, DEFAULT_GUILD_OWNER_GROUP)
+    def _check_guild_admin_permission(self, command: CommandHandler, user: discord.User, guild: discord.Guild | None):
+        if not guild:
+            return False
+
+        is_admins = guild.owner_id == user.id
+        if isinstance(user, discord.Member):
+            # noinspection PyUnresolvedReferences
+            if user.guild_permissions.administrator:
+                is_admins = True
+
+        if is_admins and command.allow_group == DEFAULT_GUILD_ADMIN_GROUP:
+            return self.commands.allowed_in_group(command, DEFAULT_GUILD_ADMIN_GROUP)
+
         return False
 
     def allowed(self, command: str | CommandHandler, author: discord.User, guild: discord.Guild | None):
@@ -360,7 +369,7 @@ class DiscordClient(discord.Client):
 
         # check permission
         if self.config.owner_id != author.id:
-            if not self._check_guild_owner_permission(command, author, guild):
+            if not self._check_guild_admin_permission(command, author, guild):
                 if not self.commands.allowed(command, user_id=author.id, role_id=role_ids):
                     if not self.commands.allowed_in_group(command, DEFAULT_DEFAULT_GROUP):
                         return False
@@ -382,6 +391,9 @@ class DiscordClient(discord.Client):
             return
 
         m = self.m.help
+        command = e.command
+        name = e.name
+        args = e.args
 
         if command is None:
             return await context.send_warn(m.unknown_command)
@@ -405,7 +417,11 @@ class DiscordClient(discord.Client):
         if aliases:
             embed.add_field(name="別名:", value="`" + "`, `".join(aliases) + "`", inline=False)
 
-        return await context.send_info(embed)
+        e = await call_event(HelpCommandExecuteEvent(context, context.author, command, name, args, embed))
+        if e.cancelled:
+            return
+
+        return await context.send_info(e.embed)
 
     def clean_auto(self, message: discord.Message, delay: float = None, *, is_error=False):
         """

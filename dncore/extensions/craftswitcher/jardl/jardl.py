@@ -26,6 +26,9 @@ class ServerBuildStatus(Enum):
     SUCCESS = "success"
     FAILED = "failed"
 
+    def is_running(self):
+        return self in (ServerBuildStatus.PENDING, )
+
 
 # noinspection PyMethodMayBeStatic
 class ServerBuilder(object):
@@ -35,10 +38,12 @@ class ServerBuilder(object):
             self.env = env
             self.args = []  # type: list[str]
 
-    def __init__(self, server_type: ServerType, build: "ServerBuild", server: "ServerProcess"):
+    def __init__(self, server_type: ServerType, build: "ServerBuild",
+                 server: "ServerProcess", java_preset: "JavaPreset | None"):
         self.server_type = server_type
         self.build = build
         self.server = server
+        self.java_preset = java_preset
         self._state = ServerBuildStatus.STANDBY
         self.jar_filename = None  # type: str | None
         self.work_dir = server.directory / build.work_dir if build.work_dir else None
@@ -83,13 +88,14 @@ class ServerBuild(object):
     def __init__(self, mc_version: str, build: str, download_url: str = None, download_filename: str = None,
                  downloaded_path: Path = None,
                  *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False,
-                 work_dir: str = None, ):
+                 work_dir: str = None, require_jdk: bool = None, ):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
         self.download_filename = download_filename
         self.downloaded_path = downloaded_path
         self.java_major_version = java_major_version
+        self.require_jdk = require_jdk
         self.updated_datetime = updated_datetime
         self.recommended = recommended
         self.work_dir = work_dir
@@ -118,7 +124,8 @@ class ServerBuild(object):
     async def _fetch_info(self) -> bool:
         return False
 
-    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path) -> ServerBuilder:
+    async def setup_builder(self, server: "ServerProcess", downloaded_path: Path,
+                            *, java_preset: "JavaPreset | None") -> ServerBuilder:
         pass
 
 
@@ -178,6 +185,7 @@ def defaults():
     from .purpurmc import PurpurServerDownloader
     from .quiltmc import QuiltServerDownloader
     from .spigotmc import SpigotServerDownloader
+    from .spongepowered import SpongeVanillaDownloader
     from .vanilla import VanillaServerDownloader
 
     return {
@@ -195,5 +203,6 @@ def defaults():
         ServerType.PURPUR: PurpurServerDownloader(),
         ServerType.QUILT: QuiltServerDownloader(),
         ServerType.SPIGOT: SpigotServerDownloader(),
+        ServerType.SPONGE_VANILLA: SpongeVanillaDownloader(),
         ServerType.VANILLA: VanillaServerDownloader(),
     }

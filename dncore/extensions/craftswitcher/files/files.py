@@ -17,6 +17,7 @@ from .archive import ArchiveFile, ArchiveHelper
 from .archive.helper import ZipArchiveHelper
 from .archive.sevenziphelper import SevenZipHelper
 from .event import *
+from ..errors import NoArchiveHelperError
 from ..utils import call_event
 
 if TYPE_CHECKING:
@@ -208,6 +209,12 @@ class FileManager(object):
 
         task.fut.add_done_callback(_done)
 
+    def add_task(self, task: FileTask):
+        self._add_task_callback(task)
+        self.tasks.add(task)
+        call_event(FileTaskStartEvent(task))
+        return task
+
     def create_task(self, event_type: FileEventType, src: Path, dst: Path | None, fut: asyncio.Future,
                     server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
         """
@@ -216,10 +223,7 @@ class FileManager(object):
         if fut.done():
             raise ValueError("Already task completed")
         task = FileTask(self._add_task_id(), event_type, src, dst, fut, server, src_swi_path, dst_swi_path)
-        self._add_task_callback(task)
-        self.tasks.add(task)
-        call_event(FileTaskStartEvent(task))
-        return task
+        return self.add_task(task)
 
     def create_task_in_executor(self, event_type: FileEventType, src: Path, dst: Path | None, do_task, executor=None,
                                 server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None, ):
@@ -234,7 +238,10 @@ class FileManager(object):
         ファイルをコピーするタスクを作成し、実行します。
         """
         def _do():
-            shutil.copyfile(src, dst)
+            if src.is_dir():
+                shutil.copytree(src, dst)
+            else:
+                shutil.copyfile(src, dst)
 
         return self.create_task_in_executor(
             FileEventType.COPY, src, dst, _do, executor=None,
@@ -289,12 +296,12 @@ class FileManager(object):
             server=server, src_swi_path=src_swi_path, dst_swi_path=dst_swi_path,
         )
 
-    async def mkdir(self, src: Path):
+    async def mkdir(self, src: Path, parents=False):
         """
         ディレクトリを作成します
         """
         def _do():
-            src.mkdir()
+            src.mkdir(parents=parents)
 
         await self.loop.run_in_executor(None, _do)
 
@@ -317,7 +324,7 @@ class FileManager(object):
             async with aiohttp.request("GET", src_url) as res:
                 res.raise_for_status()
 
-                total_bytes = res.content_length
+                total_bytes = res.content_length or 0
                 total_read = 0
 
                 try:
@@ -334,7 +341,7 @@ class FileManager(object):
                         pass
                     raise
 
-        task = self.create_task(  # TODO: srcがPathしか受け入れられないために、ソースURLが設定できない
+        task = self.create_task(
             FileEventType.DOWNLOAD, dst, dst, asyncio.create_task(_download()),
             server, src_swi_path, dst_swi_path, )
         return task
@@ -354,6 +361,18 @@ class FileManager(object):
             if ignore_suffix or suffix_name in helper.available_formats():
                 return helper
 
+    def find_archive_helper_with_suffixes(self, suffixes: list[str]) -> tuple[str, ArchiveHelper]:
+        """
+        利用できる拡張子とヘルパーを返します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
+        """
+        helper_formats = [(h, h.available_formats()) for h in self._available_archive_helpers]
+        for suffix in suffixes:
+            for helper, formats in helper_formats:
+                if suffix in formats:
+                    return suffix, helper
+        raise NoArchiveHelperError(f"No supported archive helper: {suffixes}")
+
     async def is_archive(self, src: Path, *, ignore_suffix=False) -> bool:
         """
         指定されたファイルがアーカイブファイルかどうかチェックします
@@ -367,6 +386,7 @@ class FileManager(object):
     async def list_archive(self, src: Path, password: str = None, *, ignore_suffix=False) -> list[ArchiveFile]:
         """
         指定されたアーカイブファイルに格納されているファイルを返します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = src.suffix[1:].lower()
 
@@ -374,13 +394,14 @@ class FileManager(object):
             if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(src)):
                 return await helper.list_archive(src, password=password)
 
-        raise RuntimeError("No supported archive helper")
+        raise NoArchiveHelperError("No supported archive helper")
 
     async def extract_archive(self, archive: Path, extract_dir: Path, password: str = None,
                               server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None,
                               *, ignore_suffix=False):
         """
         格納されてるファイルを展開します
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = archive.suffix[1:].lower()
 
@@ -388,7 +409,7 @@ class FileManager(object):
             if suffix_name in helper.available_formats() or (ignore_suffix and await helper.is_archive(archive)):
                 break
         else:
-            raise RuntimeError("No supported archive helper")
+            raise NoArchiveHelperError("No supported archive helper")
 
         async def _progressing():
             async for progress in helper.extract_archive(archive, extract_dir, password=password):
@@ -409,6 +430,7 @@ class FileManager(object):
         ファイルを圧縮します
 
         格納される各ファイルのパスは files_root を基準に相対パスに変換されます
+        :except NoArchiveHelperError: 対応するヘルパーが見つからない
         """
         suffix_name = archive.suffix[1:].lower()
 
@@ -416,7 +438,7 @@ class FileManager(object):
             if suffix_name in helper.available_formats():
                 break
         else:
-            raise RuntimeError("No supported archive helper by suffix")
+            raise NoArchiveHelperError("No supported archive helper by suffix")
 
         async def _progressing():
             async for progress in helper.make_archive(archive, files_root, files):

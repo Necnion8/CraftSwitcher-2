@@ -2,14 +2,13 @@ import asyncio
 import re
 from logging import getLogger
 from pathlib import Path
-from typing import Awaitable, Any
-from typing import Callable
+from typing import Awaitable, Any, Callable
 
 import discord
 
 from dncore.abc.serializables import Embed
 from dncore.appconfig.commands import CommandCategory
-from dncore.command import DEFAULT_OWNER_GROUP, CommandContext, oncommand, CommandManager, DEFAULT_GUILD_OWNER_GROUP
+from dncore.command import DEFAULT_OWNER_GROUP, CommandContext, oncommand, CommandManager, DEFAULT_GUILD_ADMIN_GROUP
 from dncore.command.errors import CommandUsageError
 from dncore.discord.events import *
 from dncore.event import EventListener, onevent
@@ -97,7 +96,7 @@ class DNCoreCommands(EventListener):
         if ctx.arguments:
             args = ctx.arguments
             name = args.pop(0)
-            return await get_core().client.send_command_usage(ctx, name, None)
+            return await get_core().client.send_command_usage(ctx, name, None, args)
 
         # list
         commands = [name for name in cmd.get_commands(type(ctx.channel))
@@ -182,7 +181,7 @@ class DNCoreCommands(EventListener):
 
         return Embed.info(self.lang.clean.deleted).format(dict(count=count))
 
-    @oncommand(defaults=DEFAULT_GUILD_OWNER_GROUP)
+    @oncommand(defaults=DEFAULT_GUILD_ADMIN_GROUP)
     async def cmd_setting(self, ctx: CommandContext):
         mode = ctx.arguments.get(0, "info").lower()
 
@@ -335,20 +334,20 @@ class DNCoreCommands(EventListener):
 
         # Plugin Manage: info, enable, disable
         {prefix}{name} pmi (plugin)
-        {prefix}{name} pme (plugin)
-        {prefix}{name} pmd (plugin)
+        {prefix}{name} pme (plugin) [-f]
+        {prefix}{name} pmd (plugin) [-f]
         # Plugin Manage: load, unload, reload
-        {prefix}{name} pml (plugin.dcp)
-        {prefix}{name} pml (/extension)
-        {prefix}{name} pmu (plugin)
-        {prefix}{name} pmr (plugin)
+        {prefix}{name} pml (plugin.dcp) [-f]
+        {prefix}{name} pml (/extension) [-f]
+        {prefix}{name} pmu (plugin) [-f]
+        {prefix}{name} pmr (plugin) [-f]
 
         # Plugin To File: toPlugin, toExtension
-        {prefix}{name} pm2p (plugin) [fileExtraName]
+        {prefix}{name} pm2p (plugin) [fileExtraName] [-f]
         {prefix}{name} pm2e (plugin)
 
         # Plugin File To File: ExtToPlugin, PluginToExt
-        {prefix}{name} pf2p (extModName) [fileExtraName]
+        {prefix}{name} pf2p (extModName) [fileExtraName] [-f]
         {prefix}{name} pf2e (plFileName)```
         """
         mode = ctx.arguments.get(0, "info").lower()
@@ -471,10 +470,16 @@ class DNCoreCommands(EventListener):
                     source_file = source_file.name if source_file else None
             source = f" ({source_file})" if source_file else ""
 
+            _depends_lines = []
+            if plugin.depends:
+                _depends_lines.append(":white_small_square: Depends: " + ", ".join(plugin.depends))
+            if plugin.softdepends:
+                _depends_lines.append(":white_small_square: SoftDepends: " + ", ".join(plugin.softdepends))
             description_lines = [
                 f":white_small_square: Version: **{plugin.version}**",
                 f":white_small_square: Status: **{state}**",
                 f":white_small_square: Loader: {type(plugin.loader).__name__}{source}",
+                *_depends_lines,
                 f":white_small_square: Commands: {', '.join(commands)}",
             ]
 
@@ -487,6 +492,7 @@ class DNCoreCommands(EventListener):
                 plugin = plmgr.get_plugin_info(ctx.arguments[1])
             except IndexError:
                 return Embed.warn(":grey_exclamation: プラグインを指定してください。")
+            force = ctx.arguments.get(2) == "-f"
 
             if not plugin:
                 return Embed.error(":grey_exclamation: プラグインが見つかりません。")
@@ -496,7 +502,7 @@ class DNCoreCommands(EventListener):
 
             try:
                 async with ctx.typing():
-                    res = await plmgr.enable_plugin(plugin)
+                    res = await plmgr.enable_plugin(plugin, ignore_depends=force)
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
 
@@ -511,6 +517,7 @@ class DNCoreCommands(EventListener):
                 plugin = plmgr.get_plugin_info(ctx.arguments[1])
             except IndexError:
                 return Embed.warn(":grey_exclamation: プラグインを指定してください。")
+            force = ctx.arguments.get(2) == "-f"
 
             if not plugin:
                 return Embed.error(":grey_exclamation: プラグインが見つかりません。")
@@ -520,7 +527,7 @@ class DNCoreCommands(EventListener):
 
             try:
                 async with ctx.typing():
-                    res = await plmgr.disable_plugin(plugin)
+                    res = await plmgr.disable_plugin(plugin, ignore_depends=force)
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
 
@@ -534,13 +541,14 @@ class DNCoreCommands(EventListener):
                 plugin = plmgr.get_plugin_info(ctx.arguments[1])
             except IndexError:
                 return Embed.warn(":grey_exclamation: プラグインを指定してください。")
+            force = ctx.arguments.get(2) == "-f"
 
             if not plugin:
                 return Embed.error(":grey_exclamation: プラグインが見つかりません。")
 
             try:
                 async with ctx.typing():
-                    info = await plmgr.reload_plugin(plugin)
+                    info = await plmgr.reload_plugin(plugin, ignore_depends=force)
 
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
@@ -557,7 +565,8 @@ class DNCoreCommands(EventListener):
 
         elif mode in ("pml", "pmload"):
             args = ctx.arguments
-            args.pop(0)
+            args.pop(0)  # remove mode arg
+            force = bool(args and args[-1] == "-f" and args.pop(-1))
             _filename = " ".join(args)
             if not _filename:
                 return Embed.warn(":grey_exclamation: ファイル名を指定してください。")
@@ -612,10 +621,10 @@ class DNCoreCommands(EventListener):
 
             try:
                 async with ctx.typing():
-                    info = await plmgr.load_plugin(info.loader, info)
+                    info = await plmgr.load_plugin(info.loader, info, ignore_depends=force)
                     if not info:
                         raise PluginOperationError("Failed to load info")
-                    res = await plmgr.enable_plugin(info)
+                    res = await plmgr.enable_plugin(info, ignore_depends=force)
                     if res:
                         cmdmgr.remap()
 
@@ -632,6 +641,7 @@ class DNCoreCommands(EventListener):
                 plugin = plmgr.get_plugin_info(ctx.arguments[1])
             except IndexError:
                 return Embed.warn(":grey_exclamation: プラグインを指定してください。")
+            force = ctx.arguments.get(2) == "-f"
 
             if not plugin:
                 return Embed.error(":grey_exclamation: プラグインが見つかりません。")
@@ -639,9 +649,9 @@ class DNCoreCommands(EventListener):
             try:
                 if plugin.enabled:
                     async with ctx.typing():
-                        await plmgr.disable_plugin(plugin)
+                        await plmgr.disable_plugin(plugin, ignore_depends=force)
 
-                await plmgr.unload_plugin(plugin)
+                await plmgr.unload_plugin(plugin, ignore_depends=force)
 
             except PluginException as e:
                 return Embed.error(f":exclamation: エラー: {e}")
@@ -649,11 +659,13 @@ class DNCoreCommands(EventListener):
             return Embed.info(f":jigsaw: {plugin.name} v{plugin.version} をアンロードしました。")
 
         elif mode == "pm2p":
+            args = ctx.arguments
             try:
-                plugin = plmgr.get_plugin_info(ctx.arguments[1])
+                plugin = plmgr.get_plugin_info(args[1])
             except IndexError:
                 return Embed.warn(":grey_exclamation: プラグインを指定してください。")
-            extra_name = " ".join(ctx.arguments[2:]) or None
+            force = bool(args and args[-1] == "-f" and args.pop(-1))
+            extra_name = " ".join(args[2:]) or None
 
             if not plugin:
                 return Embed.error(":grey_exclamation: プラグインが見つかりません。")
@@ -664,7 +676,9 @@ class DNCoreCommands(EventListener):
 
             try:
                 async with ctx.typing():
-                    packed_path = await loader.pack_to_plugin_file(plmgr.plugins_directory, info=plugin, extra_name=extra_name)
+                    packed_path = await loader.pack_to_plugin_file(
+                        plmgr.plugins_directory, info=plugin, extra_name=extra_name, force_override=force,
+                    )
 
             except FileExistsError:
                 return Embed.error(f":grey_exclamation: 同じ名前のファイルが存在します。")
@@ -694,18 +708,20 @@ class DNCoreCommands(EventListener):
             return Embed.info(f":ok_hand: {unpacked_path.name} モジュールとして書き出しました。")
 
         elif mode == "pf2p":
+            args = ctx.arguments
             try:
-                mod_dir = plmgr.extensions_directory / ctx.arguments[1]
+                mod_dir = plmgr.extensions_directory / args[1]
             except IndexError:
                 return Embed.warn(":grey_exclamation: モジュール名を指定してください。")
-            extra_name = " ".join(ctx.arguments[2:]) or None
+            force = bool(args and args[-1] == "-f" and args.pop(-1))
+            extra_name = " ".join(args[2:]) or None
 
             if not mod_dir.is_dir():
                 return Embed.error(":grey_exclamation: 見つかりません")
 
             try:
                 async with ctx.typing():
-                    packed_path = await plmgr.pack_to_plugin_file(mod_dir, extra_name=extra_name)
+                    packed_path = await plmgr.pack_to_plugin_file(mod_dir, extra_name=extra_name, force_override=force)
 
             except FileExistsError:
                 return Embed.error(f":grey_exclamation: 同じ名前のファイルが存在します。")

@@ -295,7 +295,7 @@ class Embed(ObjectSerializable, Cloneable, discord.Embed):
         return embed
 
     @staticmethod
-    def _format(m: str, values: dict[str, Any], log_name: str, *, is_url=False):
+    def _format(m: str, values: dict[str, Any], log_name: str | None, *, is_url=False):
         if not m:
             return m
 
@@ -305,7 +305,7 @@ class Embed(ObjectSerializable, Cloneable, discord.Embed):
             return tmp if not is_url or rex.match(tmp) else None
         except (KeyError, ValueError, AttributeError) as e:
             m2 = m.replace("\n", "\\n")
-            log = getLogger(log_name)
+            log = getLogger(log_name or "dncore")
             log.warning(f"テキストをフォーマットできませんでした: {m2!r}")
             log.warning(f"  理由: {type(e).__name__}: {e}")
             log.warning(f"  変数: {', '.join(values)}")
@@ -321,15 +321,15 @@ class Embed(ObjectSerializable, Cloneable, discord.Embed):
         try:
             while f.f_back is not None:
                 f = f.f_back
-                n = f.f_globals["__name__"]
-                if not n.startswith("dncore.abc") and not n.startswith("dncore.util"):
+                n = f.f_globals.get("__name__")
+                if n and not n.startswith("dncore.abc") and not n.startswith("dncore.util"):
                     if f.f_locals.get("__ignore_frame") is not IGNORE_FRAME:
                         break
 
             if args is None:
                 args = {k: str(v) for k, v in f.f_locals.items() if not k.startswith("_")}
 
-            log = f.f_globals["__name__"]
+            log = f.f_globals.get("__name__")
 
         finally:
             del f

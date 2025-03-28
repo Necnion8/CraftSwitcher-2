@@ -7,28 +7,32 @@ import time
 from collections import defaultdict
 from logging import getLogger
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Coroutine, TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from dncore.event import EventListener, onevent
+from . import utilscreen as screen
 from .abc import ServerState, ServerType, FileWatchInfo, JavaExecutableInfo
-from .config import SwitcherConfig, ServerConfig
+from .config import SwitcherConfig, ServerConfig, JavaPresetConfig
 from .database import SwitcherDatabase
 from .database.model import User
 from .errors import ServerProcessingError, NoDownloadFile
 from .event import *
 from .ext import SwitcherExtensionManager
+from .fileback import Backupper
 from .files import FileManager
 from .files.event import *
 from .files.event import WatchdogEvent
 from .jardl import ServerDownloader, ServerBuild
 from .publicapi import UvicornServer, APIHandler, WebSocketClient
 from .publicapi.event import *
-from .publicapi.model import FileInfo, FileTask
+from .publicapi.model import FileInfo, FileTask, ServerStatusInfo
+from .publicapi.server import FallbackStaticFiles
+from .repomov1 import ReportModuleServer
 from .serverprocess import ServerProcessList, ServerProcess
+from .utiljava import JavaPreset, check_java_executable
 from .utils import *
 
 if TYPE_CHECKING:
@@ -51,44 +55,26 @@ class CraftSwitcher(EventListener):
     def __init__(self, loop: asyncio.AbstractEventLoop, config_file: Path, *,
                  plugin_info: "PluginInfo" = None, web_root_dir: Path = None, extensions: SwitcherExtensionManager):
         self.loop = loop
+        self.plugin_info = plugin_info
         self.config = SwitcherConfig(config_file)
-        self.database = db = SwitcherDatabase(config_file.parent)
+        self.database = SwitcherDatabase(config_file.parent)
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
+        self.repomo_server = ReportModuleServer(loop)
+        self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl
         self.server_downloaders = defaultdict(list)  # type: dict[ServerType, list[ServerDownloader]]
         # java
-        self.java_executables = []  # type: list[JavaExecutableInfo]
+        self.java_presets = []  # type: list[JavaPreset]
+        """プリセット設定済みor自動的にセットされたプリセット"""
+        self.java_detections = []  # type: list[JavaExecutableInfo]
+        """自動検出されたJavaのリスト"""
         # api
-        global __version__
-        __version__ = str(plugin_info.version.numbers) if plugin_info else __version__
-        api = FastAPI(
-            title="CraftSwitcher",
-            version=__version__,
-        )
-        api.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
-        @api.on_event("startup")
-        async def _startup():
-            for log_name in ("uvicorn", "uvicorn.access"):
-                _log = getLogger(log_name)
-                _log.handlers.clear()
-                for handler in getLogger("dncore").handlers:
-                    _log.addHandler(handler)
-
+        self.web_root_dir = web_root_dir
         self.api_server = UvicornServer()
-        self.api_handler = APIHandler(self, api, db)
-
-        if web_root_dir:
-            api.mount("/", StaticFiles(directory=web_root_dir, html=True, check_dir=False), name="static")
-
+        self.api_handler = APIHandler(self)
+        self.public_api = None  # type: FastAPI | None
         #
         self._initialized = False
         self._directory_changed_servers = set()  # type: set[str]  # 停止後にディレクトリを更新するサーバー
@@ -145,14 +131,27 @@ class CraftSwitcher(EventListener):
         self.load_servers()
 
         await self.database.connect()
+        if self.backups is None:
+            backups_dir = Path(self.config.backup.backups_directory)
+            self.backups = Backupper(
+                self.loop, config=self.config.backup, database=self.database, files=self.files,
+                backups_dir=backups_dir,
+            )
 
         self.print_welcome()
 
         await self.files.start()
         await self.start_api_server()
+        await self.repomo_server.open()
 
         await self._perfmon_broadcast_loop.start()
         call_event(SwitcherInitializedEvent())
+
+        if screen.is_available():
+            try:
+                await self.reattach_server_screens()
+            except Exception as e:
+                log.exception("Exception in attach server screens", exc_info=e)
 
         if not await self.database.get_users():
             log.info("Creating admin user")
@@ -161,6 +160,75 @@ class CraftSwitcher(EventListener):
             log.info("  password : abc")
 
         asyncio.create_task(self.scan_java_executables())
+
+    async def _test(self, arg: str):
+        return await getattr(self, f"_test_{arg}")()
+
+    _test_server_id = "020debb7-8a4f-4fd1-be75-330e3df79150"
+    _test_server_id = "ngnklife"
+
+    async def _test_4(self):
+        server = self.servers[self._test_server_id]
+
+        for backup_id, source_id in reversed(await self.database.get_backup_ids()):
+            if server.get_source_id(generate=False) == source_id.hex:
+                break
+        else:
+            log.info("No backups")
+            return
+
+        await self.backups.restore_backup(server, backup_id)
+
+    async def _test_3(self):
+        server = self.servers[self._test_server_id]
+        await self.backups.create_full_backup(server)
+
+    async def _test_2(self):
+        server = self.servers[self._test_server_id]
+        await self.backups.create_snapshot(server)
+
+    async def _test_1(self):
+        server = self.servers[self._test_server_id]
+        from uuid import UUID
+        source_id = UUID(server.get_source_id())
+
+        last = (await self.database.get_backups_or_snapshots(source_id))[-1]
+        snapshot_dir = self.backups.backups_dir / last.path  # type: Path
+
+        log.info(f"Last backup id: {last.id} ({last.type})")
+
+        if last.type.value == "snapshot":
+            total_size = 0
+            used_size = 0
+            linked_file = 0
+            total_file = 0
+
+            for c in snapshot_dir.glob("**/*"):  # type: Path
+                stat = c.stat()
+                if c.is_dir():
+                    logo = " DIR"
+                elif 1 < stat.st_nlink:
+                    logo = "LINK"
+                    log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+                    total_size += stat.st_size
+                    total_file += 1
+                    linked_file += 1
+                    continue
+                elif c.is_file():
+                    logo = "FILE"
+                    total_size += stat.st_size
+                    used_size += stat.st_size
+                    total_file += 1
+                else:
+                    logo = "----"
+
+                log.debug(f"{logo}  {c.relative_to(snapshot_dir)}")
+
+            log.info(f"Last snapshot id: {last.id}")
+            log.info(f"Total file size: {total_size / 1024 / 1024:.0f} MB (total {total_file} files)")
+            log.info(f"Used file size: {used_size / 1024 / 1024:.0f} MB (total {linked_file} links)")
+
+        #
 
     async def shutdown(self):
         if not self._initialized:
@@ -171,9 +239,14 @@ class CraftSwitcher(EventListener):
 
         try:
             try:
-                await self.shutdown_all_servers()
+                await self.shutdown_all_servers(exclude_screen=self.config.screen.enable_keep_server_on_shutdown)
             except Exception as e:
                 log.warning("Exception in shutdown servers", exc_info=e)
+
+            try:
+                await self.repomo_server.close()
+            except Exception as e:
+                log.warning("Exception in close repomo", exc_info=e)
 
             try:
                 await self.close_api_server()
@@ -200,7 +273,7 @@ class CraftSwitcher(EventListener):
             try:
                 self.unload_servers()
             except ValueError as e:
-                log.warning(f"Failed to unload_Servers: {e}")
+                log.warning(f"Failed to unload_servers: {e}")
 
             AsyncCallTimer.cancel_all_timers()
 
@@ -272,6 +345,7 @@ class CraftSwitcher(EventListener):
 
         server_config_path = server_dir / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(server_config_path)
+        config.source_id = generate_uuid().hex
 
         if not server_config_path.is_file():
             log.warning("Not exists server config: %s", server_dir)
@@ -286,12 +360,18 @@ class CraftSwitcher(EventListener):
         return server_dir, config
 
     def _init_server(self, server_id: str, server_dir: Path, config: ServerConfig):
+        if config.source_id is None:
+            config.source_id = generate_uuid().hex
+            config.save()
+            log.error(f"[{server_id}] Invalid source_id. Reset to: {config.source_id!r}")
+
         return ServerProcess(
             self.loop,
             directory=server_dir,
             server_id=server_id,
             config=config,
             global_config=self.config.server_defaults,
+            repomo_config=self.config.repomo,
             max_logs_line=self.config.max_console_lines_in_memory,
         )
 
@@ -312,11 +392,11 @@ class CraftSwitcher(EventListener):
                 log.debug("Ignore server remove: not stopped: (%s)", server.state.name)
                 removes.pop(server_id)
                 self._remove_servers.add(server_id)
-            elif server:
-                self.delete_server(server)
-            else:  # not loaded
-                self._remove_server(server_id)
-                log.info("Server removed: %s", server_id)
+            else:
+                try:
+                    self.delete_server(server or server_id)
+                except ValueError:
+                    pass  # ignored 404
 
         # update
         updates = {
@@ -358,8 +438,16 @@ class CraftSwitcher(EventListener):
         log.info("Loaded %s server", len(self.servers))
         call_event(SwitcherServersReloadedEvent(removes, updates, news))
 
-    async def shutdown_all_servers(self):
+    async def shutdown_all_servers(self, *, exclude_screen=False):
         async def _shutdown(s: ServerProcess):
+            if exclude_screen:
+                if s.screen_session_name and s.state != ServerState.BUILD:  # ビルド中なら無視せず終了
+                    try:
+                        await s.detach_screen()
+                    except Exception as e:
+                        log.warning("Exception in detach server (ignored)", exc_info=e)
+                    return
+
             if s.state.is_running:
                 try:
                     try:
@@ -379,9 +467,9 @@ class CraftSwitcher(EventListener):
 
             await s.clean_builder()
 
-        if self.servers:
-            log.info("Shutdown server all!")
-            await asyncio.wait([_shutdown(s) for s in self.servers.values() if s])
+        if servers := [_shutdown(s) for s in self.servers.values() if s]:
+            log.info("Shutting down all servers")
+            await asyncio.wait(servers)
 
     def unload_servers(self):
         """
@@ -392,11 +480,25 @@ class CraftSwitcher(EventListener):
         if not self.servers:
             return
 
-        if any(s.state.is_running for s in self.servers.values() if s):
+        if any(not s.screen_session_name and s.state.is_running for s in self.servers.values() if s):
             raise ValueError("Contains not stopped server")
 
         call_event(SwitcherServersUnloadEvent())
         self.servers.clear()
+
+    async def reattach_server_screens(self):
+        screen_names = screen.list_names()
+
+        for server in self.servers.values():
+            if not server:
+                continue
+
+            screen_name = self.screen_session_name_of(server)
+            if screen_name in screen_names:
+                try:
+                    await server.attach_to_screen_session(screen_name)
+                except Exception as e:
+                    log.warning("Failed to attach to %s server screen", server.id, exc_info=e)
 
     # server downloader
 
@@ -415,8 +517,68 @@ class CraftSwitcher(EventListener):
                 downloaders.remove(downloader)
             except ValueError:
                 pass
-    
+
+    async def get_java_version_from_server_type(self, server_type: ServerType, server_version: str) -> int | None:
+        if server_type.spec.is_proxy:
+            return {
+                # https://docs.papermc.io/velocity/getting-started#installing-java
+                ServerType.VELOCITY: 17,
+                # https://www.spigotmc.org/wiki/bungeecord-installation/#installing-bungeecord-on-linux
+                ServerType.BUNGEECORD: 8,
+                ServerType.WATERFALL: 8,
+
+            }.get(server_type)
+
+        else:
+            try:
+                downloader = self.server_downloaders[ServerType.VANILLA][0]
+            except (KeyError, IndexError):
+                return
+
+            for ver in await downloader.list_versions():
+                if ver.mc_version != server_version:
+                    continue
+
+                for build in reversed(await ver.list_builds()):
+                    if major_version := build.java_major_version:
+                        return major_version
+                break
+
+        return None
+
     # util
+
+    def _create_public_api(self):
+        global __version__
+        __version__ = str(i.version.numbers) if (i := self.plugin_info) else __version__
+        api = FastAPI(
+            title="CraftSwitcher",
+            version=__version__,
+        )
+        api.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        @api.on_event("startup")
+        async def _startup():
+            for log_name in ("uvicorn", "uvicorn.access"):
+                _log = getLogger(log_name)
+                _log.handlers.clear()
+                for handler in getLogger("dncore").handlers:
+                    _log.addHandler(handler)
+
+        self.api_handler.set_handlers(api)
+
+        if self.web_root_dir:
+            api.mount("/", FallbackStaticFiles(
+                directory=self.web_root_dir, html=True, check_dir=False,
+            ), name="static")
+
+        return api
 
     def create_file_info(self, realpath: Path, *, root_dir: Path = None):
         """
@@ -500,6 +662,71 @@ class CraftSwitcher(EventListener):
     def get_watched_paths(self) -> set[Path]:
         return set(self._watch_files.keys())
 
+    def screen_session_name_of(self, server: "ServerProcess"):
+        return self.config.screen.session_name_prefix + server.id
+
+    # java
+
+    def get_java_preset(self, name: str) -> JavaPreset | None:
+        for preset in self.java_presets:
+            if preset.name == name:
+                return preset
+
+    async def add_java_preset(self, name: str, executable: str | Path | JavaExecutableInfo) -> JavaPreset:
+        """
+        指定されたJavaコマンドをテストし、指定された名でプリセットを保存してリストに加えます
+
+        設定に含まれていない同じ名前のプリセットは上書きされます (自動検出によるプリセットなど)
+
+        :except ValueError: すでに設定されているプリセット名
+        """
+        if any(c.name == name for c in self.config.java.presets):
+            raise ValueError(f"Already exists name: {name}")
+        self.remove_java_preset(name)  # 競合名を全て削除
+
+        config = JavaPresetConfig()
+        config.name = name
+
+        if isinstance(executable, JavaExecutableInfo):
+            config.executable = str(executable.path)
+            info = executable
+        else:
+            try:
+                info = await check_java_executable(Path(executable))
+            except Exception as e:
+                log.warning(f"Error in check java: {executable!r}: {e}")
+                info = None
+            config.executable = str(info and info.path or executable)
+
+        preset = JavaPreset(config.name, config.executable, info, config)
+        self.java_presets.append(preset)
+
+        self.config.java.presets.append(config)
+        self.config.save()
+        return preset
+
+    def remove_java_preset(self, name: str) -> bool:
+        """
+        指定された名のプリセットを設定とプリセットリストから削除します
+        """
+        _changed = False
+        # remove in config
+        for config in list(self.config.java.presets):
+            if config.name == name:
+                self.config.java.presets.remove(config)
+                _changed = True
+
+        if _changed:
+            self.config.save()
+
+        # remove preset
+        for preset in list(self.java_presets):
+            if preset.name == name:
+                self.java_presets.remove(preset)
+                _changed = True
+
+        return _changed
+
     async def scan_java_executables(self):
         task = self._scan_java_task
         if not task or task.done():
@@ -509,52 +736,80 @@ class CraftSwitcher(EventListener):
     async def _scan_java_executables(self):
         log.debug("Checking java executables")
         exe_name = "java.exe" if is_windows() else "java"
-        exe_files = []  # type: list[Path]
         perf_time = time.perf_counter()
 
-        # include default java
-        _default_java = shutil.which("java")
-        if _default_java:
-            default_java = Path(_default_java).resolve()
-            if default_java.exists():
-                exe_files.append(default_java)
+        _check_java_type = JavaExecutableInfo | None, JavaPresetConfig | None
+        sem = asyncio.Semaphore(3)
+        tasks = []  # type: list[Coroutine[None, None, _check_java_type]]
 
-        # list executable files
-        for child in self.config.java_executables:
-            child = Path(child).resolve()
-            if child.is_file() and child not in exe_files:
-                exe_files.append(child)
+        async def check_java(_path: Path, _config: JavaPresetConfig | None) -> _check_java_type:
+            async with sem:
+                try:
+                    return await check_java_executable(_path), _config
+                except Exception as e:
+                    log.warning(f"Error in check java: {_path!r}: {e}")
+            return None, _config
 
-        for search_dir in self.config.java_auto_detect_locations:
-            search_dir_path = Path(search_dir)
-            if not search_dir_path.exists():
+        # default java
+        default_java_info = None  # type: JavaExecutableInfo | None
+        if default_java := shutil.which("java"):
+            if (default_java := Path(default_java).resolve()).exists():
+                default_java_info = (await check_java(default_java, None))[0]
+
+        # preset java
+        for preset_c in self.config.java.presets:
+            tasks.append(check_java(Path(shutil.which(preset_c.executable) or preset_c.executable), preset_c))
+
+        # detection java
+        for search_dir in self.config.java.auto_detection_paths:
+            if not (search_dir_path := Path(search_dir)).exists():
                 continue
+            for child in search_dir_path.glob(f"*/bin/{exe_name}"):  # type: Path
+                if (child := child.resolve()).is_file():
+                    tasks.append(check_java(child, None))
 
-            for child in search_dir_path.glob(f"*/bin/{exe_name}"):
-                child = child.resolve()
-                if child.is_file() and child not in exe_files:
-                    exe_files.append(child)
+        # check
+        presets = {}  # type: dict[str, JavaPreset]
+        names = set()
+        detections = {}  # type: dict[str, JavaExecutableInfo]
 
-        # check java
-        self.java_executables.clear()
-        executables = set()
+        if tasks:
+            log.debug("Testing %s java executables", len(tasks))
+            for info, config in await asyncio.gather(*tasks):  # type: JavaExecutableInfo | None, JavaPresetConfig | None
+                if not info:
+                    # 設定済みand利用不可
+                    if config:
+                        presets[config.executable] = JavaPreset(config.name, config.executable, None, config)
+                        names.add(config.name)
 
-        if exe_files:
-            sem = asyncio.Semaphore(3)
+                elif str(info.path.absolute()) not in presets:
+                    # 自動検出(名前あたり１つ)
+                    if not config:
+                        detections[str(info.path.absolute())] = info
+                        name = f"java-{info.java_major_version}"
+                        if name in names:
+                            continue
+                        executable = str(info.path)
+                    else:
+                        # 設定済み
+                        name = config.name
+                        executable = config.executable
 
-            async def _check(p):
-                async with sem:
-                    return await check_java_executable(p)
+                    presets[str(info.path.absolute())] = JavaPreset(name, executable, info, config)
+                    names.add(name)
 
-            for info in await asyncio.gather(*[_check(p) for p in exe_files]):
-                if info and info.executable not in executables:
-                    self.java_executables.append(info)
-                    executables.add(info.executable)
+        # update list
+        self.java_presets.clear()
+        self.java_presets.extend(presets.values())
+        if default_java_info:
+            self.java_presets.insert(0, JavaPreset("default", "java", default_java_info, None))
+        self.java_detections.clear()
+        self.java_detections.extend(detections.values())
 
         perf_time = round((time.perf_counter() - perf_time) * 1000)
-        major_vers = sorted(set(i.java_major_version for i in self.java_executables))
-        log.info("Java versions found (total %s java files): %s",
-                 len(self.java_executables), ", ".join(map(str, major_vers)))
+        major_vers = sorted(set(p.major_version for p in presets.values() if p.info))
+        log.info("Java versions found (available presets: %s): %s",
+                 sum(bool(p.info) for p in presets.values()), ", ".join(map(str, major_vers)))
         log.debug("processing time: %sms", perf_time)
 
     # server api
@@ -565,6 +820,7 @@ class CraftSwitcher(EventListener):
         """
         config_path = Path(server_directory) / self.SERVER_CONFIG_FILE_NAME
         config = ServerConfig(config_path)
+        config.source_id = generate_uuid().hex
         config.launch_option.jar_file = jar_file
         return config
 
@@ -586,9 +842,8 @@ class CraftSwitcher(EventListener):
 
         この操作により、サーバーディレクトリにサーバー設定ファイルが保存されます。
 
-        既に存在するIDの場合は :class:`ValueError` を。
-
-        親ディレクトリが存在しない場合は :class:`NotADirectoryError` を発生させます。
+        :except ValueError: 既に存在するID
+        :except NotADirectoryError: 親ディレクトリが存在しない
         """
         server_id = safe_server_id(server_id)
         if server_id in self.servers:
@@ -599,6 +854,8 @@ class CraftSwitcher(EventListener):
             if not directory.parent.is_dir():
                 raise NotADirectoryError(str(directory))
             directory.mkdir()
+
+        config.source_id = generate_uuid().hex
         server = self._init_server(server_id, directory, config)
 
         if set_creation_date:
@@ -616,10 +873,25 @@ class CraftSwitcher(EventListener):
         call_event(ServerCreatedEvent(server))
         return server
 
-    def delete_server(self, server: ServerProcess, *, delete_server_config=False):
+    def delete_server(self, server: str | ServerProcess, *, delete_server_config=False):
         """
         サーバーを削除します。サーバーは停止している必要があります。
         """
+        if not isinstance(server, ServerProcess):
+            try:
+                _server = self.servers[server]
+            except KeyError:
+                raise ValueError(f"Not exists server {server}")
+
+            if not _server:
+                # not loaded
+                self._remove_server(server)
+                log.info("Server deleted: %s (not loaded, silent)", server)
+                self.config.save()
+                return
+
+            server = _server
+
         if server.state.is_running:
             raise RuntimeError("Server is running")
 
@@ -644,8 +916,11 @@ class CraftSwitcher(EventListener):
         self.servers.pop(server_id, None)
         self.config.servers.pop(server_id, None)
 
-    async def download_server_jar(self, server: ServerProcess, jar_build: ServerBuild, server_type: ServerType,
-                                  ) -> FileTask:
+    async def download_server_jar(
+        self, server: ServerProcess,
+        jar_build: ServerBuild, server_type: ServerType,
+        builder_java_preset: JavaPreset | None,
+    ) -> FileTask:
         """
         ビルド情報を元に、サーバーファイルまたはインストールファイルをダウンロードします。
 
@@ -692,37 +967,95 @@ class CraftSwitcher(EventListener):
                 return
 
             jar_build.downloaded_path = dst
+            config = server._config
+
             if jar_build.is_require_build():
-                server.builder = await jar_build.setup_builder(server, dst)
+                server.builder = await jar_build.setup_builder(server, dst, java_preset=builder_java_preset)
 
             else:
-                config = server._config
                 config.type = server_type
                 config.enable_launch_command = False
                 config.launch_option.jar_file = dst.name
-                config.save()
+
+            config.installer.type = server_type
+            config.installer.version = jar_build.mc_version
+            config.installer.build = jar_build.build
+            config.installer.require_build = jar_build.is_require_build()
+            config.save()
 
         task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))
         return task
 
+    def get_server_status(self, server: ServerProcess):
+        if not server.state.is_running:
+            return None
+
+        report = self.repomo_server.get_status(server.id)
+
+        total = report and report.total_memory
+        free = report and report.free_memory
+
+        return ServerStatusInfo(
+            id=server.id,
+            process=ServerStatusInfo.Process(
+                cpu_usage=p_info.cpu_usage,
+                mem_used=p_info.memory_used_size,
+                mem_virtual_used=p_info.memory_virtual_used_size,
+            ) if (p_info := server.get_perf_info()) else None,
+            jvm=ServerStatusInfo.JVM(
+                cpu_usage=None if (val := report.cpu_usage) is None else val * 100,
+                mem_used=None if total is None or free is None else total - free,
+                mem_total=None if total is None else total,
+            ) if report else None,
+            game=ServerStatusInfo.Game(
+                ticks=None if (val := report.tps) is None else val,
+                max_players=None if (val := report.max_players) is None else val,
+                online_players=None if (val := report.players) is None else len(val),
+                players=None if report.players is None else [
+                    ServerStatusInfo.Game.Player(
+                        uuid=str(p_uuid),
+                        name=p_name,
+                    ) for p_uuid, p_name in report.players.items()
+                ],
+            ) if report else None,
+        )
+
     # public api
 
     async def start_api_server(self, *, force=False):
+        self.public_api = api = self._create_public_api()
         config = self.config.api_server
         if not (config.enable or force):
             log.debug("Disabled API Server")
             return
 
         try:
+            ssl_key_file = config.ssl_keyfile or None
+            ssl_cert_file = config.ssl_certfile or None
+
+            if ssl_key_file:
+                if not Path(ssl_key_file).is_file():
+                    log.warning("SSL key file not exists: %s", Path(ssl_key_file).absolute())
+                if not Path(ssl_cert_file).is_file():
+                    log.warning("SSL cert file not exists: %s", Path(ssl_cert_file).absolute())
+
             await self.api_server.start(
-                self.api_handler.router,
+                api,
                 host=config.bind_host,
                 port=config.bind_port,
+                ssl_keyfile=config.ssl_keyfile or None,
+                ssl_certfile=config.ssl_certfile or None,
             )
         except RuntimeError as e:
             log.warning(f"Failed to start api server: {e}")
 
     async def close_api_server(self):
+        for ws in set(self.api_handler.ws_clients):
+            try:
+                await ws.websocket.close()
+            except Exception as e:
+                log.warning(f"Error in websocket close: {e}")
+
         await self.api_server.shutdown()
 
     # user
@@ -759,12 +1092,6 @@ class CraftSwitcher(EventListener):
         sys_mem = system_memory(swap=True)
         sys_perf = system_perf()
 
-        servers_info = {}
-        for server in self.servers.values():
-            if not server or not server.perfmon:
-                continue
-            servers_info[server] = server.perfmon.info()
-
         progress_data = dict(
             type="progress",
             progress_type="performance",
@@ -772,6 +1099,7 @@ class CraftSwitcher(EventListener):
             system=dict(
                 cpu=dict(
                     usage=sys_perf.cpu_usage,
+                    count=sys_perf.cpu_count,
                 ),
                 memory=dict(
                     total=sys_mem.total_bytes,
@@ -781,23 +1109,9 @@ class CraftSwitcher(EventListener):
                 ),
             ),
             servers=[
-                dict(
-                    id=s.id,
-                    process=dict(
-                        cpu_usage=i.cpu_usage,
-                        mem_used=i.memory_used_size,
-                        mem_virtual_used=i.memory_virtual_used_size,
-                    ),
-                    jvm=dict(  # TODO: impl jvm perf info
-                        cpu_usage=-1,
-                        mem_used=-1,
-                        mem_total=-1,
-                    ),
-                    game=dict(
-                        ticks=-1,
-                    ),
-                )
-                for s, i in servers_info.items()
+                self.get_server_status(s).model_dump(mode="json")
+                for s in self.servers.values()
+                if s and s.state.is_running
             ],
         )
         await self.api_handler.broadcast_websocket(progress_data)
@@ -805,8 +1119,18 @@ class CraftSwitcher(EventListener):
     # events
 
     @onevent(monitor=True)
+    async def on_server_created(self, event: ServerCreatedEvent):
+        await self.repomo_server.handle_on_server_add(event.server.id)
+
+    @onevent(monitor=True)
+    async def on_server_deleted(self, event: ServerDeletedEvent):
+        await self.repomo_server.handle_on_server_remove(event.server.id)
+
+    @onevent(monitor=True)
     async def on_change_state(self, event: ServerChangeStateEvent):
         server = event.server
+
+        await self.repomo_server.handle_on_server_state_update(server.id, event.new_state)
 
         if server.state is ServerState.STOPPED:
             # queue removes

@@ -17,8 +17,10 @@ def main():
         except IndexError:
             print("Please specify extension module directory", file=sys.stderr)
             sys.exit(1)
+        _args = list(sys.argv)
+        file_override = _args and _args[-1] == "-f" and _args.pop(-1) or False
         try:
-            extra_name = sys.argv[3]
+            extra_name = _args[3]
         except IndexError:
             extra_name = None
 
@@ -35,7 +37,7 @@ def main():
         logging.basicConfig(format="{message}", style="{", level=logging.DEBUG)
         loader = PluginModuleLoader(module_directory=mod_dir, data_dir=plugins_dir)
         try:
-            packed = loader.pack_to_plugin_file_(plugins_dir, extra_name=extra_name)
+            packed = loader.pack_to_plugin_file_(plugins_dir, extra_name=extra_name, force_override=file_override)
 
         except FileExistsError as e:
             print(e, file=sys.stderr)

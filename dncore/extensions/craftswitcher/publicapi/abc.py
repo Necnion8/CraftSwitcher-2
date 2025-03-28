@@ -47,6 +47,8 @@ class APIErrorCode(IntEnum):
     NOT_FILE = auto()
     NO_SUPPORTED_ARCHIVE_FORMAT = auto()
     NO_AVAILABLE_DOWNLOAD = auto()
+    EXIST_FILE = auto()
+    EXIST_DIRECTORY = auto()
 
     # auth
     INVALID_AUTHENTICATION_CREDENTIALS = 400
@@ -64,6 +66,16 @@ class APIErrorCode(IntEnum):
     NO_AVAILABLE_SERVER_TYPE = 700
     NOT_EXISTS_SERVER_VERSION = auto()
     NOT_EXISTS_SERVER_BUILD = auto()
+
+    # backup
+    BACKUP_ALREADY_RUNNING = 800
+    BACKUP_NOT_FOUND = auto()
+    INVALID_BACKUP = auto()
+    UNAVAILABLE_SNAPSHOT = auto()
+    DISABLED_SNAPSHOT = auto()
+
+    # java
+    UNKNOWN_JAVA_PRESET = 900
 
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)

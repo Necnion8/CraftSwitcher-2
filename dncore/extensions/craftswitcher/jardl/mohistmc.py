@@ -19,7 +19,6 @@ __all__ = [
 
 class BuildInfo(BaseModel):
     number: int
-    forgeVersion: str
     fileMd5: str
     createdAt: datetime.datetime
 
