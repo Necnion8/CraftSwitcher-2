@@ -2,25 +2,23 @@ import datetime
 
 from croniter import croniter
 
-from .abc import ScheduleTimer
+from .abc import ScheduleTimer, ScheduleTimerProvider
 
 __all__ = [
     "UnknownTimer",
     "CronScheduleTimer",
     "DatetimeScheduleTimer",
+    "TIMERS",
 ]
 
 
 class UnknownTimer(ScheduleTimer):
-    def __init__(self, timer_id: str):
+    def __init__(self, timer_id: str, *, _extra: dict):
         super().__init__(timer_id)
-        self._data = {}
+        self._extra = _extra
 
     def to_database(self) -> dict:
-        return self._data
-
-    def from_database(self, data: dict):
-        self._data = data
+        return self._extra
 
     def get_remaining(self) -> float:
         return 365 * 24 * 60  # inf
@@ -33,7 +31,7 @@ class CronScheduleTimer(ScheduleTimer):
     def __init__(self, cron_format: str):
         super().__init__("cron")
         self.cron_format = cron_format
-        self.croniter = croniter(cron_format, start_time=None, max_years_between_matches=2)
+        self.croniter = croniter(cron_format, start_time=self.start_time, max_years_between_matches=2)
 
     def get_remaining(self) -> float:
         current = self.croniter.get_next(datetime.datetime, self.start_time)  # type: datetime.datetime
@@ -45,9 +43,9 @@ class CronScheduleTimer(ScheduleTimer):
     def to_database(self) -> dict:
         return dict(cron_format=self.cron_format)
 
-    def from_database(self, data: dict):
-        self.cron_format = cron_format = data["cron_format"]
-        self.croniter = croniter(cron_format, start_time=datetime.datetime.now(), max_years_between_matches=2)
+    class Provider(ScheduleTimerProvider):
+        def create(self, data: dict) -> "CronScheduleTimer":
+            return CronScheduleTimer(data["cron_format"])
 
 
 class DatetimeScheduleTimer(ScheduleTimer):
@@ -61,5 +59,12 @@ class DatetimeScheduleTimer(ScheduleTimer):
     def to_database(self) -> dict:
         return dict(target=self.target.astimezone(datetime.timezone.utc).timestamp())
 
-    def from_database(self, data: dict):
-        self.target = datetime.datetime.fromtimestamp(data["target"], datetime.timezone.utc)
+    class Provider(ScheduleTimerProvider):
+        def create(self, data: dict) -> "DatetimeScheduleTimer":
+            return DatetimeScheduleTimer(datetime.datetime.fromtimestamp(data["target"], datetime.timezone.utc))
+
+
+TIMERS = {
+    "cron": CronScheduleTimer.Provider(),
+    "datetime": DatetimeScheduleTimer.Provider(),
+}  # type: dict[str, ScheduleTimerProvider]

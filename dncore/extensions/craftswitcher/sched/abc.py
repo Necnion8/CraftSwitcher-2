@@ -6,6 +6,8 @@ __all__ = [
     "Weeks",
     "ScheduleTimer",
     "ScheduleAction",
+    "ScheduleTimerProvider",
+    "ScheduleActionProvider",
 ]
 
 if TYPE_CHECKING:
@@ -31,12 +33,6 @@ class ScheduleTimer:
     def to_database(self) -> dict:
         """
         データベースに保存する必要があるデータを返す
-        """
-        raise NotImplemented
-
-    def from_database(self, data: dict):
-        """
-        データベースに保存されたデータを復元する
         """
         raise NotImplemented
 
@@ -68,15 +64,25 @@ class ScheduleAction:
         """
         raise NotImplemented
 
-    def from_database(self, data: dict):
-        """
-        データベースに保存されたデータを復元する
-        """
-        raise NotImplemented
-
     async def do_action(self, server: "ServerProcess", schedule: "ActionSchedule") -> bool:
         """
         アクションを実行する
         :return: 実行に成功したら True を返す
+        """
+        raise NotImplemented
+
+
+class ScheduleTimerProvider:
+    def create(self, data: dict) -> ScheduleTimer:
+        """
+        データベースに保存されたデータから復元する
+        """
+        raise NotImplemented
+
+
+class ScheduleActionProvider:
+    def create(self, data: dict) -> ScheduleAction:
+        """
+        データベースに保存されたデータから復元する
         """
         raise NotImplemented

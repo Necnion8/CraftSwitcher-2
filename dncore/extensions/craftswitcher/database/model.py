@@ -136,7 +136,7 @@ class Schedule(Base):
 class ScheduleAction(Base):
     __tablename__ = "schedule_actions"
 
-    schedule_id = Column(Integer, nullable=False)
-    index = Column(Integer, nullable=False)
-    id = Column(String, nullable=False)
+    schedule_id = Column(Integer, nullable=False, primary_key=True)
+    index = Column(Integer, nullable=False, primary_key=True)
+    id = Column(String, nullable=False, primary_key=True)
     data = Column(JSON, nullable=False)

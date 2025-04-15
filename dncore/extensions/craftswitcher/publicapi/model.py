@@ -11,6 +11,7 @@ from dncore.extensions.craftswitcher.files import abc as fabc
 from dncore.extensions.craftswitcher.files.abc import BackupType
 from dncore.extensions.craftswitcher.files.archive import abc as aabc
 from dncore.extensions.craftswitcher.jardl import ServerBuildStatus
+from dncore.extensions.craftswitcher.sched import ActionSchedule
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
@@ -529,3 +530,23 @@ class BackupFileHistoryEntry(BaseModel):
     backup: Backup
     info: BackupFileInfo | None
     status: fbabc.SnapshotStatus | None
+
+
+class Schedule(BaseModel):
+    id: int = Field(description="スケジュールID")
+    label: str = Field(description="スケジュールの表示名")
+    description: str | None = Field(description="スケジュールの説明")
+    server: str = Field(description="スケジュールを実行するサーバー")
+    timer_id: str = Field(description="スケジュールされているタイマーのタイプ")
+    action_ids: list[str] = Field(description="設定されているスケジュールアクションのタイプリスト")
+
+    @classmethod
+    def create(cls, schedule: ActionSchedule):
+        return cls(
+            id=schedule.id,
+            label=schedule.label,
+            description=schedule.description,
+            server=schedule.server_id,
+            timer_id=schedule.timer.id,
+            action_ids=[a.id for a in schedule.actions],
+        )

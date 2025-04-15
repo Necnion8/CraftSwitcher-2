@@ -31,6 +31,7 @@ from .publicapi.event import *
 from .publicapi.model import FileInfo, FileTask, ServerStatusInfo
 from .publicapi.server import FallbackStaticFiles
 from .repomov1 import ReportModuleServer
+from .sched import ScheduleManager
 from .serverprocess import ServerProcessList, ServerProcess
 from .utiljava import JavaPreset, check_java_executable
 from .utils import *
@@ -61,6 +62,7 @@ class CraftSwitcher(EventListener):
         self.servers = ServerProcessList()
         self.files = FileManager(self.loop, Path("./minecraft_servers"))
         self.repomo_server = ReportModuleServer(loop)
+        self.schedules = ScheduleManager(loop, self.database)
         self.backups = None  # type: Backupper | None
         self.extensions = extensions
         # jardl

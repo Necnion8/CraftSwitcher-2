@@ -30,14 +30,7 @@ class APIHandler(object):
         self._websocket_clients = set()  # type: set[WebSocketClient]
 
     def set_handlers(self, api: FastAPI):
-        api.include_router(create_api_handlers(
-            self,
-            self.inst,
-            self.inst.database,
-            self.inst.backups,
-            self.inst.servers,
-            self.inst.files,
-        ))
+        api.include_router(create_api_handlers(self, self.inst))
 
         @api.exception_handler(HTTPException)
         def _on_api_error(_, exc: HTTPException):

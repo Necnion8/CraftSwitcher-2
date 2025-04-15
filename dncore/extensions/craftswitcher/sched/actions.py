@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from .abc import ScheduleAction
+from .abc import ScheduleAction, ScheduleActionProvider
 
 __all__ = [
     "UnknownAction",
@@ -9,6 +9,7 @@ __all__ = [
     "ServerRestartAction",
     "ServerCommandAction",
     "BackupAction",
+    "ACTIONS",
 ]
 
 if TYPE_CHECKING:
@@ -18,15 +19,12 @@ if TYPE_CHECKING:
 
 
 class UnknownAction(ScheduleAction):
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str, *, _extra: dict):
         super().__init__(action_id)
-        self._data = {}
+        self._extra = _extra
 
     def to_database(self) -> dict:
-        return self._data
-
-    def from_database(self, data: dict):
-        self._data = data
+        return self._extra
 
     async def do_action(self, server: "ServerProcess", schedule: "ActionSchedule") -> bool:
         return True
@@ -39,13 +37,14 @@ class ServerStartAction(ScheduleAction):
     def to_database(self) -> dict:
         return {}
 
-    def from_database(self, data: dict):
-        pass
-
     async def do_action(self, server: "ServerProcess", scheduled: "ActionSchedule") -> bool:
         if not server.state.is_running:
             await server.start(no_build=True)
         return True
+
+    class Provider(ScheduleActionProvider):
+        def create(self, data: dict) -> "ServerStartAction":
+            return ServerStartAction()
 
 
 class ServerStopAction(ScheduleAction):
@@ -55,14 +54,15 @@ class ServerStopAction(ScheduleAction):
     def to_database(self) -> dict:
         return {}
 
-    def from_database(self, data: dict):
-        pass
-
     async def do_action(self, server: "ServerProcess", scheduled: "ActionSchedule") -> bool:
         if server.state.is_running:
             await server.stop()
             await server.wait_for_shutdown()
         return True
+
+    class Provider(ScheduleActionProvider):
+        def create(self, data: dict) -> "ServerStopAction":
+            return ServerStopAction()
 
 
 class ServerRestartAction(ScheduleAction):
@@ -75,9 +75,6 @@ class ServerRestartAction(ScheduleAction):
             only_running=self.only_running,
         )
 
-    def from_database(self, data: dict):
-        self.only_running = data["only_running"]
-
     async def do_action(self, server: "ServerProcess", scheduled: "ActionSchedule") -> bool:
         if server.state.is_running:
             await server.restart()
@@ -86,6 +83,10 @@ class ServerRestartAction(ScheduleAction):
         else:
             return False
         return True
+
+    class Provider(ScheduleActionProvider):
+        def create(self, data: dict) -> "ServerRestartAction":
+            return ServerRestartAction(only_running=data["only_running"])
 
 
 class ServerCommandAction(ScheduleAction):
@@ -98,9 +99,6 @@ class ServerCommandAction(ScheduleAction):
             commands=self.commands,
         )
 
-    def from_database(self, data: dict):
-        self.commands = data["commands"]
-
     async def do_action(self, server: "ServerProcess", scheduled: "ActionSchedule") -> bool:
         if server.state.is_running:
             for command in self.commands:
@@ -108,9 +106,13 @@ class ServerCommandAction(ScheduleAction):
             return True
         return False
 
+    class Provider(ScheduleActionProvider):
+        def create(self, data: dict) -> "ServerCommandAction":
+            return ServerCommandAction(data["commands"])
+
 
 class BackupAction(ScheduleAction):
-    def __init__(self, backup_type: BackupType, comments: str = None):
+    def __init__(self, backup_type: "BackupType", comments: str = None):
         super().__init__("backup")
         self.type = backup_type
         self.comments = comments
@@ -118,11 +120,8 @@ class BackupAction(ScheduleAction):
     def to_database(self) -> dict:
         return dict(
             type=self.type.name,
+            comments=self.comments,
         )
-
-    def from_database(self, data: dict):
-        from ..files.abc import BackupType
-        self.type = BackupType(data["type"])
 
     async def do_action(self, server: "ServerProcess", scheduled: "ActionSchedule") -> bool:
         from ..utils import getinst
@@ -148,3 +147,17 @@ class BackupAction(ScheduleAction):
             return False
         else:
             return FileTaskResult.SUCCESS == task.result
+
+    class Provider(ScheduleActionProvider):
+        def create(self, data: dict) -> "BackupAction":
+            from ..files.abc import BackupType
+            return BackupAction(BackupType(data["type"], data.get("comments") or None))
+
+
+ACTIONS = {
+    "server_start": ServerStartAction.Provider(),
+    "server_stop": ServerStopAction.Provider(),
+    "server_restart": ServerRestartAction.Provider(),
+    "server_command": ServerCommandAction.Provider(),
+    "backup": BackupAction.Provider(),
+}  # type: dict[str, ScheduleActionProvider]

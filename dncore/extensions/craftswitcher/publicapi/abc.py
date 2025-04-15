@@ -77,6 +77,9 @@ class APIErrorCode(IntEnum):
     # java
     UNKNOWN_JAVA_PRESET = 900
 
+    # schedule
+    SCHEDULE_NOT_FOUND = 1000
+
     def of(self, detail: str, status_code=400):
         return APIError(self, detail, status_code)
 

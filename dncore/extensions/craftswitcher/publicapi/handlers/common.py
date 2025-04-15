@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from dncore.extensions.craftswitcher.database import SwitcherDatabase
     from dncore.extensions.craftswitcher.files import FileManager
     from dncore.extensions.craftswitcher.serverprocess import ServerProcessList
+    from dncore.extensions.craftswitcher.sched import ScheduleManager
     from dncore.extensions.craftswitcher.publicapi import APIHandler
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "backups",
     "servers",
     "files",
+    "schedules",
     "api_handler",
     "get_authorized_user",
     "get_authorized_user_ws",
@@ -38,6 +40,7 @@ db: "SwitcherDatabase"
 backups: "Backupper"
 servers: "ServerProcessList"
 files: "FileManager"
+schedules: "ScheduleManager"
 api_handler: "APIHandler"
 
 
@@ -102,23 +105,17 @@ async def getbuild(build: str, version: ServerMCVersion = Depends(getversion)):
 
 #
 
-def create_api_handlers(
-    _handler: "APIHandler",
-    _inst: "CraftSwitcher",
-    _db: "SwitcherDatabase",
-    _backups: "Backupper",
-    _servers: "ServerProcessList",
-    _files: "FileManager",
-):
-    global inst, db, backups, servers, files, api_handler
+def create_api_handlers(_handler: "APIHandler", _inst: "CraftSwitcher"):
+    global inst, db, backups, servers, files, schedules, api_handler
     inst = _inst
-    db = _db
-    backups = _backups
-    servers = _servers
-    files = _files
+    db = _inst.database
+    backups = _inst.backups
+    servers = _inst.servers
+    files = _inst.files
+    schedules = _inst.schedules
     api_handler = _handler
 
-    from . import _app, _user, _server, _file, _backup, _jardl, _plugins, _debug
+    from . import _app, _user, _server, _file, _backup, _schedule, _jardl, _plugins, _debug
 
     api = APIRouter(prefix="/api")
     api.include_router(_app.no_auth_api)
@@ -128,6 +125,7 @@ def create_api_handlers(
     api.include_router(_server.api)
     api.include_router(_file.api)
     api.include_router(_backup.api)
+    api.include_router(_schedule.api)
     api.include_router(_jardl.api)
     api.include_router(_plugins.api)
     api.include_router(_debug.api)

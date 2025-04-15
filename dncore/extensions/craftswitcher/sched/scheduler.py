@@ -3,11 +3,16 @@ import datetime
 from logging import getLogger
 from typing import TYPE_CHECKING
 
-from .abc import ScheduleTimer, ScheduleAction
-from .actions import UnknownAction
-from .timers import UnknownTimer
+from .abc import ScheduleTimer, ScheduleAction, ScheduleTimerProvider, ScheduleActionProvider
+from .actions import UnknownAction, ACTIONS
+from .timers import UnknownTimer, TIMERS
 from ..database import SwitcherDatabase, model as db
 from ..utils import getinst
+
+__all__ = [
+    "ActionSchedule",
+    "ScheduleManager",
+]
 
 if TYPE_CHECKING:
     from ..serverprocess import ServerProcess
@@ -41,14 +46,15 @@ class ScheduleManager(object):
         self.db = database
         self._schedules: list[ActionSchedule] = []
         self._timer = None  # type: asyncio.Task | None
-        self.timer_providers = {}  # type: dict[str, ScheduleTimerProvider]  # TODO: create provider
-        self.action_providers = {}  # type: dict[str, ScheduleActionProvider]
+        self.timer_providers = dict(TIMERS)  # type: dict[str, ScheduleTimerProvider]
+        self.action_providers = dict(ACTIONS)  # type: dict[str, ScheduleActionProvider]
 
     def update_timer(self):
         if not self._schedules:
             self.clear_timer()
             return
 
+        log.debug("update timer")
         now = datetime.datetime.now()
         old_nearest = self._schedules[0]
         self._schedules.sort(key=lambda s: s.timer.get_distance(now))
@@ -61,6 +67,7 @@ class ScheduleManager(object):
     def clear_timer(self):
         if self._timer is None:
             return
+        log.debug("clear timer")
         self._timer.cancel()
         self._timer = None
 
@@ -80,12 +87,14 @@ class ScheduleManager(object):
 
     def _start_timer(self):
         self.clear_timer()
+        log.debug("start timer")
         self._timer = self.loop.create_task(self._timer_call())
 
     def _on_time(self):
         if not self._schedules:
             return
 
+        log.debug("on time")
         servers = getinst().servers
         now = datetime.datetime.now() + datetime.timedelta(seconds=1)
 
@@ -98,10 +107,20 @@ class ScheduleManager(object):
                 self.loop.create_task(schedule.do_actions(server))
 
     def create_timer(self, timer_id: str, data: dict) -> ScheduleTimer | None:
-        pass  # TODO: create timer
+        try:
+            provider = self.timer_providers[timer_id]
+        except KeyError:
+            return None
+        log.debug("create timer: %s", timer_id)
+        return provider.create(data)
 
     def create_action(self, action_id: str, data: dict) -> ScheduleAction | None:
-        pass
+        try:
+            provider = self.action_providers[action_id]
+        except KeyError:
+            return None
+        log.debug("create action: %s", action_id)
+        return provider.create(data)
 
     #
 
@@ -109,7 +128,12 @@ class ScheduleManager(object):
     def schedules(self):
         return self._schedules
 
-    def get_schedules(self, server_id: str):
+    def get_schedule(self, schedule_id: int):
+        for schedule in self.schedules:
+            if schedule_id == schedule.id:
+                return schedule
+
+    def get_server_schedules(self, server_id: str):
         return [schedule for schedule in self._schedules if schedule.server_id == server_id]
 
     async def add_schedule(self, timer: ScheduleTimer, actions: list[ScheduleAction],
@@ -137,11 +161,15 @@ class ScheduleManager(object):
 
     async def remove_schedule(self, schedule: ActionSchedule | int):
         schedule_id = schedule.id if isinstance(schedule, ActionSchedule) else schedule
+        deleted = False
         for _schedule in list(self._schedules):
             if schedule_id == _schedule.id:
                 self._schedules.remove(_schedule)
-        self.update_timer()
+                deleted = True
+        if deleted:
+            self.update_timer()
         await self.db.remove_schedule(schedule_id)
+        return deleted
 
     async def restore_from_database(self):
         ids = await self.db.get_schedule_ids()
@@ -159,17 +187,15 @@ class ScheduleManager(object):
 
             _schedule, _actions = item  # type: db.Schedule, list[db.ScheduleAction]
             try:
-                if not (timer := self.create_timer(_schedule.timer_id, _schedule.data)):
+                if not (timer := self.create_timer(_schedule.timer_id, _schedule.timer_data)):
                     log.warning("Unknown schedule timer: %s", _schedule.timer_id)
-                    timer = UnknownTimer(_schedule.timer_id)
-                    timer.from_database(_schedule.timer_data)
+                    timer = UnknownTimer(_schedule.timer_id, _extra=_schedule.timer_data)
 
                 actions = []
                 for _action in _actions:
                     if not (action := self.create_action(_action.id, _action.data)):
                         log.warning("Unknown schedule action: %s", _action.id)
-                        action = UnknownAction(_action.id)
-                        action.from_database(_action.data)
+                        action = UnknownAction(_action.id, _extra=_action.data)
                     actions.append(action)
 
                 schedule = ActionSchedule(
