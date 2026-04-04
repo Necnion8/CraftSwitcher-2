@@ -1,3 +1,5 @@
+import datetime
+
 from sqlalchemy import Column, Integer, String, DateTime, Uuid, TypeDecorator
 from sqlalchemy.orm import declarative_base
 
@@ -46,6 +48,17 @@ class EnumType(TypeDecorator):
                 return self.enum_class(value)
 
 
+class UTCDateTime(TypeDecorator):
+    impl = DateTime
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            # DBから読み取った時に UTC を付与する
+            return value.replace(tzinfo=datetime.timezone.utc)
+        return value
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = {
@@ -56,8 +69,8 @@ class User(Base):
     name = Column(String, nullable=False)
     password = Column(String, nullable=False)
     token = Column(String, nullable=True)
-    token_expire = Column(DateTime(), nullable=True, index=True)
-    last_login = Column(DateTime(), nullable=True, index=True)
+    token_expire = Column(UTCDateTime, nullable=True, index=True)
+    last_login = Column(UTCDateTime, nullable=True, index=True)
     last_address = Column(String, nullable=True)
     permission = Column(Integer, nullable=False, default=0)
 
@@ -71,7 +84,7 @@ class Backup(Base):
     id = Column(Uuid, primary_key=True)
     type = Column(EnumType(enum_class=BackupType, map_to_int=True))
     source = Column(Uuid, nullable=False)
-    created = Column(DateTime(), nullable=False)
+    created = Column(UTCDateTime, nullable=False)
     previous_backup = Column(Uuid, nullable=True)
     path = Column(String, nullable=False)
     comments = Column(String, nullable=True, default=None)
@@ -92,7 +105,7 @@ class SnapshotFile(Base):
     type = Column(EnumType(enum_class=FileType), nullable=False)
     size = Column(Integer, nullable=True)
     status = Column(EnumType(enum_class=SnapshotStatus), nullable=False)
-    modified = Column(DateTime(), nullable=True)
+    modified = Column(UTCDateTime, nullable=True)
     hash_md5 = Column(String, nullable=True)
 
     __mapper_args__ = {
