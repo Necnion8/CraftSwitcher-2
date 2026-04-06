@@ -930,7 +930,7 @@ class CraftSwitcher(EventListener):
         """
         try:
             if not jar_build.download_url:
-                if not jar_build.is_loaded_info():
+                if not jar_build.is_info_loaded():
                     await jar_build.fetch_info()
         except Exception as e:
             raise NoDownloadFile("No available download url: jar_build.fetch_info() error") from e
@@ -943,7 +943,7 @@ class CraftSwitcher(EventListener):
         if not filename:
             filename = await self.files.fetch_download_filename(jar_build.download_url)
         if not filename:
-            filename = "builder.jar" if jar_build.is_require_build() else "server.jar"
+            filename = "builder.jar" if jar_build.is_build_required() else "server.jar"
 
         download_dir = jar_build.work_dir
         cwd = server.directory / download_dir if download_dir else server.directory
@@ -969,7 +969,7 @@ class CraftSwitcher(EventListener):
             jar_build.downloaded_path = dst
             config = server._config
 
-            if jar_build.is_require_build():
+            if jar_build.is_build_required():
                 server.builder = await jar_build.setup_builder(server, dst, java_preset=builder_java_preset)
 
             else:
@@ -980,7 +980,7 @@ class CraftSwitcher(EventListener):
             config.installer.type = server_type
             config.installer.version = jar_build.mc_version
             config.installer.build = jar_build.build
-            config.installer.require_build = jar_build.is_require_build()
+            config.installer.require_build = jar_build.is_build_required()
             config.save()
 
         task.fut.add_done_callback(lambda f: asyncio.create_task(_callback(f)))

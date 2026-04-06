@@ -209,7 +209,7 @@ class BotCommandHandler(object):
             await ctx.send_warn(f":information: 指定されたビルドバージョンが見つかりません: {a_build}")
             return
 
-        if not build.is_loaded_info():
+        if not build.is_info_loaded():
             async with ctx.typing():
                 await build.fetch_info()
 

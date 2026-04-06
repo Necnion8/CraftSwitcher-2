@@ -72,7 +72,7 @@ def get_mcversion(loader_version: str):
 
 
 class NeoForgeBuild(ServerBuild):
-    def is_require_build(self):
+    def is_build_required(self):
         return True
 
     async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> NeoForgeBuilder:

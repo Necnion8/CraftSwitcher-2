@@ -324,11 +324,11 @@ class JarDLBuildInfo(BaseModel):
     build: str
     download_url: str | None = Field(description="サーバーJarのダウンロードURL。一部はインストーラーURLとして利用されます。")
     java_major_version: int | None
-    require_jdk: bool | None
+    is_jdk_required: bool | None
     updated_datetime: datetime.datetime | None
     recommended: bool
-    is_require_build: bool
-    is_loaded_info: bool
+    is_build_required: bool
+    is_info_loaded: bool
 
 
 class PluginEditableFile(BaseModel):

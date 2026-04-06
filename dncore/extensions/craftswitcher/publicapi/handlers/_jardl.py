@@ -44,11 +44,11 @@ async def __builds(version: ServerMCVersion = Depends(getversion)) -> list[model
         build=b.build,
         download_url=b.download_url,
         java_major_version=b.java_major_version,
-        require_jdk=b.require_jdk,
+        is_jdk_required=b.jdk_required,
         updated_datetime=b.updated_datetime,
         recommended=b.recommended,
-        is_require_build=b.is_require_build(),
-        is_loaded_info=b.is_loaded_info(),
+        is_build_required=b.is_build_required(),
+        is_info_loaded=b.is_info_loaded(),
     ) for b in builds]
 
 
@@ -63,9 +63,9 @@ async def __build_info(build: ServerBuild = Depends(getbuild)) -> model.JarDLBui
         build=build.build,
         download_url=build.download_url,
         java_major_version=build.java_major_version,
-        require_jdk=build.require_jdk,
+        is_jdk_required=build.jdk_required,
         updated_datetime=build.updated_datetime,
         recommended=build.recommended,
-        is_require_build=build.is_require_build(),
-        is_loaded_info=build.is_loaded_info(),
+        is_build_required=build.is_build_required(),
+        is_info_loaded=build.is_info_loaded(),
     )

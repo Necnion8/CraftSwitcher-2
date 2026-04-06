@@ -47,7 +47,7 @@ class SpigotBuilder(ServerBuilder):
 
 
 class SpigotBuild(ServerBuild):
-    def is_require_build(self):
+    def is_build_required(self):
         return True
 
     async def setup_builder(self, server, downloaded_path, *, java_preset: JavaPreset | None) -> SpigotBuilder:
@@ -65,7 +65,7 @@ class SpigotServerDownloader(ServerDownloader):
         for match in VERSION_PATTERN.finditer(content):
             ver = match.group("v").decode("utf-8")
             version = ServerMCVersion(ver, [
-                SpigotBuild(ver, "latest", download_url=dl_url, work_dir=".spigot-builder", require_jdk=True),
+                SpigotBuild(ver, "latest", download_url=dl_url, work_dir=".spigot-builder", jdk_required=True),
             ])
             _versions.append(version)
 

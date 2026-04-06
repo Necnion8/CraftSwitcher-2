@@ -124,10 +124,10 @@ class VersionMetaInfo(BaseModel):
 
 
 class ForgeBuild(ServerBuild):
-    def is_require_build(self):
+    def is_build_required(self):
         return True
 
-    def is_loaded_info(self):
+    def is_info_loaded(self):
         return self._loaded
 
     async def _fetch_info(self) -> bool:

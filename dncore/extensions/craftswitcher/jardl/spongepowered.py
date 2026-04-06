@@ -66,7 +66,7 @@ class ProjectBuild(ServerBuild):
         self.version_info = version_info
         self._info = None  # type: ProjectBuildInfo | None
 
-    def is_loaded_info(self):
+    def is_info_loaded(self):
         return bool(self._info)
 
     async def _fetch_info(self):

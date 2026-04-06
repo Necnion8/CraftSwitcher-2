@@ -58,7 +58,7 @@ class ProjectBuild(ServerBuild):
         super().__init__(builds.version, build, download_url=dl_url)
         self.builds = builds
 
-    def is_loaded_info(self):
+    def is_info_loaded(self):
         return self._loaded
 
     async def _fetch_info(self):
