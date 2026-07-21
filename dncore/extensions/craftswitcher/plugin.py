@@ -7,6 +7,7 @@ from dncore.extensions.craftswitcher.abc import ServerState
 from dncore.extensions.craftswitcher.bot import BotCommandHandler, BotActivity
 from dncore.extensions.craftswitcher.event import ServerChangeStateEvent
 from dncore.extensions.craftswitcher.ext import SwitcherExtensionManager
+from dncore.extensions.craftswitcher.version import _set_version
 from dncore.plugin import Plugin
 
 log = getLogger(__name__)
@@ -15,6 +16,7 @@ log = getLogger(__name__)
 class CraftSwitcherPlugin(Plugin, SwitcherExtension):
     def __init__(self):
         super().__init__()
+        _set_version(self.info)
         # config_path = DNCoreAPI.core().config_dir / "switcher.yml"
         config_path = self.data_dir / "config.yml"
         self.web_root_dir = web_root_dir = self.data_dir / "public_html"

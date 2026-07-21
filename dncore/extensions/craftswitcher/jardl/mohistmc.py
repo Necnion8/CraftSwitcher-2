@@ -4,6 +4,7 @@ import aiohttp
 from pydantic import BaseModel, field_validator, field_serializer
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SV, SB
+from ..utils import get_user_agent
 
 __all__ = [
     "BuildInfo",
@@ -59,7 +60,8 @@ class ProjectVersion(ServerMCVersion):
 
     async def _list_builds(self) -> list[SB]:
         url = f"https://mohistmc.com/api/v2/projects/{self.project_id}/{self.mc_version}/builds"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             builds = VersionBuildsInfo.model_validate(await res.json())
 
@@ -70,7 +72,9 @@ class MohistServerDownloader(ServerDownloader[ProjectVersion]):
     project_id = "mohist"
 
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", f"https://mohistmc.com/api/v2/projects/{self.project_id}") as res:
+        url = f"https://mohistmc.com/api/v2/projects/{self.project_id}"
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             vers = ProjectVersionsInfo.model_validate(await res.json())
 

@@ -7,6 +7,7 @@ import aiohttp
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder, SV
 from ..abc import ServerType
 from ..utiljava import JavaPreset
+from ..utils import get_user_agent
 
 __all__ = [
     "SpigotBuild",
@@ -56,7 +57,8 @@ class SpigotBuild(ServerBuild):
 
 class SpigotServerDownloader(ServerDownloader):
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", VERSIONS_URL) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", VERSIONS_URL, headers=headers) as res:
             res.raise_for_status()
             content = await res.content.read()
 

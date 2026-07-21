@@ -8,6 +8,7 @@ from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder
 from ..abc import ServerType
 from ..config import ServerConfig
 from ..utiljava import JavaPreset
+from ..utils import get_user_agent
 
 VERSIONS_URL = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"
 DOWNLOAD_URL = "https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/"
@@ -81,7 +82,8 @@ class NeoForgeBuild(ServerBuild):
 
 class NeoForgeServerDownloader(ServerDownloader):
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", VERSIONS_URL) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", VERSIONS_URL, headers=headers) as res:
             res.raise_for_status()
             versions = (await res.json())["versions"]  # type: list[str]
 

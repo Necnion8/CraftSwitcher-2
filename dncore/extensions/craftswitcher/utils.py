@@ -14,6 +14,7 @@ import psutil
 
 from dncore import DNCoreAPI
 from .abc import SystemMemoryInfo, ProcessInfo, SystemPerformanceInfo, DiskUsageInfo
+from .version import get_version
 
 if TYPE_CHECKING:
     from .craftswitcher import CraftSwitcher
@@ -36,6 +37,7 @@ __all__ = [
     "AsyncCallTimer",
     "Logs",
     "getinst",
+    "get_user_agent",
 ]
 
 
@@ -210,3 +212,13 @@ def getinst() -> "CraftSwitcher":
         return CraftSwitcher._inst
     except AttributeError:
         raise RuntimeError("CraftSwitcher is not instanced")
+
+
+_USER_AGENT = None
+
+
+def get_user_agent():
+    global _USER_AGENT
+    if _USER_AGENT is None:
+        _USER_AGENT = f"CraftSwitcher v{get_version()}, https://github.com/Necnion8/CraftSwitcher-2"
+    return _USER_AGENT

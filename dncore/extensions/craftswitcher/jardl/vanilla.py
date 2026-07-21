@@ -4,6 +4,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from .jardl import ServerMCVersion, ServerBuild, ServerDownloader
+from ..utils import get_user_agent
 
 
 class Version(BaseModel):
@@ -45,7 +46,8 @@ class VanillaVersion(ServerMCVersion):
         self.info = version
 
     async def _list_builds(self) -> "list[ServerBuild]":
-        async with aiohttp.request("GET", self.info.url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", self.info.url, headers=headers) as res:
             res.raise_for_status()
             info = VersionInfo.model_validate(await res.json())
             updated = self.info.time
@@ -60,7 +62,9 @@ class VanillaVersion(ServerMCVersion):
 
 class VanillaServerDownloader(ServerDownloader[VanillaVersion]):
     async def _list_versions(self) -> list[VanillaVersion]:
-        async with aiohttp.request("GET", "https://launchermeta.mojang.com/mc/game/version_manifest.json") as res:
+        url = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = VersionManifest.model_validate(await res.json())
             return [VanillaVersion(ver.id, ver) for ver in reversed(info.versions) if ver.type == "release"]

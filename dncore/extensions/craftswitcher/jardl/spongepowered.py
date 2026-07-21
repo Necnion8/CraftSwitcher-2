@@ -4,6 +4,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SB, SV
+from ..utils import get_user_agent
 
 __all__ = [
     "ProjectInfo",
@@ -71,7 +72,8 @@ class ProjectBuild(ServerBuild):
 
     async def _fetch_info(self):
         url = self.version_info.version_api_base + f"/{self.build}"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             self._info = ProjectBuildInfo.model_validate(await res.json())
 
@@ -109,8 +111,9 @@ class ProjectVersion(ServerMCVersion[ProjectBuild]):
                 f"limit={limit}",
                 f"offset={offset}",
             )))
+            headers = {"User-Agent": get_user_agent(), }
             log.debug("fetching builds (%s/%s)", offset, total or "?")
-            async with aiohttp.request("GET", url) as res:
+            async with aiohttp.request("GET", url, headers=headers) as res:
                 res.raise_for_status()
                 info = ProjectVersionsPartInfo.model_validate(await res.json())
 
@@ -138,7 +141,8 @@ class SpongeVanillaDownloader(ServerDownloader[ProjectVersion]):
         return f"{self.api_base}/artifacts/{self.project_id}"
 
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", self.project_api_base) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", self.project_api_base, headers=headers) as res:
             res.raise_for_status()
             info = ProjectInfo.model_validate(await res.json())
             return [

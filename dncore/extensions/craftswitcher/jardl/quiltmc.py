@@ -7,6 +7,7 @@ from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder
 from ..abc import ServerType
 from ..config import ServerConfig
 from ..utiljava import JavaPreset
+from ..utils import get_user_agent
 
 __all__ = [
     "GameVersionEntry",
@@ -85,7 +86,9 @@ class GameVersion(ServerMCVersion[LoaderVersion]):
 
 class QuiltServerDownloader(ServerDownloader[GameVersion]):
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", "https://meta.quiltmc.org/v3/versions") as res:
+        url = "https://meta.quiltmc.org/v3/versions"
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = VersionsInfo.model_validate(await res.json())
 

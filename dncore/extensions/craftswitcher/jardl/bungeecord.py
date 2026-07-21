@@ -2,6 +2,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SV
+from ..utils import get_user_agent
 
 
 class BuildInfo(BaseModel):
@@ -20,7 +21,8 @@ class JenkinsInfo(BaseModel):
 class BungeeCordDownloader(ServerDownloader):
     async def _list_versions(self) -> list[SV]:
         url = "https://ci.md-5.net/job/BungeeCord/api/json"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = JenkinsInfo.model_validate(await res.json())
 

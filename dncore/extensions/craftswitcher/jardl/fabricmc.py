@@ -2,6 +2,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SV, SB
+from ..utils import get_user_agent
 
 __all__ = [
     "InstallerInfo",
@@ -73,7 +74,8 @@ class FabricServerDownloader(ServerDownloader):
 
     async def _list_versions(self) -> list[SV]:
         url = "https://meta.fabricmc.net/v2/versions/game"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = await res.json()
 
@@ -87,7 +89,8 @@ class FabricServerDownloader(ServerDownloader):
     async def _list_loaders(self) -> list[LoaderInfo]:
         if self._loaders is None:
             url = "https://meta.fabricmc.net/v2/versions/loader"
-            async with aiohttp.request("GET", url) as res:
+            headers = {"User-Agent": get_user_agent(), }
+            async with aiohttp.request("GET", url, headers=headers) as res:
                 res.raise_for_status()
                 info = await res.json()
 
@@ -101,7 +104,8 @@ class FabricServerDownloader(ServerDownloader):
     async def _list_installers(self) -> list[InstallerInfo]:
         if self._installers is None:
             url = "https://meta.fabricmc.net/v2/versions/installer"
-            async with aiohttp.request("GET", url) as res:
+            headers = {"User-Agent": get_user_agent(), }
+            async with aiohttp.request("GET", url, headers=headers) as res:
                 res.raise_for_status()
                 info = await res.json()
 

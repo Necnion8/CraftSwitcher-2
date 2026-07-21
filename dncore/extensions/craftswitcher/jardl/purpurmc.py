@@ -4,6 +4,7 @@ import aiohttp
 from pydantic import BaseModel, field_serializer, field_validator
 
 from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, SB, SV
+from ..utils import get_user_agent
 
 __all__ = [
     "ProjectInfo",
@@ -63,7 +64,8 @@ class ProjectBuild(ServerBuild):
 
     async def _fetch_info(self):
         url = f"https://api.purpurmc.org/v2/{self.builds.project}/{self.builds.version}/{self.build}"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = ProjectBuildInfo.model_validate(await res.json())
             self.updated_datetime = info.timestamp
@@ -77,7 +79,8 @@ class ProjectVersion(ServerMCVersion[ProjectBuild]):
 
     async def _list_builds(self) -> list[SB]:
         url = f"https://api.purpurmc.org/v2/{self.project_id}/{self.mc_version}"
-        async with aiohttp.request("GET", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = ProjectBuildsInfo.model_validate(await res.json())
             return [ProjectBuild(info, build) for build in info.builds.all]

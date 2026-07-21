@@ -34,12 +34,12 @@ from .repomov1 import ReportModuleServer
 from .serverprocess import ServerProcessList, ServerProcess
 from .utiljava import JavaPreset, check_java_executable
 from .utils import *
+from .version import get_version
 
 if TYPE_CHECKING:
     from dncore.plugin import PluginInfo
 
 log = getLogger(__name__)
-__version__ = "2.0.0"
 
 
 def fix_mimetypes():
@@ -89,7 +89,7 @@ class CraftSwitcher(EventListener):
     def print_welcome(self):
         log.info("=" * 50)
         log.info("")
-        log.info("  ##*  CraftSwitcher v" + __version__ + "  *##")
+        log.info("  ##*  CraftSwitcher v" + get_version() + "  *##")
         log.info("")
         if self.config.api_server.enable:
             log.info("  - API Bind    : %s:%s", self.config.api_server.bind_host, self.config.api_server.bind_port)
@@ -549,11 +549,9 @@ class CraftSwitcher(EventListener):
     # util
 
     def _create_public_api(self):
-        global __version__
-        __version__ = str(i.version.numbers) if (i := self.plugin_info) else __version__
         api = FastAPI(
             title="CraftSwitcher",
-            version=__version__,
+            version=get_version()
         )
         api.add_middleware(
             CORSMiddleware,

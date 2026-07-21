@@ -18,7 +18,7 @@ from .archive.helper import ZipArchiveHelper
 from .archive.sevenziphelper import SevenZipHelper
 from .event import *
 from ..errors import NoArchiveHelperError
-from ..utils import call_event
+from ..utils import call_event, get_user_agent
 
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
@@ -308,7 +308,8 @@ class FileManager(object):
     @staticmethod
     async def fetch_download_filename(url: str):
         filename = None
-        async with aiohttp.request("HEAD", url) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("HEAD", url, headers=headers) as res:
             res.raise_for_status()
             disposition = res.content_disposition
             if disposition:
@@ -321,7 +322,8 @@ class FileManager(object):
                  server: "ServerProcess" = None, src_swi_path: str = None, dst_swi_path: str = None):
 
         async def _download():
-            async with aiohttp.request("GET", src_url) as res:
+            headers = {"User-Agent": get_user_agent(), }
+            async with aiohttp.request("GET", src_url, headers=headers) as res:
                 res.raise_for_status()
 
                 total_bytes = res.content_length or 0

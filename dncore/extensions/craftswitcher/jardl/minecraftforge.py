@@ -9,6 +9,7 @@ from .jardl import ServerDownloader, ServerMCVersion, ServerBuild, ServerBuilder
 from ..abc import ServerType
 from ..config import ServerConfig
 from ..utiljava import JavaPreset
+from ..utils import get_user_agent
 
 __all__ = [
     "VersionMetaInfo",
@@ -131,7 +132,9 @@ class ForgeBuild(ServerBuild):
         return self._loaded
 
     async def _fetch_info(self) -> bool:
-        async with aiohttp.request("GET", FILES_URL.format(version=self.build)) as res:
+        url = FILES_URL.format(version=self.build)
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", url, headers=headers) as res:
             res.raise_for_status()
             info = VersionMetaInfo.model_validate(await res.json())
 
@@ -150,14 +153,16 @@ class ForgeBuild(ServerBuild):
 
 class ForgeServerDownloader(ServerDownloader):
     async def _list_versions(self) -> list[SV]:
-        async with aiohttp.request("GET", INDEX_URL) as res:
+        headers = {"User-Agent": get_user_agent(), }
+        async with aiohttp.request("GET", INDEX_URL, headers=headers) as res:
             res.raise_for_status()
             vers = await res.json()  # type: dict
         if type(vers) != dict:
             raise ValueError("no dict data received")
 
         try:
-            async with aiohttp.request("GET", PROMO_URL) as res:
+            headers = {"User-Agent": get_user_agent(), }
+            async with aiohttp.request("GET", PROMO_URL, headers=headers) as res:
                 res.raise_for_status()
                 promos = await res.json()
             if type(promos) != dict:
