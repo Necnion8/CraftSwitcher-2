@@ -1,4 +1,5 @@
 import datetime
+import time
 from enum import Enum
 from pathlib import Path
 from typing import TypeVar, Generic, TYPE_CHECKING
@@ -101,6 +102,7 @@ class ServerBuild(object):
         self.work_dir = work_dir
         #
         self._loaded = False
+        self._fetch_time = 0
 
     # noinspection PyMethodMayBeStatic
     def is_build_required(self):
@@ -117,7 +119,8 @@ class ServerBuild(object):
         return True
 
     async def fetch_info(self) -> bool:
-        if not self._loaded:
+        if not self._loaded or (CACHE_TIME < time.time() - self._fetch_time):
+            self._fetch_time = time.time()
             self._loaded = await self._fetch_info()
         return self._loaded
 
@@ -130,12 +133,14 @@ class ServerBuild(object):
 
 
 SB = TypeVar("SB", bound=ServerBuild)
+CACHE_TIME = 60 * 5
 
 
 class ServerMCVersion(Generic[SB]):
     def __init__(self, mc_version: str, builds: "list[SF] | None"):
         self.mc_version = mc_version
         self.builds = builds
+        self._fetch_time = 0
 
     def clear_cache(self):
         self.builds = None
@@ -144,7 +149,8 @@ class ServerMCVersion(Generic[SB]):
         raise NotImplementedError
 
     async def list_builds(self) -> list[SB]:
-        if self.builds is None:
+        if self.builds is None or (CACHE_TIME < time.time() - self._fetch_time):
+            self._fetch_time = time.time()
             self.builds = (await self._list_builds()) or []
         return self.builds
 
@@ -155,6 +161,7 @@ SV = TypeVar("SV", bound=ServerMCVersion)
 class ServerDownloader(Generic[SV]):
     def __init__(self):
         self.versions = None  # type: list[SV] | None
+        self._fetch_time = 0
 
     def clear_cache(self):
         self.versions = None
@@ -163,7 +170,8 @@ class ServerDownloader(Generic[SV]):
         raise NotImplementedError
 
     async def list_versions(self) -> list[SV]:
-        if self.versions is None:
+        if self.versions is None or (CACHE_TIME < time.time() - self._fetch_time):
+            self._fetch_time = time.time()
             self.versions = (await self._list_versions()) or []
         return self.versions
 
