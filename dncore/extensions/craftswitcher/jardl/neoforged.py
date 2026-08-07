@@ -66,7 +66,7 @@ class NeoForgeBuilder(ServerBuilder):
 
 def get_mcversion(loader_version: str):
     b, c, *_ = loader_version.split(".", 2)
-    mc_ver = f"1.{b}.{c}"
+    mc_ver = f"1.{b}.{c}" if int(b) <= 21 else f"{b}.{c}"
     if mc_ver.endswith(".0"):
         mc_ver = mc_ver[:-2]
     return mc_ver
