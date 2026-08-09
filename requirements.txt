@@ -1,17 +1,16 @@
-discord.py  # >= 2.0.0
-ruamel.yaml
-aiohttp~=3.8.1
-colorlog
-psutil
-fastapi
-uvicorn
-websockets
-python-multipart
-sqlalchemy
-aiosqlite
-passlib
-bcrypt
-pywinpty; sys_platform == "win32"
-pydantic
-aiohttp
-watchdog
+discord.py~=2.7
+ruamel.yaml~=0.19.1
+aiohttp~=3.14.3
+colorlog~=6.12
+psutil~=7.2
+fastapi~=0.103.0
+uvicorn~=0.20.0
+websockets~=12.0
+python-multipart~=0.0.20
+sqlalchemy~=2.0.25
+aiosqlite~=0.18.0
+passlib~=1.7.4
+bcrypt~=4.2.0
+pywinpty~=2.0.13; sys_platform == "win32"
+pydantic~=2.5.3
+watchdog~=3.0.0
