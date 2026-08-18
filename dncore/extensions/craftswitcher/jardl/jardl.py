@@ -19,6 +19,7 @@ __all__ = [
 if TYPE_CHECKING:
     from dncore.extensions.craftswitcher import ServerProcess
     from dncore.extensions.craftswitcher.config import ServerConfig
+    from dncore.extensions.craftswitcher.utiljava import JavaPreset
 
 
 class ServerBuildStatus(Enum):
@@ -63,6 +64,7 @@ class ServerBuilder(object):
     async def _read(self, data: str):
         pass
 
+    # noinspection unused-parameter
     async def _error(self, exception: Exception):
         self.state = ServerBuildStatus.FAILED
 
@@ -86,10 +88,20 @@ class ServerBuilder(object):
 
 
 class ServerBuild(object):
-    def __init__(self, mc_version: str, build: str, download_url: str = None, download_filename: str = None,
-                 downloaded_path: Path = None,
-                 *, java_major_version: int = None, updated_datetime: datetime.datetime = None, recommended=False,
-                 work_dir: str = None, jdk_required: bool = None, ):
+    def __init__(
+        self,
+        mc_version: str,
+        build: str,
+        download_url: str | None = None,
+        download_filename: str | None = None,
+        downloaded_path: Path | None = None,
+        *,
+        java_major_version: int | None = None,
+        updated_datetime: datetime.datetime | None = None,
+        recommended=False,
+        work_dir: str | None = None,
+        jdk_required: bool | None = None,
+    ):
         self.mc_version = mc_version
         self.build = build
         self.download_url = download_url
@@ -137,22 +149,24 @@ CACHE_TIME = 60 * 5
 
 
 class ServerMCVersion(Generic[SB]):
-    def __init__(self, mc_version: str, builds: "list[SF] | None"):
+    def __init__(self, mc_version: str, builds: "list[SB] | None"):
         self.mc_version = mc_version
         self.builds = builds
+        self._provided_builds = builds is not None
         self._fetch_time = 0
 
     def clear_cache(self):
-        self.builds = None
+        if not self._provided_builds:
+            self.builds = None
 
     async def _list_builds(self) -> list[SB]:
         raise NotImplementedError
 
     async def list_builds(self) -> list[SB]:
-        if self.builds is None or (CACHE_TIME < time.time() - self._fetch_time):
+        if not self._provided_builds and (self.builds is None or (CACHE_TIME < time.time() - self._fetch_time)):
             self._fetch_time = time.time()
-            self.builds = (await self._list_builds()) or []
-        return self.builds
+            self.builds = await self._list_builds()
+        return self.builds or []
 
 
 SV = TypeVar("SV", bound=ServerMCVersion)
@@ -172,8 +186,8 @@ class ServerDownloader(Generic[SV]):
     async def list_versions(self) -> list[SV]:
         if self.versions is None or (CACHE_TIME < time.time() - self._fetch_time):
             self._fetch_time = time.time()
-            self.versions = (await self._list_versions()) or []
-        return self.versions
+            self.versions = await self._list_versions()
+        return self.versions or []
 
 
 def defaults():
