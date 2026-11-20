@@ -4,6 +4,7 @@ import functools
 import locale
 import logging
 import platform
+import signal
 import uuid
 from collections import deque
 from logging import getLogger
@@ -26,6 +27,7 @@ __all__ = [
     "call_event",
     "is_windows",
     "subprocess_encoding",
+    "terminate_process_tree",
     "system_memory",
     "system_perf",
     "disk_usage",
@@ -51,6 +53,43 @@ def is_windows():
 
 def subprocess_encoding():
     return locale.getpreferredencoding(False)  # 本当に正しいか？
+
+
+def terminate_process_tree(pid: int, timeout: float = 3.0, sig: signal.Signals = signal.SIGTERM):
+    if pid <= 0:
+        return
+
+    try:
+        parent = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return
+
+    try:
+        children = parent.children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        children = []
+
+    targets = children + [parent]
+
+    for proc in targets:
+        try:
+            if IS_WINDOWS:
+                proc.terminate()
+            else:
+                proc.send_signal(sig)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    _, alive = psutil.wait_procs(targets, timeout=timeout)
+
+    for proc in alive:
+        try:
+            proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    if alive:
+        psutil.wait_procs(alive, timeout=2.0)
 
 
 def system_memory(swap=False):

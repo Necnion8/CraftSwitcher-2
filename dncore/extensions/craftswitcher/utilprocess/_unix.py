@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Awaitable
 
 from . import ProcessWrapper
+from ..utils import terminate_process_tree
 
 __all__ = [
     "UnixPtyProcessWrapper",
@@ -26,7 +27,7 @@ class UnixPtyProcessWrapper(ProcessWrapper):
 
     @classmethod
     async def spawn(
-            cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
+            cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] | None = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ) -> "UnixPtyProcessWrapper":
         master, slave = pty.openpty()
@@ -88,4 +89,6 @@ class UnixPtyProcessWrapper(ProcessWrapper):
         return await self.process.wait()
 
     def kill(self, sig: signal.Signals = signal.SIGTERM):
-        self.process.send_signal(sig)
+        if self.process.returncode is not None:
+            return
+        terminate_process_tree(self.process.pid, timeout=0.0, sig=sig)

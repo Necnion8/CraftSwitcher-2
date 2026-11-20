@@ -1,5 +1,6 @@
 import asyncio
 import os
+import signal
 import threading
 from functools import partial
 from logging import getLogger
@@ -11,6 +12,7 @@ from typing import Any, Callable, Awaitable
 import winpty
 
 from . import ProcessWrapper
+from ..utils import terminate_process_tree
 
 __all__ = [
     "WinPtyProcessWrapper",
@@ -25,7 +27,7 @@ class WinPtyProcessWrapper(ProcessWrapper):
 
     @classmethod
     async def spawn(
-            cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] = None,
+            cls, args: list[str], cwd: Path, term_size: tuple[int, int], env: dict[str, Any] | None = None,
             *, read_handler: Callable[[str], Awaitable[None]],
     ) -> "WinPtyProcessWrapper":
         pty = winpty.PTY(*term_size)
@@ -90,3 +92,8 @@ class WinPtyProcessWrapper(ProcessWrapper):
         while self.pty.isalive():
             await asyncio.sleep(.1)
         return self.exit_status
+
+    def kill(self, sig: signal.Signals = signal.SIGTERM):
+        if not self.pty.isalive():
+            return
+        terminate_process_tree(self.pid, timeout=0.0, sig=sig)
