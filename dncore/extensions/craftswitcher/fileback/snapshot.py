@@ -124,7 +124,7 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
                         errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
-                    log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
+                    log.warning("Failed to create dir: %s: %s: %s", type(e).__name__, str(e), file.path)
                     errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
@@ -150,7 +150,7 @@ def create_files_diff(result: SnapshotResult, dst_dir: Path, *, check: Callable[
                         log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e))
                         errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
                 except Exception as e:
-                    log.warning("Failed to create dir: %s: %s", type(e).__name__, str(e), file.path)
+                    log.warning("Failed to create dir: %s: %s: %s", type(e).__name__, str(e), file.path)
                     errors.append((file, e, BackupFileErrorType.CREATE_DIRECTORY))
 
             else:
