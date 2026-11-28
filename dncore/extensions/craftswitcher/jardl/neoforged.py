@@ -58,7 +58,7 @@ class NeoForgeBuilder(ServerBuilder):
         content = ""
         with bat_file.open("r") as f:
             for line in f:
-                content += re.sub("^( *)(pause.*)$", r"\1rem \2", line, re.IGNORECASE)
+                content += re.sub("^( *)(pause.*)$", r"\1rem \2", line, flags=re.IGNORECASE)
         with fix_bat_file.open("w") as f:
             f.write(content)
         return fix_bat_file
