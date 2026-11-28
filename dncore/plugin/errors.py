@@ -21,7 +21,7 @@ class PluginOperationError(PluginException):
 
 
 class PluginDependencyError(PluginException):
-    def __init__(self, *args, depends: list[str] = None):
+    def __init__(self, *args, depends: list[str] | None = None):
         super().__init__(*args)
         self.depends = depends
 

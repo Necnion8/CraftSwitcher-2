@@ -3,7 +3,7 @@ import inspect
 import logging
 from collections import defaultdict
 from enum import Enum
-from typing import TypeVar, Callable, Awaitable
+from typing import TypeVar
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -33,26 +33,26 @@ class Priority(Enum):
     LOW = -1
     LOWEST = -2
 
-    def __eq__(self, other):
+    def __eq__(self, other: object):
         if not isinstance(other, Priority):
             raise NotImplemented
         return self.value == other.value
 
-    def __lt__(self, other):
+    def __lt__(self, other: object):
         if not isinstance(other, Priority):
             raise NotImplemented
         return self.value < other.value
 
-    def __ne__(self, other):
+    def __ne__(self, other: object):
         return not self.__eq__(other)
 
-    def __le__(self, other):
+    def __le__(self, other: object):
         return self.__lt__(other) or self.__eq__(other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: object):
         return not self.__le__(other)
 
-    def __ge__(self, other):
+    def __ge__(self, other: object):
         return not self.__lt__(other)
 
 
@@ -65,7 +65,7 @@ class EventHandler:
         self.method = None
         self.other_keywords = kw
 
-    def __call__(self, func: Callable[[Event], Awaitable[None]]):
+    def __call__(self, func: T) -> T:
         self.func = func
         func._handler = self
         return func

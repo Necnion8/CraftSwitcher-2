@@ -1,5 +1,5 @@
 from asyncio import Task
-from typing import TypeVar, Sequence
+from typing import TypeVar, Sequence, Awaitable
 
 __all__ = ["get_core", "get_plugin", "call_event", "run_coroutine"]
 
@@ -14,7 +14,7 @@ def get_core():
 
 
 def get_plugin(name: str):
-    return get_core().events.get_plugin(name)
+    return get_core().plugins.get_plugin(name)
 
 
 def call_event(event: T) -> Task[T]:
@@ -25,22 +25,18 @@ def call_event(event: T) -> Task[T]:
     return mgr.loop.create_task(mgr.call_event(event))
 
 
-def run_coroutine(coro: T, ignores: Sequence[type[Exception]] = None) -> Task[T]:
+def run_coroutine(coro: Awaitable[T], ignores: Sequence[type[Exception]] | None = None) -> Task[T]:
     # noinspection PyUnresolvedReferences,PyPep8Naming
     from dncore.abc import IGNORE_FRAME as __ignore_frame
 
     # cloned from DNCoreAPI
     loop = get_core().loop
 
-    if ignores is None:
-        ignores = Exception
-
     async def _wrap():
         try:
             return await coro
-        except ignores:
-            return
-        except (Exception,):
-            get_caller_logger().exception(f"Exception in run_coroutine : {coro}")
+        except Exception as e:
+            if not ignores or not isinstance(e, tuple(ignores)):
+                get_caller_logger().exception(f"Exception in run_coroutine : {coro}", exc_info=e)
 
     return loop.create_task(_wrap())

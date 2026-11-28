@@ -99,10 +99,11 @@ class SerializableType(ObjectType[ObjectSerializable]):
         return self.type.deserialize(serialized)
 
     def clone(self, obj):
-        if obj is not None:
-            if isinstance(obj, Cloneable):
-                return obj.clone()
-            raise TypeError(f"not cloneable object: {obj!r}")
+        if obj is None:
+            return None
+        if isinstance(obj, Cloneable):
+            return obj.clone()
+        raise TypeError(f"not cloneable object: {obj!r}")
 
 
 class ListType(ObjectType[list[T]]):
@@ -146,7 +147,7 @@ class DictType(ObjectType[dict[str, T]]):
     def __repr__(self):
         return "<{} vType={} >".format(type(self).__name__, type(self.arg_type).__name__)
 
-    def serialize(self, obj: dict[T] | None):
+    def serialize(self, obj: dict | None):
         if obj is None:
             return {}
 
@@ -183,7 +184,7 @@ class EnumType(ObjectType[T]):
 
     def deserialize(self, serialized: Any | None) -> VT | None:
         if serialized is None:
-            return
+            return None
         for entry in self.type:
             if entry.name == serialized:
                 return entry
@@ -212,10 +213,12 @@ class SerializerWrap(ObjectType):
     def serialize(self, obj: VT | None):
         if self.serializer.override_nulls() or obj is not None:
             return self.serializer.serialize(obj)
+        return None
 
     def deserialize(self, serialized: Any | None) -> VT | None:
         if self.serializer.override_nulls() or serialized is not None:
             return self.serializer.deserialize(serialized)
+        return None
 
     def clone(self, obj):
         return obj.clone() if isinstance(obj, Cloneable) else obj

@@ -20,7 +20,8 @@ class ObjectSerializer:
     def serialize(self, obj):
         raise NotImplementedError
 
-    def deserialize(self, value):
+    @classmethod
+    def deserialize(cls, value):
         raise NotImplementedError
 
     def check(self, clazz) -> bool:

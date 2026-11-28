@@ -3,7 +3,8 @@ import sys
 
 def main():
     if len(sys.argv) <= 1:
-        return run_app()
+        run_app()
+        return
 
     action = sys.argv[1].lower()
 
@@ -26,7 +27,7 @@ def main():
 
         from pathlib import Path
         import logging
-        from dncore.plugin import PluginModuleLoader
+        from dncore.plugin import PluginModuleLoader, PLUGIN_FILE_EXTENSION
 
         mod_dir = Path("dncore/extensions/") / mod_name
         plugins_dir = Path("plugins")
@@ -37,7 +38,12 @@ def main():
         logging.basicConfig(format="{message}", style="{", level=logging.DEBUG)
         loader = PluginModuleLoader(module_directory=mod_dir, data_dir=plugins_dir)
         try:
-            packed = loader.pack_to_plugin_file_(plugins_dir, extra_name=extra_name, force_override=file_override)
+            packed = loader.pack_to_plugin_file_(
+                plugins_dir,
+                extra_name=extra_name,
+                force_override=file_override,
+                file_extension=PLUGIN_FILE_EXTENSION,
+            )
 
         except FileExistsError as e:
             print(e, file=sys.stderr)
@@ -89,13 +95,11 @@ def main():
         print("[All Plugin]")
         print(" " * 5 + "-" * 55)
         for p in plugins:
-            fp = loader = None
+            fp = None
             if isinstance(p.loader, PluginModuleLoader):
                 fp = p.loader.module_directory
-                loader = type(p.loader).__name__
             elif isinstance(p.loader, PluginZipFileLoader):
                 fp = p.loader.plugin_file
-                loader = type(p.loader).__name__
 
             print(f" {p.name:20} | {str(p.version):16} | {fp or ''}")
 

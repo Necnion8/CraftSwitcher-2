@@ -16,7 +16,7 @@ __all__ = ["ConfigValueEntry", "ConfigValues", "ValueNotSet"]
 
 class ConfigValueEntry:
     def __init__(self, v_name: str, v_type: type, v_default: Any,
-                 *, comments: str = None, optional=True, serializers: list[ObjectSerializer] = None):
+                 *, comments: str | None = None, optional=True, serializers: list[ObjectSerializer] | None = None):
         if type(None) is v_type:
             raise ValueError("invalid type: NoneType")
 
@@ -275,6 +275,6 @@ class ConfigValues(ObjectSerializable):
 
 
 class ValueNotSet(ValueError):
-    def __init__(self, *args, entry: ConfigValueEntry = None):
+    def __init__(self, *args, entry: ConfigValueEntry | None = None):
         ValueError.__init__(self, *args)
         self.entry = entry

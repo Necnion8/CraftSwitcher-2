@@ -28,10 +28,10 @@ class DataFile(FileConfigValues):
             guild = self.guilds.get(guild_id)
         return guild
 
-    def save(self, *, now=False):
+    def save(self, *, force=False):
         global _schedule_save
 
-        if now:
+        if force:
             if _schedule_save and not _schedule_save.done():
                 _schedule_save.cancel()
                 _schedule_save = None
@@ -43,4 +43,4 @@ class DataFile(FileConfigValues):
 
         from dncore.util.instance import get_core
         _schedule_save = get_core().loop.create_task(asyncio.sleep(60))
-        _schedule_save.add_done_callback(lambda _: self.save(now=True))
+        _schedule_save.add_done_callback(lambda _: self.save(force=True))

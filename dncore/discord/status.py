@@ -51,7 +51,7 @@ class Activity(object):
     def update(self):
         self._mgr.update(self)
 
-    def format_activity(self, args: dict[str, Any] = None):
+    def format_activity(self, args: dict[str, Any] | None = None):
         if self.activity:
             _activity = discord.BaseActivity()
             _data = self.activity.to_dict()
@@ -103,7 +103,7 @@ class ActivityManager(object):
             self.priority_handlers.append(activity)
             self.update_priority()
 
-    def unregister_activity(self, *, owner=None, activity: Activity = None):
+    def unregister_activity(self, *, owner=None, activity: Activity | None = None):
         if owner is None and activity is None:
             raise ValueError("not specified owner or activity object")
 

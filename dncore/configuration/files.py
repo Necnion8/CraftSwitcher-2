@@ -36,7 +36,7 @@ class ConfigurationValueError(ValueError):
 class FileConfigValues(ConfigValues):
     def __init__(self, path: Path, *,
                  driver: type[ConfigFileDriver] = YamlFileDriver, errors=CnfErr.NOT_SET,
-                 delay_save_minutes: int = None):
+                 delay_save_minutes: int | None = None):
         CnfErr(errors)  # value check
         self.__driver = driver(path)
         self.__errors = errors
@@ -76,8 +76,9 @@ class FileConfigValues(ConfigValues):
     def _schedule_save_timer(self):
         if self.__delay_save_timer and not self.__delay_save_timer.done() or not self.__delay_save_minutes:
             return False
-        loop = asyncio.get_running_loop()
-        if loop is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
             return False
 
         self.__delay_save_timer = loop.create_task(asyncio.sleep(self.__delay_save_minutes * 60))

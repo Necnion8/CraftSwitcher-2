@@ -37,5 +37,5 @@ class CommandCancelError(CommandError):
 
 
 class CommandUsageError(CommandError):
-    def __init__(self, command: str | CommandHandler = None):
+    def __init__(self, command: str | CommandHandler | None = None):
         self.command = command

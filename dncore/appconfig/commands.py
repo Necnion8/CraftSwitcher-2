@@ -20,7 +20,7 @@ class CommandEntry(ConfigValues):
 
 
 class CommandCategory(ConfigValues):
-    def __init__(self, label: str = None):
+    def __init__(self, label: str | None = None):
         ConfigValues.__init__(self)
         if label is not None:
             self.label = label

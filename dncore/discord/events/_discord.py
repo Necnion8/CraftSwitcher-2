@@ -1,4 +1,4 @@
-import discord
+import discord.abc
 
 from dncore.event import Event
 
@@ -38,7 +38,7 @@ class _MessageEvent(object):
         self.message = message
         self.author = message.author  # type: discord.User | discord.ClientUser | discord.Member
         self.content = message.content  # type: str
-        self.channel = message.channel  # type: discord.TextChannel | discord.DMChannel | discord.GroupChannel
+        self.channel = message.channel  # type: discord.abc.MessageableChannel
         self.guild = message.guild  # type: discord.Guild | None
 
 

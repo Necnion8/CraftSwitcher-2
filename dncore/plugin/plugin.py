@@ -17,13 +17,17 @@ from dncore.discord.status import Activity
 from dncore.event import EventListener
 from dncore.util.discord import get_intent_names
 from dncore.util.instance import get_core, call_event
-from dncore.util.module import import_module_from_file_location
+from dncore.util.module import *
 from .errors import *
 from .events import *
 
 log = logging.getLogger(__name__)
 yaml = ruamel.yaml.YAML()
-__all__ = ["PluginInfo", "Plugin",
+
+PLUGIN_FILE_EXTENSION = ".dcp"
+EXTENSIONS_DIRECTORY = "dncore/extensions"
+
+__all__ = ["PluginInfo", "Plugin", "PLUGIN_FILE_EXTENSION", "EXTENSIONS_DIRECTORY",
            "PluginLoader", "PluginModuleLoader", "PluginZipFileLoader",
            "PluginContainer", "PluginManager", "sorted_plugins", "all_iter"]
 
@@ -51,16 +55,28 @@ def sorted_plugins(ls: list["PluginInfo"]):
 
 
 class PluginInfo:
-    EXTENSIONS_ROOT = Path("dncore/extensions")
+    EXTENSIONS_ROOT = Path(EXTENSIONS_DIRECTORY)
     # PACKAGES = {}
     ALLOW_NAME = re.compile(r"^[a-zA-Z0-9_]+$")
 
-    def __init__(self, name: str, *,
-                 main: str, version: Version, loader: "PluginLoader", plugin_data_dir: Path,
-                 authors: list[str] = None, depends: list[str] = None, softdepends: list[str] = None,
-                 libraries: list[str] = None, target_dncore: Version = None, resource_files: list[str] = None,
-                 description: str = None, changelog: dict[str, str] = None,
-                 ):
+    def __init__(
+        self,
+        name: str,
+        *,
+        main: str,
+        version: Version,
+        loader: "PluginLoader",
+        plugin_data_dir: Path,
+        authors: list[str] | None = None,
+        depends: list[str] | None = None,
+        softdepends: list[str] | None = None,
+        libraries: list[str] | None = None,
+        target_dncore: Version | None = None,
+        resource_files: list[str] | None = None,
+        description: str | None = None,
+        changelog: dict[str, str] | None = None,
+        website: str | None = None,
+    ):
         if PluginInfo.ALLOW_NAME.fullmatch(name) is None:
             raise ValueError(f"Invalid plugin name: {name}")
 
@@ -75,6 +91,7 @@ class PluginInfo:
         self.resource_files = [] if resource_files is None else resource_files  # type: list[str]
         self.description = description
         self.changelog = changelog
+        self.website = website
 
         self.instance: Optional[Plugin] = None
         self.enabled = False
@@ -89,7 +106,7 @@ class PluginInfo:
 
     def load(self):
         if self.instance:
-            return
+            return self.instance
         # self.get_logger().addFilter(PluginInfo.PluginNameFilter(self.name))
 
         try:
@@ -143,6 +160,9 @@ class PluginInfo:
         if self.changelog:
             serialized["changelog"] = self.changelog
 
+        if self.website:
+            serialized["website"] = self.website
+
         return serialized
 
     @classmethod
@@ -163,6 +183,8 @@ class PluginInfo:
                 info.libraries = data["libraries"]
             if "dncore" in data:
                 info.target_dncore = Version.parse(data["dncore"])
+            if "website" in data:
+                info.website = str(data["website"])
 
             info.resource_files = [e for e in data.get("resource_files", []) if isinstance(e, str)]
 
@@ -213,15 +235,15 @@ class Plugin(EventListener):
     def register_activity(self, activity: Activity):
         return get_core().activity_manager.register_activity(self, activity)
 
-    def unregister_activity(self, activity: Activity = None):
+    def unregister_activity(self, activity: Activity | None = None):
         return get_core().activity_manager.unregister_activity(owner=self, activity=activity)
 
     def register_listener(self, listener: EventListener):
         return get_core().events.register_listener(self, listener)
 
-    def unregister_listener(self, listener: EventListener = None):
+    def unregister_listener(self, listener: EventListener | None = None):
         if listener is None:
-            return get_core().events.unregister_listeners(self)
+            get_core().events.unregister_listeners(self)
         else:
             get_core().events.unregister_listener(listener)
 
@@ -240,7 +262,7 @@ class Plugin(EventListener):
     async def extract_resources(self):
         if isinstance(self.info.loader, PluginZipFileLoader):
             loader = self.info.loader
-            return await get_core().loop.run_in_executor(
+            await get_core().loop.run_in_executor(
                 None, lambda: loader.extract_resource_files(self.info))
 
     async def _enable(self):
@@ -322,32 +344,29 @@ class PluginModuleLoader(PluginLoader):
         if info.target_dncore:
             core_ver = get_core().version
             if info.target_dncore > core_ver:
-                raise PluginRequirementsError(f"非対応バージョンです (v{info.target_dncore}] <= v{core_ver.numbers})")
+                raise PluginRequirementsError(f"非対応バージョンです (v{info.target_dncore} <= v{core_ver.numbers})")
 
-        # packageとmodule単語の使い方が逆。いつか直す
         main = info.main
-        package = main[:main.rindex(".")]
+        mod_path = main[:main.rindex(".")]
         clazz = main[main.rindex(".") + 1:]
-        modules_root = ".".join(modules_root_path.parts)
 
-        module = package.split(".")
-        while module and not (modules_root_path / "/".join(module)).is_dir():
-            module.pop()
-        module = ".".join(module)
+        _mod_path = mod_path.split(".")
+        while _mod_path and not (modules_root_path / "/".join(_mod_path)).is_dir():
+            _mod_path.pop()
+        pkg_path = ".".join(_mod_path) or mod_path
 
-        _import_module = modules_root + "." + (module if module else package)
-        _import_package = modules_root + "." + package
-        self._module_name = module if module else package
-        self._import_module_name = _import_module
-        # self._import_module_name = _import_package
+        module_path_prefix = ".".join(modules_root_path.parts)
+        plugin_import_name = module_path_prefix + "." + mod_path
+        self._module_name = pkg_path
+        self._import_module_name = mod_name = module_path_prefix + "." + pkg_path
 
         author = info.authors[0] if info.authors else "unknown"
-        log.debug("Loading %s v%s by %s (module: %s)", info.name, info.version, author, self._module_name)
+        log.debug("Loading %s v%s by %s (module: %s)", info.name, info.version, author, pkg_path)
 
-        # load module (or package)
-        import_module_from_file_location(_import_module, self.module_directory)
-        # load package
-        mod = importlib.import_module(_import_package)
+        mod = import_module_from_file_location(mod_name, self.module_directory)
+        sys.modules[mod_name] = mod
+        if mod_name != plugin_import_name:
+            mod = importlib.import_module(plugin_import_name, mod_name)
         return getattr(mod, clazz)
 
     def get_module_name(self):
@@ -360,15 +379,18 @@ class PluginModuleLoader(PluginLoader):
         return self._import_module_name
 
     async def pack_to_plugin_file(
-        self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None, force_override=False,
+        self, plugins_dir: Path, *, info: PluginInfo | None = None, extra_name: str | None = None, force_override=False,
+        file_extension: str = PLUGIN_FILE_EXTENSION,
     ):
         return await asyncio.get_running_loop().run_in_executor(
             None, lambda: self.pack_to_plugin_file_(
                 plugins_dir, info=info, extra_name=extra_name, force_override=force_override,
+                file_extension=file_extension,
             ))
 
     def pack_to_plugin_file_(
-        self, plugins_dir: Path, *, info: PluginInfo = None, extra_name: str = None, force_override=False,
+        self, plugins_dir: Path, *, info: PluginInfo | None = None, extra_name: str | None = None, force_override=False,
+        file_extension: str = PLUGIN_FILE_EXTENSION,
     ):
         if info is None:
             info = self.create_info()
@@ -376,7 +398,7 @@ class PluginModuleLoader(PluginLoader):
         _name = info.name
         _ver = str(info.version).replace("/", "-")
         _extra = f"_{extra_name}" if extra_name else ""
-        out_name = f"{_name}-{_ver}{_extra}.dcp"
+        out_name = f"{_name}-{_ver}{_extra}{file_extension}"
 
         if (plugins_dir / out_name).is_file() and not force_override:
             raise FileExistsError(f"already exists: {plugins_dir / out_name}")
@@ -452,6 +474,7 @@ class PluginZipFileLoader(PluginLoader):
         self._module_name = None  # type: Optional[str]
         self._import_module_name = None
         self._importer = None  # type: zipimport.zipimporter | None
+        self._virtual_importer = None  # type: VirtualZipImporter | None
         try:
             # noinspection PyUnresolvedReferences
             self.__zip_directory_cache = zipimport._zip_directory_cache
@@ -468,37 +491,32 @@ class PluginZipFileLoader(PluginLoader):
         if info.target_dncore:
             core_ver = get_core().version
             if info.target_dncore > core_ver:
-                raise PluginRequirementsError(f"非対応バージョンです (v{info.target_dncore}] <= v{core_ver.numbers})")
+                raise PluginRequirementsError(f"非対応バージョンです (v{info.target_dncore} <= v{core_ver.numbers})")
 
-        # packageとmodule単語の使い方が逆。いつか直す
         main = info.main  # testplugin.testplugin.TestPlugin
-        package = main[:main.rindex(".")]  # testplugin.testplugin
+        mod_path = main[:main.rindex(".")]  # testplugin.testplugin
         clazz = main[main.rindex(".")+1:]  # TestPlugin
-        modules_root = ".".join(modules_root_path.parts)  # dncore.extensions
 
-        self._importer = zipimport.zipimporter(self.plugin_file)
+        self._importer = zip_loader = zipimport.zipimporter(str(self.plugin_file))
 
-        _sp = package.count(".")
-        for i in range(_sp + 1):
-            module = ".".join(package.split(".")[: i or None])
-            mod_spec = self._importer.find_spec(module)
-            if mod_spec:
+        for i in range(mod_path.count(".") + 1):
+            pkg_path = ".".join(mod_path.split(".")[: i or None])  # testplugin
+            if self._importer.find_spec(pkg_path):
                 break
         else:
-            raise Exception(f"Cannot find module: {package}")
+            raise Exception(f"Cannot find module: {mod_path}")
 
-        _import_package = modules_root + "." + package
-        _import_module = modules_root + "." + module
-        self._module_name = module if module else package
-        self._import_module_name = _import_module
+        module_path_prefix = ".".join(modules_root_path.parts)  # dncore.extensions
+        self._module_name = pkg_path
+        self._import_module_name = module_path_prefix + "." + pkg_path  # dncore.extensions.testplugin
 
         author = info.authors[0] if info.authors else "unknown"
-        log.debug("Loading %s v%s by %s (module: %s)", info.name, info.version, author, self._module_name)
+        log.debug("Loading %s v%s by %s (module: %s)", info.name, info.version, author, pkg_path)
 
-        # load module (or package)
-        mod = self._importer.load_module(_import_module)  # import testplugin
-        if _import_module != _import_package:
-            mod = importlib.import_module(_import_package)  # import testplugin.main
+        self._virtual_importer = v_importer = VirtualZipImporter(zip_loader, module_path_prefix)
+        sys.meta_path.append(v_importer)
+        mod = importlib.import_module(module_path_prefix + "." + mod_path)
+
         return getattr(mod, clazz)
 
     def get_module_name(self):
@@ -510,11 +528,19 @@ class PluginZipFileLoader(PluginLoader):
     def get_import_name(self):
         return self._import_module_name
 
-    async def unpack_to_extension_module(self, extensions_dir: Path, *, info: PluginInfo = None, extract_resources=False):
+    async def unpack_to_extension_module(
+        self, extensions_dir: Path, *, info: PluginInfo | None = None, extract_resources=False,
+    ):
         return await asyncio.get_running_loop().run_in_executor(
-            None, lambda: self.unpack_to_extension_module_(extensions_dir, info=info, extract_resources=extract_resources))
+            None,
+            lambda: self.unpack_to_extension_module_(
+                extensions_dir, info=info, extract_resources=extract_resources,
+            )
+        )
 
-    def unpack_to_extension_module_(self, extensions_dir: Path, *, info: PluginInfo = None, extract_resources=False):
+    def unpack_to_extension_module_(
+        self, extensions_dir: Path, *, info: PluginInfo | None = None, extract_resources=False,
+    ):
         if info is None:
             info = self.create_info()
 
@@ -625,6 +651,9 @@ class PluginZipFileLoader(PluginLoader):
             [sys.path_importer_cache.pop(mod)
              for mod in list(sys.path_importer_cache.keys()) if mod.startswith(name)]
 
+        if (v_importer := self._virtual_importer) and v_importer in sys.meta_path:
+            sys.meta_path.remove(v_importer)
+
         try:
             if self._importer:
                 if self.__zip_directory_cache is not None:
@@ -645,24 +674,28 @@ class PluginContainer(dict[str, PluginInfo]):
             if info is pi:
                 return self.pop(name)
 
+        return None
+
     @property
     def instances(self):
         return [p.instance for p in self.values() if p.enabled and p.instance]
 
 
 class PluginManager(object):
-    def __init__(self, loop: asyncio.AbstractEventLoop, plugins_directory: Path, *, data_dir: Path = None):
+    def __init__(self, loop: asyncio.AbstractEventLoop, plugins_directory: Path,
+                 *, data_dir: Path | None = None, extensions_directory: str = EXTENSIONS_DIRECTORY,
+                 plugin_file_extension: str = PLUGIN_FILE_EXTENSION):
         self.loop = loop
-        self.extensions_directory = Path("dncore/extensions")
+        self.extensions_directory = Path(extensions_directory)
         self.plugins_directory = plugins_directory
         self.plugins = PluginContainer()
 
         self.plugin_data_dir = plugins_directory if data_dir is None else data_dir
+        self.plugin_file_extension = plugin_file_extension
 
     def get_plugin(self, name: str):
         info = self.plugins.get(name.lower())
-        if info:
-            return info.instance
+        return info.instance if info else None
 
     def get_plugin_info(self, name: str):
         return self.plugins.get(name.lower())
@@ -705,7 +738,7 @@ class PluginManager(object):
         plugins_path = self.plugins_directory
         plugins_path.mkdir(parents=True, exist_ok=True)
         plugin_files = [child for child in sorted(plugins_path.iterdir())
-                        if child.is_file() and child.name.endswith(".dcp")]
+                        if child.is_file() and child.name.endswith(self.plugin_file_extension)]
 
         # load plugin info
         _plugins = []
@@ -785,7 +818,7 @@ class PluginManager(object):
 
         return depends, unknown_softdepends, unknown_depends
 
-    def load_plugins(self, *, ignore_names: list[str] = None):
+    def load_plugins(self, *, ignore_names: list[str] | None = None):
         self.plugins.clear()
         _ignore_names = [n.lower() for n in ignore_names] if ignore_names else []
         ignored = []  # type: list[PluginInfo]
@@ -827,7 +860,10 @@ class PluginManager(object):
                     r = False
             results[not r].append(pi)
 
-        log.info("プラグイン %s個を有効化しました。%s", len(results[0]), f" (エラー: {len(results[1])})" if results[1] else "")
+        log.info(
+            "プラグイン %s個を有効化しました。%s",
+            len(results[0]), f" (エラー: {len(results[1])})" if results[1] else "",
+        )
         return results
 
     async def disable_plugins(self, *, ignore_depends=True):
@@ -952,12 +988,12 @@ class PluginManager(object):
         except PluginException as e:
             log.error(f"プラグイン {info.name} を初期化できません: {type(e).__name__}: {e}")
             info.load_exception = e
-            return
+            return None
 
         except Exception as e:
             log.exception(f"プラグイン {info.name} を初期化できません。")
             info.load_exception = e
-            return
+            return None
 
         self.plugins[info.name.lower()] = info
         return info
@@ -988,10 +1024,15 @@ class PluginManager(object):
 
     # packages
 
-    async def pack_to_plugin_file(self, mod_dir: Path, extra_name: str = None, force_override=False):
+    async def pack_to_plugin_file(
+        self, mod_dir: Path, extra_name: str | None = None, force_override=False, file_extension: str | None = None,
+    ):
         loader = PluginModuleLoader(module_directory=mod_dir, data_dir=self.plugin_data_dir)
         return await loader.pack_to_plugin_file(
-            self.plugins_directory, extra_name=extra_name, force_override=force_override,
+            self.plugins_directory,
+            extra_name=extra_name,
+            force_override=force_override,
+            file_extension=file_extension or self.plugin_file_extension,
         )
 
     async def unpack_to_extension_module(self, dcp_file: Path, extract_resources=False):

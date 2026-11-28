@@ -12,11 +12,9 @@ from dncore.command import DEFAULT_CATEGORY, DEFAULT_DEFAULT_GROUP, DEFAULT_OWNE
 from dncore.command.handler import CommandHandler, CommandContext
 from dncore.configuration.files import CnfErr
 from dncore.util.instance import call_event
-
-__all__ = ["CommandManager", "oncommand"]
-
 from dncore.util.logger import taskmessage
 
+__all__ = ["CommandManager", "oncommand"]
 log = getLogger(__name__)
 
 
@@ -36,7 +34,7 @@ class CommandManager(object):
         self._changed_flag = False
         self.running_commands = defaultdict(list)  # type: dict[int, list[CommandContext]]  # chId : context
 
-    def register_class(self, parent, clazz, handle_base_id: str = None) -> list[CommandHandler]:
+    def register_class(self, parent, clazz, handle_base_id: str | None = None) -> list[CommandHandler]:
         handlers = self.__find_handlers(clazz)
         if not handlers:
             return []
@@ -59,7 +57,7 @@ class CommandManager(object):
 
         return handlers
 
-    def register(self, parent, handler: CommandHandler, handle_base_id: str = None):
+    def register(self, parent, handler: CommandHandler, handle_base_id: str | None = None):
         hid = (f"{handle_base_id}.{handler.name}" if handle_base_id else handler.id).lower()
 
         if hid in self._handlers:
@@ -220,7 +218,7 @@ class CommandManager(object):
                 return command.usage
         return self._custom_usage.get(command)
 
-    def allowed(self, command: str | CommandHandler, user_id: int | None, role_id: int | list[int] = None):
+    def allowed(self, command: str | CommandHandler, user_id: int | None, role_id: int | list[int] | None = None):
         """
         指定されたコマンドが指定ユーザーIDまたは役職IDで許可されているかテストします
 
@@ -246,7 +244,12 @@ class CommandManager(object):
         group_name = group_name.lower()
         return group_name in self._whitelists_of_group and name in self._whitelists_of_group[group_name]
 
-    def get_commands(self, channel_type: type = None, user_id: int = None, role_id: int | list[int] = None):
+    def get_commands(
+        self,
+        channel_type: type | None = None,
+        user_id: int | None = None,
+        role_id: int | list[int] | None = None,
+    ):
         """
         登録されている全コマンドの名前リストを返します (カテゴリ順)
 

@@ -13,11 +13,11 @@ class JsonFileDriver(FileDriver):
         with self.path.open("r", encoding="utf-8") as file:
             return json.load(file)
 
-    def save(self, obj: Any | ObjectSerializable):
-        if isinstance(obj, ObjectSerializable):
-            obj = obj.serialize()
+    def save(self, data: Any | ObjectSerializable):
+        if isinstance(data, ObjectSerializable):
+            data = data.serialize()
 
-        raw = json.dumps(obj, ensure_ascii=False, indent=4)
+        raw = json.dumps(data, ensure_ascii=False, indent=4)
         # if len(raw) > 1024 ** 2:
         #     raw = json.dumps(data, ensure_ascii=False)
 

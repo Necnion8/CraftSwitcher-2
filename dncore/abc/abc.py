@@ -8,7 +8,7 @@ IGNORE_FRAME = object()
 class Version(object):
     REGEX = re.compile(r"(?P<v1>\d+)\.(?P<v2>\d+)\.(?P<v3>\d+)(?P<b>b?)(/(?P<dt>\d{6,8}))?")
 
-    def __init__(self, version: tuple[int, int, int], release: datetime.date = None, *, beta=False):
+    def __init__(self, version: tuple[int, int, int], release: datetime.date | None = None, *, beta=False):
         self.version = version
         self.release_date = release
         self.beta = beta
@@ -44,12 +44,12 @@ class Version(object):
             date = None
         return cls(version, date, beta=beta)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object):
         if not isinstance(other, Version):
             raise ValueError
         return self.version == other.version  # and self.beta == other.beta
 
-    def __lt__(self, other):
+    def __lt__(self, other: object):
         if not isinstance(other, Version):
             raise ValueError(f"unsupported: {other!r}")
 
@@ -64,16 +64,16 @@ class Version(object):
         return self.beta > other.beta
         # return self.version < other.version
 
-    def __ne__(self, other):
+    def __ne__(self, other: object):
         return not self.__eq__(other)
 
-    def __le__(self, other):
+    def __le__(self, other: object):
         return self.__lt__(other) or self.__eq__(other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: object):
         return not self.__le__(other)
 
-    def __ge__(self, other):
+    def __ge__(self, other: object):
         return not self.__lt__(other)
 
 

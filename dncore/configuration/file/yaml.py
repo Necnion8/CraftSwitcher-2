@@ -28,12 +28,12 @@ class YamlFileDriver(ConfigFileDriver):
                 self.__data = yaml.load(file)
         return self.__data
 
-    def save(self, obj: Any | ObjectSerializable):
-        if isinstance(obj, ObjectSerializable):
-            obj = obj.serialize()
+    def save(self, data: Any | ObjectSerializable):
+        if isinstance(data, ObjectSerializable):
+            data = data.serialize()
 
         with io.StringIO() as temp:
-            yaml.dump(obj, temp)
+            yaml.dump(data, temp)
             temp.seek(0)
 
             parent = Path(self.path.parent)
@@ -54,7 +54,7 @@ class YamlFileDriver(ConfigFileDriver):
         return errors
 
     @classmethod
-    def __serialize_config(cls, data: CommentedMap | None, config: ConfigValues, *, dirs, errors):
+    def __serialize_config(cls, data: CommentedMap | None, config: ConfigValues | None, *, dirs, errors):
         write_comments = False
         if not data:
             write_comments = True
@@ -120,7 +120,10 @@ class YamlFileDriver(ConfigFileDriver):
                         if not set_default and name in data and data[name] is None:
                             continue  # このConfigValuesのデフォルト値を当てるためにデシリアライズしない
 
-                        cls.__deserialize_config(data.get(name), child, set_default or name not in data, dirs=dirs, errors=errors)
+                        cls.__deserialize_config(
+                            data.get(name), child, set_default or name not in data,
+                            dirs=dirs, errors=errors,
+                        )
 
                     finally:
                         dirs.remove(name)

@@ -9,7 +9,9 @@ from dncore.abc.serializables import Embed
 from dncore.util.instance import run_coroutine
 
 __all__ = ["get_intent_names", "MessageSender", "PartialMessageableChannel", "MessageableChannel", "EmbedType"]
-PartialMessageableChannel = discord.TextChannel | discord.VoiceChannel | discord.Thread | discord.DMChannel | discord.PartialMessageable
+PartialMessageableChannel = (
+    discord.TextChannel | discord.VoiceChannel | discord.Thread | discord.DMChannel | discord.PartialMessageable
+)
 MessageableChannel = PartialMessageableChannel | discord.GroupChannel
 EmbedType = Literal['rich', 'image', 'video', 'gifv', 'article', 'link']
 
@@ -24,7 +26,7 @@ def get_intent_names(intent: discord.flags.flag_value | int):
     for name, value in intents:
         if not value & ~ intent:
             names.append(name)
-        intent = intent & ~ value
+        intent &= ~ value
 
     if intent:
         names.append(str(intent))
@@ -36,8 +38,8 @@ class MessageSender(object):
         self.channel = channel
         self.self_message = self_message  # type: discord.Message | None
 
-    async def send_info(self, content: str | discord.Embed | Embed, title: str = None, *,
-                        args: dict[str, Any] = None, kw: dict = None, retry=True):
+    async def send_info(self, content: str | discord.Embed | Embed, title: str | None = None, *,
+                        args: dict[str, Any] | None = None, kw: dict | None = None, retry=True):
         __ignore_frame = IGNORE_FRAME
 
         if args is None:
@@ -65,8 +67,8 @@ class MessageSender(object):
 
         return self.self_message
 
-    async def send_warn(self, content: str | discord.Embed | Embed, title: str = None, *,
-                        args: dict[str, Any] = None, kw: dict = None, retry=True):
+    async def send_warn(self, content: str | discord.Embed | Embed, title: str | None = None, *,
+                        args: dict[str, Any] | None = None, kw: dict | None = None, retry=True):
         __ignore_frame = IGNORE_FRAME
 
         if args is None:
@@ -94,8 +96,8 @@ class MessageSender(object):
 
         return self.self_message
 
-    async def send_error(self, content: str | discord.Embed | Embed, title: str = None, *,
-                         args: dict[str, Any] = None, kw: dict = None, retry=True):
+    async def send_error(self, content: str | discord.Embed | Embed, title: str | None = None, *,
+                         args: dict[str, Any] | None = None, kw: dict | None = None, retry=True):
         __ignore_frame = IGNORE_FRAME
 
         if args is None:
@@ -123,7 +125,7 @@ class MessageSender(object):
 
         return self.self_message
 
-    def delete(self, delay: float = None):
+    def delete(self, delay: float | None = None):
         async def _delete():
             if delay is not None:
                 await asyncio.sleep(delay)

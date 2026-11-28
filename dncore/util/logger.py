@@ -89,7 +89,7 @@ class PackageNameInserter(logging.Filter):
                 idx += 1
 
             name = ".".join(parts)
-            name = name + " " * (self.size - len(name))
+            name += " " * (self.size - len(name))
             self._caches[record.name] = name
 
         record.logname = name
@@ -124,7 +124,8 @@ class TaskMessage:
         if not self.task.done():
             self.task.cancel()
 
-    async def _delay(self, delay, logger, args):
+    @staticmethod
+    async def _delay(delay, logger, args):
         await asyncio.sleep(delay)
         logger(*args)
 

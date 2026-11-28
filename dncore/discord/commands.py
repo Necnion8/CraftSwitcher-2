@@ -21,7 +21,8 @@ log = getLogger(__name__)
 
 
 class SettingCommand(object):
-    def __init__(self, owner: Any, name: str, usage: str, function: Callable[[CommandContext], Awaitable[None | Embed]]):
+    def __init__(self, owner: Any, name: str, usage: str,
+                 function: Callable[[CommandContext], Awaitable[None | Embed]]):
         self.owner = owner
         self.name = name.lower()
         self.usage = usage
@@ -77,7 +78,7 @@ class DNCoreCommands(EventListener):
     def data(self):
         return get_core().data
 
-    @oncommand(defaults=True, category="utility", allow_channels=discord.TextChannel | discord.DMChannel)
+    @oncommand(defaults=True, category="utility", allow_channels=discord.abc.Messageable)
     async def cmd_help(self, ctx: CommandContext):
         """
         {command} [コマンド] [..引数]
@@ -122,7 +123,7 @@ class DNCoreCommands(EventListener):
             discord_version=discord.__version__,
         ))
 
-    @oncommand(defaults=True, category="utility", allow_channels=discord.TextChannel | discord.DMChannel)
+    @oncommand(defaults=True, category="utility", allow_channels=discord.abc.Messageable)
     async def cmd_clean(self, ctx: CommandContext):
         """
         {command} [件数]
@@ -150,7 +151,12 @@ class DNCoreCommands(EventListener):
 
         try:
             try:
-                if not isinstance(channel, discord.TextChannel):
+                if not isinstance(channel, (
+                        discord.TextChannel,
+                        discord.Thread,
+                        discord.VoiceChannel,
+                        discord.StageChannel,
+                )):  # purgeできないチャンネルを弾く
                     raise RuntimeError
 
                 async with ctx.typing():
@@ -166,15 +172,18 @@ class DNCoreCommands(EventListener):
                 else:
                     delete_users = False
 
-                fs = []
+                count = 0
+                if isinstance(channel, discord.abc.Messageable):
+                    async with ctx.typing():
+                        async for message in channel.history(limit=search_range):
+                            if (delete_users or message.author == get_core().client.user) and _check(message):
+                                try:
+                                    await message.delete()
+                                except discord.HTTPException:
+                                    if count == 0:
+                                        raise
 
-                async with channel.typing():
-                    async for message in channel.history(limit=search_range):
-                        if (delete_users or message.author == get_core().client.user) and _check(message):
-                            fs.append(get_core().loop.create_task(message.delete()))
-
-                    await asyncio.wait(fs)
-                count = len(fs)
+                                count += 1
 
         except discord.HTTPException as e:
             return Embed.error(self.lang.clean.error).format(args=dict(message=str(e)))
@@ -214,6 +223,14 @@ class DNCoreCommands(EventListener):
             content = "\n".join(content.rstrip("`\n").split("\n")[1:])
         content = content.strip("` \n")
 
+        message_reference = None
+        if (_reference := ctx.message.reference) is not None:
+            if (message_reference := _reference.resolved) is None:
+                try:
+                    message_reference = await ctx.channel.fetch_message(_reference.message_id)
+                except discord.HTTPException as e:
+                    log.warning("Unable to fetch referenced message: %s", e)
+
         from dncore.dncore import DNCoreAPI
 
         __globals = dict(
@@ -222,13 +239,15 @@ class DNCoreCommands(EventListener):
             core=get_core(),
             loop=get_core().loop,
             client=get_core().client,
-            me=get_core().client.user,
+            me=ctx.guild.me if ctx.guild else get_core().client.user,
             ctx=ctx,
+            message_reference=message_reference,
             message=ctx.message,
             channel=ctx.channel,
             author=ctx.author,
             guild=ctx.guild,
             api=DNCoreAPI,
+            ref=message_reference,
             m=ctx.message,
             ch=ctx.channel,
             g=ctx.guild,
@@ -252,7 +271,7 @@ class DNCoreCommands(EventListener):
                     continue
 
                 if line and not line.startswith(("return", "  ")):
-                    lines[-idx-1] = f"r = {line}"
+                    lines[-idx - 1] = f"r = {line}"
                     lines.append("return r")
                 break
 
@@ -268,7 +287,7 @@ class DNCoreCommands(EventListener):
                 self.debug_last_messages.clear()
                 self.debug_last_messages.append(m)
                 self.debug_last_messages.append(ctx.message)
-                return
+                return None
 
         result = repr(result)
         log.info("Debug Result: %s", result)
@@ -283,6 +302,7 @@ class DNCoreCommands(EventListener):
         self.debug_last_messages.clear()
         self.debug_last_messages.append(m)
         self.debug_last_messages.append(ctx.message)
+        return None
 
     @oncommand(defaults=DEFAULT_OWNER_GROUP)
     async def cmd_shutdown(self, ctx: CommandContext):
@@ -364,7 +384,7 @@ class DNCoreCommands(EventListener):
             running = [c for cc in cmdmgr.running_commands.values() for c in cc]
             aliases = list(cmdmgr.aliases)
             registered = sum([bool(hid in commands.values() and handler) for hid, handler in handlers.items()])
-            disabled_text = f" ({len(commands)-registered} disabled)" if len(commands) - registered else ""
+            disabled_text = f" ({len(commands) - registered} disabled)" if len(commands) - registered else ""
             client = get_core().client
             owner_text = f"**{client.owner}**" if client.owner else "*unknown*"
             version = get_core().version
@@ -392,8 +412,7 @@ class DNCoreCommands(EventListener):
 
         elif mode == "reconnect":
             if not get_core().config.discord.token:
-                await ctx.send_error(":warning: ボットトークンが設定されていません。")
-                return
+                return Embed.error(":warning: ボットトークンが設定されていません。")
 
             m = await ctx.send_warn(":recycle: Discordに再接続しています･･･")
             m_id = m.id
@@ -470,16 +489,25 @@ class DNCoreCommands(EventListener):
                     source_file = source_file.name if source_file else None
             source = f" ({source_file})" if source_file else ""
 
-            _depends_lines = []
+            _extra_info = []
+            if plugin.website:
+                website_value = None
+                if re.search(r"^https?://github\.com/.+/.+", plugin.website):
+                    try:
+                        sp = plugin.website.split("/")
+                        website_value = f"[{sp[3]}/{sp[4]}]({plugin.website})"
+                    except (Exception,):
+                        pass
+                _extra_info.append(":white_small_square: Website: " + (website_value or plugin.website))
             if plugin.depends:
-                _depends_lines.append(":white_small_square: Depends: " + ", ".join(plugin.depends))
+                _extra_info.append(":white_small_square: Depends: " + ", ".join(plugin.depends))
             if plugin.softdepends:
-                _depends_lines.append(":white_small_square: SoftDepends: " + ", ".join(plugin.softdepends))
+                _extra_info.append(":white_small_square: SoftDepends: " + ", ".join(plugin.softdepends))
             description_lines = [
                 f":white_small_square: Version: **{plugin.version}**",
                 f":white_small_square: Status: **{state}**",
                 f":white_small_square: Loader: {type(plugin.loader).__name__}{source}",
-                *_depends_lines,
+                *_extra_info,
                 f":white_small_square: Commands: {', '.join(commands)}",
             ]
 
@@ -585,7 +613,7 @@ class DNCoreCommands(EventListener):
                     log.warning("Failed to load extension info", exc_info=e)
                     return Embed.error(":grey_exclamation: プラグイン情報をロードできませんでした。")
 
-            elif _filename.endswith(".dcp"):  # plugin path
+            elif _filename.endswith(plmgr.plugin_file_extension):  # plugin path
                 pl_file = plmgr.plugins_directory / filename
                 if not pl_file.is_file():
                     return Embed.error(":grey_exclamation: 指定されたプラグインファイルが見つかりません。")
@@ -594,13 +622,13 @@ class DNCoreCommands(EventListener):
                 try:
                     info = loader.create_info()
                 except Exception as e:
-                    log.warning("Failed to load dcp info", exc_info=e)
+                    log.warning("Failed to load %s info", plmgr.plugin_file_extension, exc_info=e)
                     return Embed.error(":grey_exclamation: プラグイン情報をロードできませんでした。")
 
             else:  # name search
                 _search_info = []  # type: list[PluginInfo]
                 for child in plmgr.plugins_directory.iterdir():
-                    if not child.is_file() or not child.name.endswith(".dcp"):
+                    if not child.is_file() or not child.name.endswith(plmgr.plugin_file_extension):
                         continue
                     try:
                         loader = PluginZipFileLoader(child, plmgr.plugin_data_dir)
@@ -621,9 +649,13 @@ class DNCoreCommands(EventListener):
 
             try:
                 async with ctx.typing():
-                    info = await plmgr.load_plugin(info.loader, info, ignore_depends=force)
-                    if not info:
-                        raise PluginOperationError("Failed to load info")
+                    if not (_info := await plmgr.load_plugin(info.loader, info, ignore_depends=force)):
+                        if isinstance(info.load_exception, PluginException):
+                            raise info.load_exception
+                        elif info.load_exception:
+                            raise PluginOperationError("プラグインの初期化に失敗しました")
+                        raise PluginOperationError("プラグインを読み込めませんでした")
+                    info = _info
                     res = await plmgr.enable_plugin(info, ignore_depends=force)
                     if res:
                         cmdmgr.remap()
@@ -677,7 +709,11 @@ class DNCoreCommands(EventListener):
             try:
                 async with ctx.typing():
                     packed_path = await loader.pack_to_plugin_file(
-                        plmgr.plugins_directory, info=plugin, extra_name=extra_name, force_override=force,
+                        plmgr.plugins_directory,
+                        info=plugin,
+                        extra_name=extra_name,
+                        force_override=force,
+                        file_extension=plmgr.plugin_file_extension,
                     )
 
             except FileExistsError:
@@ -748,6 +784,7 @@ class DNCoreCommands(EventListener):
 
         else:
             raise CommandUsageError
+        return None
 
     # events
 

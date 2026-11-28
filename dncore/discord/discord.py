@@ -37,7 +37,7 @@ class DiscordClient(discord.Client):
         # values
         self._guilds = dict()  # type: dict[int, discord.Guild]
         self._channels = dict()  # type: dict[int, CHANNEL_TYPES]
-        self._users = dict()  # type: dict[int, discord.User]
+        self._users = dict()  # type: dict[int, discord.User | discord.Member]
         self.owner = None  # type: discord.User | None
 
         # instance
@@ -127,7 +127,10 @@ class DiscordClient(discord.Client):
                     delete_after = None
                     if config.delete_response and 0 < config.auto_clean_delay_with_unknown_command:
                         delete_after = config.auto_clean_delay_with_unknown_command
-                    run_coroutine(message.channel.send(embed=reaction, delete_after=delete_after), (discord.HTTPException,))
+                    run_coroutine(
+                        message.channel.send(embed=reaction, delete_after=delete_after),
+                        (discord.HTTPException, ),
+                    )
                 elif isinstance(reaction, Emoji):
                     run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
             return
@@ -153,7 +156,10 @@ class DiscordClient(discord.Client):
                     delete_after = None
                     if config.delete_response and 0 < config.auto_clean_delay_with_unknown_command:
                         delete_after = config.auto_clean_delay_with_unknown_command
-                    run_coroutine(message.channel.send(embed=reaction, delete_after=delete_after), (discord.HTTPException,))
+                    run_coroutine(
+                        message.channel.send(embed=reaction, delete_after=delete_after),
+                        (discord.HTTPException, ),
+                    )
                 elif isinstance(reaction, Emoji):
                     run_coroutine(message.add_reaction(reaction), (discord.HTTPException,))
             return
@@ -282,7 +288,7 @@ class DiscordClient(discord.Client):
 
         return self.owner
 
-    async def _error_command_handling(self, context, execute_name, error, message, __locals):
+    async def _error_command_handling(self, context, execute_name, error, message, _locals):
         if context.self_message:
             run_coroutine(context.self_message.clear_reactions(), (discord.HTTPException,))
 
@@ -325,7 +331,7 @@ class DiscordClient(discord.Client):
             log.error("Handling Error / %s", execute_name, exc_info=_ex)
 
         if isinstance(reaction, Embed):
-            reaction = Embed.error(reaction.format(__locals))
+            reaction = Embed.error(reaction.format(_locals))
             try:
                 await context.send_error(reaction)
             except discord.HTTPException:
@@ -341,7 +347,12 @@ class DiscordClient(discord.Client):
             except (Exception,):
                 log.debug("Exception in error reports to owner", exc_info=True)
 
-    def _check_guild_admin_permission(self, command: CommandHandler, user: discord.User, guild: discord.Guild | None):
+    def _check_guild_admin_permission(
+        self,
+        command: CommandHandler,
+        user: discord.User | discord.Member,
+        guild: discord.Guild | None,
+    ):
         if not guild:
             return False
 
@@ -356,7 +367,12 @@ class DiscordClient(discord.Client):
 
         return False
 
-    def allowed(self, command: str | CommandHandler, author: discord.User, guild: discord.Guild | None):
+    def allowed(
+        self,
+        command: str | CommandHandler,
+        author: discord.User | discord.Member,
+        guild: discord.Guild | None,
+    ):
         if not isinstance(command, CommandHandler):
             command = self.commands.get_command(command)
         if not command:
@@ -376,7 +392,7 @@ class DiscordClient(discord.Client):
         return True
 
     async def send_command_usage(self, context: CommandContext, cmd: str | CommandHandler,
-                                 usage: str | None, args: list[str] = None):
+                                 usage: str | None, args: list[str] | None = None):
         if isinstance(cmd, CommandHandler):
             name = cmd.name
             command = cmd
@@ -396,12 +412,14 @@ class DiscordClient(discord.Client):
         args = e.args
 
         if command is None:
-            return await context.send_warn(m.unknown_command)
+            await context.send_warn(m.unknown_command)
+            return
 
         if not usage:
             usage = self.commands.get_usage(command)
         if not usage:
-            return await context.send_warn(m.no_usage)
+            await context.send_warn(m.no_usage)
+            return
 
         aliases = sorted(alias for alias, name in self.commands.aliases.items() if command.name == name)
 
@@ -421,9 +439,9 @@ class DiscordClient(discord.Client):
         if e.cancelled:
             return
 
-        return await context.send_info(e.embed)
+        await context.send_info(e.embed)
 
-    def clean_auto(self, message: discord.Message, delay: float = None, *, is_error=False):
+    def clean_auto(self, message: discord.Message, delay: float | None = None, *, is_error=False):
         """
         指定された message をdnCoreの自動削除設定に従い削除します。
 
@@ -433,9 +451,9 @@ class DiscordClient(discord.Client):
 
         config_auto_clean_delay = config.auto_clean_delay_with_error if is_error else config.auto_clean_delay
         delay = config_auto_clean_delay if delay is None else delay
-        delay = max(0, delay)
+        delay = max(0, delay or 0)
 
-        return run_coroutine(message.delete(delay=delay), ignores=(discord.HTTPException,))
+        return run_coroutine(message.delete(delay=delay or None), ignores=(discord.HTTPException,))
 
     # overrides
 

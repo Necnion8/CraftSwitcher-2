@@ -10,7 +10,7 @@ def replace_overrides():
 
 
 class _Message(discord.Message):
-    async def delete(self, *, delay: float = None) -> None:
+    async def delete(self, *, delay: float | None = None) -> None:
         """|coro|
 
         Deletes the message.
@@ -18,7 +18,7 @@ class _Message(discord.Message):
         Your own messages could be deleted without any proper permissions. However to
         delete other people's messages, you must have :attr:`~Permissions.manage_messages`.
 
-        .. versionchanged:: 1.1
+        .. version changed:: 1.1
             Added the new ``delay`` keyword-only parameter.
 
         Parameters
@@ -38,7 +38,7 @@ class _Message(discord.Message):
         """
         if delay is not None:
 
-            async def delete(delay: float):
+            async def delete():
                 await asyncio.sleep(delay)
                 client = get_core().connected_client
                 if client:
@@ -47,6 +47,6 @@ class _Message(discord.Message):
                     except discord.HTTPException:
                         pass
 
-            asyncio.create_task(delete(delay))
+            asyncio.create_task(delete())
         else:
             await self._state.http.delete_message(self.channel.id, self.id)

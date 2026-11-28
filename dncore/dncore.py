@@ -6,7 +6,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Callable, TypeVar, Sequence
+from typing import Optional, Callable, TypeVar, Sequence, Awaitable
 
 import aiohttp
 import colorlog
@@ -28,8 +28,8 @@ from dncore.plugin import PluginManager, Plugin, PluginInfo
 from dncore.util.instance import call_event
 from dncore.util.logger import DaysRotatingFileHandler, PackageNameInserter, RedirectStream, get_caller_logger
 
-__version__ = "6.1.1"
-__date__ = "2024/11/17"
+__version__ = "6.1.3"
+__date__ = "2026/11/07"
 version_info = Version.parse(__version__ + "/" + __date__.replace("/", ""))
 __all__ = ["DNCore", "__version__", "__date__", "version_info", "DNCoreAPI"]
 log = logging.getLogger(__name__)
@@ -39,19 +39,19 @@ T = TypeVar("T")
 # noinspection PyMethodMayBeStatic
 class DNCore(object):
     def __init__(self, *, config_dir="config/", plugins_dir="plugins/"):
-        self.loop = None  # type: Optional[asyncio.AbstractEventLoop]
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
         _core(self)
 
         self._restart = False
         self._init = False
         self._default_intents = discord.Intents.presences.flag
         self._last_shutdown_time = 0
+        self._shutdown_task = None  # type: asyncio.Task | None
         self.config_dir = Path(config_dir)
         self.plugins_dir = Path(plugins_dir)
         self.conn_act = None  # type: Optional[Activity]
 
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
         self.config = AppConfig(self.config_dir / "config.yml", errors=CnfErr.RAISE)
         self.data = DataFile(self.config_dir / "data.yml")
         self.events = EventManager(self.loop)
@@ -107,7 +107,7 @@ class DNCore(object):
             if error:
                 try:
                     self.loop.run_until_complete(self.shutdown())
-                except (Exception,) as ignored:
+                except (Exception, ):
                     pass
 
         self.loop.create_task(self._empty())
@@ -184,7 +184,7 @@ class DNCore(object):
 
         return True
 
-    async def shutdown(self, *, restart=False):
+    async def shutdown(self, *, restart=False, suppress_running=False):
         last_time = self._last_shutdown_time
         if last_time:
             if time.time() - last_time > 6:
@@ -193,8 +193,14 @@ class DNCore(object):
         else:
             self._last_shutdown_time = time.time()
 
+        if self._shutdown_task and not self._shutdown_task.done():
+            if suppress_running:
+                return
+            raise RuntimeError("Already running shutdown task")
+
+        self._shutdown_task = task = asyncio.create_task(self._shutdown(restart=restart))
         try:
-            await self._shutdown(restart=restart)
+            await task
 
         finally:
             self.loop.stop()
@@ -238,24 +244,33 @@ class DNCore(object):
                 log.error(f"Exception in close aiohttp client: {e}")
 
             try:
-                self.data.save(now=True)
+                self.data.save(force=True)
             except Exception as e:
                 log.exception(f"Exception in save data: {e}")
 
         finally:
             pending = [
                 t for t in asyncio.all_tasks(loop=self.loop)
-                if t is not asyncio.current_task(loop=self.loop) and not t.done()
+                if t is not asyncio.current_task() and not t.done()
             ]
             log.debug("Stopping %s tasks", len(pending))
             for task in pending:
                 task.cancel()
+
+            if pending:
                 try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except (Exception,):
-                    log.warning("Failed to cancel pending task", exc_info=True)
+                    results = await asyncio.wait_for(
+                        asyncio.gather(*pending, return_exceptions=True),
+                        timeout=60,
+                    )
+                    for task, result in zip(pending, results):
+                        if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                            log.warning(
+                                "Task %s failed with exception during shutdown",
+                                task.get_name(), exc_info=result,
+                            )
+                except asyncio.TimeoutError:
+                    log.error("Shutdown timed out, some tasks failed to finish gracefully.")
 
     async def _empty(self):
         while True:
@@ -264,10 +279,12 @@ class DNCore(object):
     def _signals(self):
         def on_signal(s, _):
             log.debug("received %s signal", s)
-            self.loop.create_task(self.shutdown())
+            self.loop.create_task(self.shutdown(suppress_running=True))
 
         signal.signal(signal.SIGINT, on_signal)
         signal.signal(signal.SIGTERM, on_signal)
+        if hasattr(signal, "SIGBREAK"):  # Windows
+            signal.signal(signal.SIGBREAK, on_signal)
 
     def _loggers(self):
         root = logging.getLogger("dncore")
@@ -406,7 +423,7 @@ class DNCore(object):
                     await self.client.login(token=token)
 
                 except discord.DiscordServerError as e:
-                    reconnect_delay = reconnect_delay * 2
+                    reconnect_delay *= 2
                     if reconnect_delay > 900:
                         reconnect_delay = 900
 
@@ -535,20 +552,16 @@ class DNCoreAPI:
         return mgr.loop.create_task(mgr.call_event(event))
 
     @classmethod
-    def run_coroutine(cls, coro: T, ignores: Sequence[type[Exception]] = None) -> asyncio.Task[T]:
+    def run_coroutine(cls, coro: Awaitable[T], ignores: Sequence[type[Exception]] | None = None) -> asyncio.Task[T]:
         __ignore_frame = IGNORE_FRAME
         loop = get_core().loop
-
-        if ignores is None:
-            ignores = Exception
 
         async def _wrap():
             try:
                 return await coro
-            except ignores:
-                return
-            except (Exception,):
-                get_caller_logger().exception(f"Exception in run_coroutine : {coro}")
+            except Exception as e:
+                if not ignores or not isinstance(e, tuple(ignores)):
+                    get_caller_logger().exception(f"Exception in run_coroutine : {coro}", exc_info=e)
 
         return loop.create_task(_wrap())
 

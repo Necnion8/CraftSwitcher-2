@@ -7,7 +7,10 @@ from typing import TypeVar, Any
 
 import unicodedata
 
-__all__ = ["typename", "traceback_simple_format", "SafeSet", "SafeList", "get_text_width", "strip_text_width", "safe_format", "Duration"]
+__all__ = [
+    "typename", "traceback_simple_format", "SafeSet", "SafeList",
+    "get_text_width", "strip_text_width", "safe_format", "Duration",
+]
 TRACEBACK_FILE_LINE = re.compile(r"^ {2}File \"(.+)\", line \d+, in .+$")
 T = TypeVar("T")
 
@@ -104,7 +107,7 @@ class Duration(object):
     def empty(cls):
         return cls(None)
 
-    def __init__(self, seconds: int | None):
+    def __init__(self, seconds: int | float | None):
         self.total_seconds = seconds or 0
         self.null = seconds is None
 

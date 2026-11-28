@@ -1,6 +1,6 @@
 import textwrap
 from asyncio import Future
-from typing import Callable, Awaitable, TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 import discord
 
@@ -10,6 +10,7 @@ from dncore.util import safe_format
 from dncore.util.discord import MessageSender, MessageableChannel
 from dncore.util.instance import get_core, run_coroutine
 
+T = TypeVar("T")
 __all__ = ["CommandHandler", "CommandContext"]
 
 if TYPE_CHECKING:
@@ -17,10 +18,10 @@ if TYPE_CHECKING:
 
 
 class CommandHandler:
-    def __init__(self, name: str = None, *,
-                 hid: str = None, interactive=False, clean_message=True,
-                 defaults: str | bool | None = DEFAULT_OWNER_GROUP, aliases: str | list[str] = None,
-                 category: str = None, allow_channels=discord.TextChannel):
+    def __init__(self, name: str | None = None, *,
+                 hid: str | None = None, interactive=False, clean_message=True,
+                 defaults: str | bool | None = DEFAULT_OWNER_GROUP, aliases: str | list[str] | None = None,
+                 category: str | None = None, allow_channels=discord.TextChannel):
         """
         :param name: コマンド名。省略して cmd_xxx から名前を設定
         :param hid: ハンドラID
@@ -33,7 +34,7 @@ class CommandHandler:
         """
         self.func = None
         self.name = name  # type: str | None
-        self.id = hid  # type: str
+        self.id = hid  # type: str | None
         self.usage = None  # type: str | None
         self.interactive = interactive
         self.clean_message = clean_message
@@ -52,7 +53,7 @@ class CommandHandler:
         self.category = category
         self.allow_channels = allow_channels
 
-    def __call__(self, func: Callable[[str], Awaitable[None]]):
+    def __call__(self, func: T):
         self.func = func
         func._handler = self
         if self.name is None:
@@ -136,7 +137,8 @@ class CommandContext(MessageSender):
         self.execute_name = execute_name
         self.orig_args = args
         self.client = client
-        self.me = client.user  # type: discord.abc.ClientUser
+        self.me = message.guild.me if message.guild else client.user  # type: discord.abc.ClientUser | discord.Member
+        """Changed in v6.1.2~ コマンドの発生元がギルドであれば自身の discord.Member を返します"""
         self.content = message.content  # type: str
         self.args_content = self.content[len(self.prefix + self.execute_name) + 1:]
         self.command = command  # type: CommandHandler
@@ -154,7 +156,7 @@ class CommandContext(MessageSender):
         self.delete_request = None  # type: bool | None
         self.delete_response = None  # type: bool | None
 
-    def delete_requests(self, delay: float = None):
+    def delete_requests(self, delay: float | None = None):
         return run_coroutine(self.message.delete(delay=delay), (discord.HTTPException,))
 
     @property

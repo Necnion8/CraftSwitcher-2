@@ -35,9 +35,9 @@ class DiscordClosingEvent(Event):
 
 
 class DebugCommandPreExecuteEvent(Event):
-    def __init__(self, ctx: CommandContext, __globals: dict):
+    def __init__(self, ctx: CommandContext, _globals: dict):
         self.context = ctx
-        self.globals = __globals
+        self.globals = _globals
 
 
 class HelpCommandPreExecuteEvent(Event, Cancellable):
